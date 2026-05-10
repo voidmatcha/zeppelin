@@ -52,14 +52,23 @@ export class NotebookSearchResultItemComponent implements OnChanges {
     }
     this.displayName = this.result.name ? this.result.name : `Note ${noteId}`;
 
+    const titleRaw = hasParagraph ? this.result.title || '' : '';
     const snippet = this.result.snippet || '';
-    // Preserve Lucene <B> highlighting by converting to <mark>
-    this.codeHtml = snippet.replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
-    this.codeText = snippet.replace(/<\/?B>/gi, '');
-    this.interpreter = this.detectInterpreter(this.codeText);
+    const snippetText = snippet.replace(/<\/?B>/gi, '');
+    this.interpreter = this.detectInterpreter(snippetText);
+
+    const titleHtml = titleRaw.replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+    const snippetHtml = snippet.replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+    this.codeHtml = titleHtml ? `${titleHtml}\n\n${snippetHtml}` : snippetHtml;
+    const titleText = titleRaw.replace(/<\/?B>/gi, '');
+    this.codeText = titleText ? `${titleText}\n\n${snippetText}` : snippetText;
 
     const tables = this.result.tables || '';
-    this.tablesText = tables.trim().split(/\s+/).filter(t => t).join(', ');
+    this.tablesText = tables
+      .trim()
+      .split(/\s+/)
+      .filter(t => t)
+      .join(', ');
     this.outputText = this.result.output || '';
   }
 
@@ -67,7 +76,6 @@ export class NotebookSearchResultItemComponent implements OnChanges {
     if (!text) {
       return '';
     }
-    // Check interpreter prefix first — this is reliable
     if (/^%(\w*\.)?sql/i.test(text)) {
       return 'sql';
     }
@@ -80,7 +88,6 @@ export class NotebookSearchResultItemComponent implements OnChanges {
     if (/^%sh/i.test(text)) {
       return 'sh';
     }
-    // Fall back to keyword heuristic only if no prefix
     if (!text.startsWith('%')) {
       if (/\b(?:SELECT|INSERT|CREATE|FROM|WHERE)\b/i.test(text) && /\b(?:SELECT|FROM)\b/i.test(text)) {
         return 'sql';

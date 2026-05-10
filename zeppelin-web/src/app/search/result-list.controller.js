@@ -25,7 +25,6 @@ function SearchResultCtrl($scope, $routeParams, searchService) {
     if (!text) {
       return '';
     }
-    // Check interpreter prefix first — this is reliable
     if (/^%(\w*\.)?sql/i.test(text)) {
       return 'sql';
     }
@@ -38,7 +37,6 @@ function SearchResultCtrl($scope, $routeParams, searchService) {
     if (/^%sh/i.test(text)) {
       return 'sh';
     }
-    // Fall back to keyword heuristic only if no prefix
     if (!text.startsWith('%')) {
       if (/\b(?:SELECT|INSERT|CREATE|FROM|WHERE)\b/i.test(text)
           && /\b(?:SELECT|FROM)\b/i.test(text)) {
@@ -59,9 +57,12 @@ function SearchResultCtrl($scope, $routeParams, searchService) {
       note.id = note.id.replace('paragraph/', '?paragraph=') +
         '&term=' + $routeParams.searchTerm;
 
-      // Preserve Lucene <B> highlighting by converting to <mark>
-      let codeHtml = (note.snippet || '').replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
-      let code = (note.snippet || '').replace(/<B>/g, '').replace(/<\/B>/g, '');
+      let snippetHtml = (note.snippet || '').replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+      let snippetText = (note.snippet || '').replace(/<\/?B>/gi, '');
+      let titleHtml = (note.title || '').replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+      let titleText = (note.title || '').replace(/<\/?B>/gi, '');
+      let codeHtml = titleHtml ? titleHtml + '\n\n' + snippetHtml : snippetHtml;
+      let code = titleText ? titleText + '\n\n' + snippetText : snippetText;
 
       let tables = (note.tables || '').trim().split(/\s+/).filter(function(t) { return t; }).join(', ');
 
@@ -69,7 +70,7 @@ function SearchResultCtrl($scope, $routeParams, searchService) {
       note.codeHtml = codeHtml;
       note.outputText = note.output || '';
       note.tablesText = tables;
-      note.langBadge = detectLang(code);
+      note.langBadge = detectLang(snippetText);
 
       return note;
     });
