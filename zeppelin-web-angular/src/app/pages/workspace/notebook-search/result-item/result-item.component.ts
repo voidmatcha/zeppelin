@@ -64,14 +64,17 @@ export class NotebookSearchResultItemComponent implements OnChanges {
     }
     this.displayName = this.result.name ? this.result.name : `Note ${noteId}`;
 
-    const snippet = this.result.snippet || '';
-    // Preserve Lucene <B> highlighting by converting to <mark>
-    this.codeHtml = snippet.replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
-    this.codeText = snippet.replace(/<\/?B>/gi, '');
-    this.interpreter = this.detectInterpreter(this.codeText);
+    const escapeAndMark = (s?: string): string =>
+      (s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/&lt;(\/?)B&gt;/gi, '<$1mark>');
 
-    const title = this.result.title || '';
-    this.titleHtml = title.replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+    this.codeHtml = escapeAndMark(this.result.snippet);
+    this.codeText = (this.result.snippet || '').replace(/<\/?B>/gi, '');
+    this.interpreter = this.detectInterpreter(this.codeText);
+    this.titleHtml = escapeAndMark(this.result.title);
 
     const tables = this.result.tables || '';
     this.tablesText = tables

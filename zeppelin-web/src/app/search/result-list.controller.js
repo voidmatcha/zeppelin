@@ -60,8 +60,12 @@ function SearchResultCtrl($scope, $routeParams, searchService) {
       note.id = note.id.replace('paragraph/', '?paragraph=') +
         '&term=' + $routeParams.searchTerm;
 
-      // Preserve Lucene <B> highlighting by converting to <mark>
-      let codeHtml = (note.snippet || '').replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+      function escapeAndMark(s) {
+        return (s || '')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/&lt;(\/?)B&gt;/gi, '<$1mark>');
+      }
+      let codeHtml = escapeAndMark(note.snippet);
       let code = (note.snippet || '').replace(/<B>/g, '').replace(/<\/B>/g, '');
 
       let tables = (note.tables || '').trim().split(/\s+/).filter(function(t) {
@@ -70,7 +74,7 @@ function SearchResultCtrl($scope, $routeParams, searchService) {
 
       note.codeText = code;
       note.codeHtml = codeHtml;
-      note.titleHtml = (note.title || '').replace(/<B>/gi, '<mark>').replace(/<\/B>/gi, '</mark>');
+      note.titleHtml = escapeAndMark(note.title);
       note.outputText = note.output || '';
       note.tablesText = tables;
       note.langBadge = detectLang(code);
