@@ -93,19 +93,24 @@ export class NotebookParagraphCodeEditorComponent
           this.position = e.position;
         });
       }),
-      editor.onDidChangeModelContent(() => {
+      editor.onDidChangeModelContent(e => {
         this.ngZone.run(() => {
           const model = editor.getModel();
           if (!model) {
             throw new Error('Model content changed but model not found.');
           }
           this.text = model.getValue();
-          this.textChanged.emit(this.text);
-          this.setParagraphMode(true);
           this.autoAdjustEditorHeight();
           setTimeout(() => {
             this.autoAdjustEditorHeight();
           });
+          // A flush (programmatic setValue: editor init, remote content update,
+          // patch) is not a user edit and must not mark the paragraph dirty.
+          if (e.isFlush) {
+            return;
+          }
+          this.textChanged.emit(this.text);
+          this.setParagraphMode(true);
         });
       })
     );
