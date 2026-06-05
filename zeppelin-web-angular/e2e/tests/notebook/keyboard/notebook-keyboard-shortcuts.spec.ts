@@ -366,15 +366,8 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
     });
   });
 
-  // Note (ZEPPELIN-6294):
-  // This test appears to be related to ZEPPELIN-6294.
-  // A proper fix or verification should be added based on the issue details.
-  // In the New UI, the cloned paragraph’s text is empty on PARAGRAPH_ADDED,
-  // while the Classic UI receives the correct text. This discrepancy should be addressed
-  // when applying the proper fix for the issue.
   test.describe('ParagraphActions.InsertCopyOfParagraphBelow: Control+Shift+C', () => {
     test('should insert copy of paragraph below with Control+Shift+C', async () => {
-      test.skip();
       // Given: A paragraph with content
       await keyboardPage.tryFocusCodeEditor();
       await keyboardPage.setCodeEditorContent('%md\n# Copy Test\nContent to be copied below');
