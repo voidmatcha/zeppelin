@@ -78,6 +78,3 @@ registerLocaleData(en);
   ]
 })
 export class AppModule {}
-
-// eslint error on purpose: validates that the new CI lint job fails on errors
-const tempLintGateCheck: any = 1;
