@@ -44,6 +44,30 @@ jobs:
         working-directory: zeppelin-web-angular/projects/zeppelin-react
         run: npm ci --ignore-scripts && npm audit --audit-level=high
 
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'zeppelin-web-angular/.nvmrc'
+          cache: npm
+          cache-dependency-path: zeppelin-web-angular/package-lock.json
+      # build:projects is required because ng lint uses type-aware parsing and the
+      # app tsconfig resolves @zeppelin/sdk and @zeppelin/visualization from dist.
+      # --ignore-scripts skips the postinstall Playwright browser download.
+      - name: Install dependencies
+        working-directory: zeppelin-web-angular
+        run: |
+          npm ci --ignore-scripts
+          npm run build:projects
+          cd projects/zeppelin-react && npm ci
+      - name: Lint
+        working-directory: zeppelin-web-angular
+        run: npm run lint
+
   run-e2e-tests-in-zeppelin-web:
     runs-on: ubuntu-24.04
     steps:
