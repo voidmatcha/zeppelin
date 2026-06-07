@@ -20,6 +20,8 @@ export class NotebookParagraphPage extends BasePage {
   readonly controlPanel: Locator;
   readonly codeEditor: Locator;
   readonly dynamicForms: Locator;
+  readonly formTextInput: Locator;
+  readonly formSelect: Locator;
   readonly resultDisplay: Locator;
   readonly footerInfo: Locator;
   readonly runButton: Locator;
@@ -33,6 +35,8 @@ export class NotebookParagraphPage extends BasePage {
     this.controlPanel = page.locator('zeppelin-notebook-paragraph-control').first();
     this.codeEditor = page.locator('zeppelin-notebook-paragraph-code-editor').first();
     this.dynamicForms = page.locator('zeppelin-notebook-paragraph-dynamic-forms').first();
+    this.formTextInput = this.dynamicForms.locator('input[nz-input]').first();
+    this.formSelect = this.dynamicForms.locator('nz-select').first();
     this.resultDisplay = page.locator('zeppelin-notebook-paragraph-result').first();
     this.footerInfo = page.locator('zeppelin-notebook-paragraph-footer').first();
     this.runButton = page
@@ -55,6 +59,11 @@ export class NotebookParagraphPage extends BasePage {
 
   async runParagraph(): Promise<void> {
     await this.runButton.click();
+  }
+
+  async chooseSelectFormOption(label: string): Promise<void> {
+    await this.formSelect.click();
+    await this.page.locator('nz-option-item, .ant-select-item-option').filter({ hasText: label }).first().click();
   }
 
   async openSettingsDropdown(): Promise<void> {
