@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.time.Duration;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.zeppelin.AbstractZeppelinIT;
@@ -40,7 +41,9 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 class ParagraphActionsIT extends AbstractZeppelinIT {
 
@@ -781,7 +784,15 @@ class ParagraphActionsIT extends AbstractZeppelinIT {
       WebElement firstCheckbox = manager.getWebDriver()
         .findElement(By.xpath("(" + getParagraphXPath(1) + "//input[@type='checkbox'])[1]"));
       firstCheckbox.click();
-      ZeppelinITUtils.sleep(2000, false);
+      // Toggling a checkbox re-runs the paragraph through the (variable-latency) interpreter;
+      // poll for the updated output instead of sleeping a fixed amount.
+      new WebDriverWait(manager.getWebDriver(), Duration.ofSeconds(30)).until(
+          ExpectedConditions.textToBePresentInElementLocated(
+              By.xpath(getParagraphXPath(1) + "//div[contains(@class, 'text plainTextContent')]"),
+              "Greetings leia and luke"));
+      // The output can stream in before the paragraph status flips to FINISHED,
+      // so also wait for the rerun to complete before touching the paragraph again.
+      waitForParagraph(1, "FINISHED");
       assertTrue(manager.getWebDriver()
           .findElement(
               By.xpath(getParagraphXPath(1) + "//div[contains(@class, 'text plainTextContent')]"))
@@ -799,6 +810,11 @@ class ParagraphActionsIT extends AbstractZeppelinIT {
       WebElement secondCheckbox = manager.getWebDriver()
         .findElement(By.xpath("(" + getParagraphXPath(1) + "//input[@type='checkbox'])[2]"));
       secondCheckbox.click();
+      // "Run on selection change" is disabled, so this toggle must NOT re-run the
+      // paragraph. This assertion checks the output did *not* change, so keep a
+      // short fixed settle: it gives an unintended asynchronous rerun time to
+      // surface before we assert. (A condition-based wait would pass immediately
+      // and could mask such a regression.)
       ZeppelinITUtils.sleep(2000, false);
       assertTrue(manager.getWebDriver()
           .findElement(
@@ -1003,7 +1019,15 @@ class ParagraphActionsIT extends AbstractZeppelinIT {
       runParagraph(1);
       waitForParagraph(1, "FINISHED");
 
-      ZeppelinITUtils.sleep(1000, false);
+      // Toggling a checkbox re-runs the paragraph through the (variable-latency) interpreter;
+      // poll for the updated output instead of sleeping a fixed amount.
+      new WebDriverWait(manager.getWebDriver(), Duration.ofSeconds(30)).until(
+          ExpectedConditions.textToBePresentInElementLocated(
+              By.xpath(getParagraphXPath(1) + "//div[contains(@class, 'text plainTextContent')]"),
+              "Greetings leia and luke"));
+      // The output can stream in before the paragraph status flips to FINISHED,
+      // so also wait for the rerun to complete before touching the paragraph again.
+      waitForParagraph(1, "FINISHED");
       assertTrue(manager.getWebDriver()
           .findElement(
               By.xpath(getParagraphXPath(1) + "//div[contains(@class, 'text plainTextContent')]"))

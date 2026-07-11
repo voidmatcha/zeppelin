@@ -22,6 +22,7 @@ import java.io.File;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.List;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.io.FileUtils;
 import org.openqa.selenium.By;
@@ -33,6 +34,7 @@ import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -51,21 +53,39 @@ abstract public class AbstractZeppelinIT {
   protected static final long MAX_PARAGRAPH_TIMEOUT_SEC = 120;
 
   protected void authenticationUser(String userName, String password) {
-    clickableWait(
-        By.xpath("//div[contains(@class, 'navbar-collapse')]//li//button[contains(.,'Login')]"),
-        MAX_BROWSER_TIMEOUT_SEC).click();
+    // The AngularJS login modal binds its ng-model inputs a moment after they
+    // render, so a single fill+submit can occasionally post credentials that
+    // never reached the model and the login silently fails. The definitive
+    // signal that login succeeded is the logged-in navbar user dropdown, so
+    // submit the form and, if that dropdown does not appear, re-fill and
+    // re-submit the still-open modal a few times before giving up.
+    By userDropdown = By.xpath(
+        "//div[contains(@class, 'navbar-collapse')]//li//button[contains(@class, 'nav-btn dropdown-toggle ng-scope')]");
+    int maxAttempts = 3;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      // A previous slow attempt may have logged in only after its wait elapsed;
+      // if the logged-in dropdown is already showing, stop rather than re-opening
+      // the modal (whose trigger is now gone and whose inputs would be mid-transition),
+      // which is what turns a slow-but-successful login into a spurious failure.
+      if (isElementDisplayed(userDropdown)) {
+        break;
+      }
+      submitLoginForm(userName, password);
+      try {
+        // Wait the full browser timeout for the dropdown so a slow-but-successful
+        // login is accepted rather than needlessly re-submitted.
+        visibilityWait(userDropdown, MAX_BROWSER_TIMEOUT_SEC);
+        break;
+      } catch (TimeoutException e) {
+        if (attempt == maxAttempts) {
+          throw e;
+        }
+        // login did not complete (e.g. credentials never bound to ng-model);
+        // the modal is still open, so loop to re-fill and re-submit it
+      }
+    }
 
-    visibilityWait(By.xpath("//*[@id='userName']"), MAX_BROWSER_TIMEOUT_SEC).sendKeys(userName);
-    visibilityWait(By.xpath("//*[@id='password']"), MAX_BROWSER_TIMEOUT_SEC).sendKeys(password);
-    clickableWait(
-        By.xpath("//*[@id='loginModalContent']//button[contains(.,'Login')]"),
-        MAX_BROWSER_TIMEOUT_SEC).click();
-
-    // Wait for the logged-in navbar user dropdown to appear (indicates login completed
-    // and Angular digest cycle has updated the DOM), then dismiss any leftover modal overlay
-    visibilityWait(
-        By.xpath("//div[contains(@class, 'navbar-collapse')]//li//button[contains(@class, 'nav-btn dropdown-toggle ng-scope')]"),
-        MAX_BROWSER_TIMEOUT_SEC);
+    // dismiss any leftover modal overlay so it cannot intercept later clicks
     try {
       ((JavascriptExecutor) manager.getWebDriver()).executeScript(
           "$('.modal-backdrop').remove(); $('#loginModal').modal('hide');");
@@ -73,6 +93,27 @@ abstract public class AbstractZeppelinIT {
       // ignore if jQuery/Bootstrap not ready
     }
     ZeppelinITUtils.sleep(500, false);
+  }
+
+  private void submitLoginForm(String userName, String password) {
+    // Open the login modal. A modal left over from a previous attempt (or still
+    // fading in) can intercept this trigger click; if so the modal is already
+    // open, so tolerate the interception and continue.
+    try {
+      clickableWait(
+          By.xpath("//div[contains(@class, 'navbar-collapse')]//li//button[contains(.,'Login')]"),
+          MAX_BROWSER_TIMEOUT_SEC).click();
+    } catch (ElementClickInterceptedException e) {
+      // login modal is already open/animating over the trigger; continue
+    }
+
+    // The login modal fades in, so its inputs and buttons are briefly present
+    // but not yet interactable. Retry the actual interaction until it succeeds
+    // rather than asserting interactability up front, which avoids
+    // ElementNotInteractable/ElementClickIntercepted during the animation.
+    sendKeysWhenInteractable(By.xpath("//*[@id='userName']"), userName);
+    sendKeysWhenInteractable(By.xpath("//*[@id='password']"), password);
+    clickWhenClickable(By.xpath("//*[@id='loginModalContent']//button[contains(.,'Login')]"));
   }
 
   protected void logoutUser(String userName) throws URISyntaxException {
@@ -179,6 +220,54 @@ abstract public class AbstractZeppelinIT {
     WebDriverWait wait = new WebDriverWait(manager.getWebDriver(),
         Duration.ofSeconds(timeWait));
     return wait.until(ExpectedConditions.elementToBeClickable(locator));
+  }
+
+  /**
+   * Type into an element as soon as it becomes interactable. The element may be
+   * present but reject input while a modal or its animation is still settling,
+   * so this retries the actual {@code sendKeys} (ignoring transient WebDriver
+   * errors such as ElementNotInteractable/StaleElement) until it succeeds or the
+   * timeout elapses.
+   */
+  protected void sendKeysWhenInteractable(final By locator, final CharSequence keys) {
+    new WebDriverWait(manager.getWebDriver(), Duration.ofSeconds(MAX_BROWSER_TIMEOUT_SEC))
+        .ignoring(WebDriverException.class)
+        .until(driver -> {
+          WebElement element = driver.findElement(locator);
+          element.clear();
+          element.sendKeys(keys);
+          return true;
+        });
+  }
+
+  /**
+   * Click an element as soon as the click actually succeeds. A modal or its
+   * fade animation can briefly intercept clicks, so this retries the real
+   * {@code click()} (ignoring transient WebDriver errors such as
+   * ElementClickIntercepted/StaleElement) until it lands or the timeout elapses.
+   */
+  protected void clickWhenClickable(final By locator) {
+    new WebDriverWait(manager.getWebDriver(), Duration.ofSeconds(MAX_BROWSER_TIMEOUT_SEC))
+        .ignoring(WebDriverException.class)
+        .until(driver -> {
+          driver.findElement(locator).click();
+          return true;
+        });
+  }
+
+  /**
+   * Non-blocking check for whether an element is currently present and visible.
+   * Unlike the {@code *Wait} helpers this never waits and never throws, so it can
+   * be used to branch on transient UI state (for example, whether login already
+   * completed) without failing the test when the element is absent.
+   */
+  protected boolean isElementDisplayed(final By locator) {
+    try {
+      List<WebElement> elements = manager.getWebDriver().findElements(locator);
+      return !elements.isEmpty() && elements.get(0).isDisplayed();
+    } catch (WebDriverException e) {
+      return false;
+    }
   }
 
   protected void createNewNote() {
