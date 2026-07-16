@@ -62,11 +62,13 @@ const setEditorContent = async (page: Page, content: string): Promise<void> => {
 
 const openFindWidget = async (page: Page): Promise<void> => {
   await editor(page).click();
-  // Move the cursor to the document start so the find widget anchors on the
-  // first match; after seeding content the cursor sits at the end, which makes
-  // Monaco report the last match (e.g. "3 of 3") as the current one.
-  const cursorToStart = process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home';
-  await page.keyboard.press(cursorToStart);
+  // Move the cursor to the line start so the find widget anchors on the first
+  // match; after seeding content the cursor sits at the end, which makes Monaco
+  // report the last match (e.g. "3 of 3") as the current one. 'Home' is used
+  // because it works under every browser project regardless of the platform
+  // keymap Monaco detects (webkit emulates a mac UA, where Control+Home is a
+  // no-op). The seeded content is single-line, so line start == document start.
+  await page.keyboard.press('Home');
   await page.keyboard.press('Control+S');
   await expect(findWidget(page)).toBeVisible({ timeout: 15000 });
 };
