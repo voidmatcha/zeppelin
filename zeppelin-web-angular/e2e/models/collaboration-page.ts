@@ -18,16 +18,16 @@ export class CollaborationPage extends BasePage {
   readonly paragraph: Locator;
   readonly editor: Locator;
   readonly editorText: Locator;
-  readonly collaborationButton: Locator;
-  readonly personalizedButton: Locator;
+  readonly switchToPersonalModeButton: Locator;
+  readonly switchToCollaborationModeButton: Locator;
 
   constructor(page: Page) {
     super(page);
     this.paragraph = page.locator('zeppelin-notebook-paragraph').first();
     this.editor = this.paragraph.locator('.monaco-editor').first();
     this.editorText = this.paragraph.locator('.view-lines').first();
-    this.collaborationButton = page.getByRole('button', { name: 'Collaboration' });
-    this.personalizedButton = page.getByRole('button', { name: 'Personalized' });
+    this.switchToPersonalModeButton = page.getByRole('button', { name: 'Switch to personal mode' });
+    this.switchToCollaborationModeButton = page.getByRole('button', { name: 'Switch to collaboration mode' });
   }
 
   async openNotebook(noteId: string): Promise<void> {
@@ -36,11 +36,18 @@ export class CollaborationPage extends BasePage {
     await expect(this.paragraph).toBeVisible({ timeout: 15000 });
   }
 
-  async switchToCollaborationModeIfAvailable(): Promise<void> {
-    if (await this.collaborationButton.isVisible().catch(() => false)) {
-      await this.collaborationButton.click();
-      await expect(this.personalizedButton).toBeVisible({ timeout: 15000 });
+  async getPrincipal(): Promise<string> {
+    const response = await this.page.request.get('/api/security/ticket', { failOnStatusCode: false });
+    if (!response.ok()) {
+      return '';
     }
+    const json = (await response.json()) as { body?: { principal?: string } };
+    return json.body?.principal ?? '';
+  }
+
+  async confirmPersonalizedModeChange(): Promise<void> {
+    await expect(this.modalTitle).toContainText('Setting the result display', { timeout: 15000 });
+    await this.okButton.click();
   }
 
   async typeInEditor(text: string): Promise<void> {

@@ -28,6 +28,9 @@ export class EditorSearchPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
+    // JUSTIFIED: CSS chains into Monaco's third-party DOM — the find widget
+    // exposes no roles/test ids; aria-label/title alternates are included where
+    // Monaco provides them.
     this.editor = page.locator('zeppelin-notebook-paragraph .monaco-editor').first();
     this.editorText = this.editor.locator('.view-lines').first();
     this.findWidget = this.editor.locator('.find-widget').first();

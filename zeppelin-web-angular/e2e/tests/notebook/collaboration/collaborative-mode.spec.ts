@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
 import { CollaborationPage } from 'e2e/models/collaboration-page';
 import {
   addPageAnnotationBeforeEach,
@@ -22,6 +22,14 @@ import {
   waitForZeppelinReady
 } from '../../../utils';
 
+const prepareWorkspace = async (page: Page): Promise<void> => {
+  await page.goto('/#/');
+  await waitForZeppelinReady(page);
+  await performLoginIfRequired(page);
+  await skipWhenAuthenticationIsStillRequired(page);
+  await waitForNotebookLinks(page);
+};
+
 test.describe('Collaborative mode', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
 
@@ -29,15 +37,10 @@ test.describe('Collaborative mode', () => {
     const syncText = `collaborative_mode_text_${Date.now()}`;
     const collaborationPage = new CollaborationPage(page);
 
-    await page.goto('/#/');
-    await waitForZeppelinReady(page);
-    await performLoginIfRequired(page);
-    await skipWhenAuthenticationIsStillRequired(page);
-    await waitForNotebookLinks(page);
+    await prepareWorkspace(page);
 
     const { noteId } = await createTestNotebook(page);
     await collaborationPage.openNotebook(noteId);
-    await collaborationPage.switchToCollaborationModeIfAvailable();
 
     const collaboratorContext = await browser.newContext({ storageState: await page.context().storageState() });
     const collaboratorPage = await collaboratorContext.newPage();
@@ -60,5 +63,28 @@ test.describe('Collaborative mode', () => {
     } finally {
       await collaboratorContext.close();
     }
+  });
+
+  test('toggles between personal and collaboration mode from the action bar', async ({ page }) => {
+    const collaborationPage = new CollaborationPage(page);
+
+    await prepareWorkspace(page);
+
+    const principal = await collaborationPage.getPrincipal();
+    test.skip(!principal || principal === 'anonymous', 'The mode toggle is not rendered for anonymous principals');
+
+    const { noteId } = await createTestNotebook(page);
+    await collaborationPage.openNotebook(noteId);
+
+    // A fresh note is collaborative, so the action bar offers switching to personal mode.
+    await expect(collaborationPage.switchToPersonalModeButton).toBeVisible({ timeout: 15000 });
+
+    await collaborationPage.switchToPersonalModeButton.click();
+    await collaborationPage.confirmPersonalizedModeChange();
+    await expect(collaborationPage.switchToCollaborationModeButton).toBeVisible({ timeout: 15000 });
+
+    await collaborationPage.switchToCollaborationModeButton.click();
+    await collaborationPage.confirmPersonalizedModeChange();
+    await expect(collaborationPage.switchToPersonalModeButton).toBeVisible({ timeout: 15000 });
   });
 });

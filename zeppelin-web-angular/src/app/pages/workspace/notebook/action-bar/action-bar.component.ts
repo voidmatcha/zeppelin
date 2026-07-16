@@ -313,11 +313,10 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
         nzTitle: 'Setting the result display',
         nzContent: `Do you want to ${modeText} your analysis?`,
         nzOnOk: () => {
-          if (this.note.config.personalizedMode === undefined || this.note.config.personalizedMode === 'true') {
-            this.note.config.personalizedMode = 'false';
-          } else {
-            this.note.config.personalizedMode = 'true';
-          }
+          // An unset personalizedMode means collaborative (see Note#isPersonalizedMode
+          // on the server and the legacy notebook.controller.js toggle), so toggling
+          // from undefined must personalize, not stay collaborative.
+          this.note.config.personalizedMode = this.note.config.personalizedMode === 'true' ? 'false' : 'true';
           this.messageService.updatePersonalizedMode(this.note.id, this.note.config.personalizedMode);
         }
       });
