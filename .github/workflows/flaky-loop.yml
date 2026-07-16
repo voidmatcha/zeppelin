@@ -1,7 +1,8 @@
 # TEMPORARY verification branch for apache/zeppelin#5304: run the notebook
 # keyboard-shortcut Playwright spec 10x in parallel on top of the PR head to
-# verify the flaky-test stabilization. Anonymous mode, chromium, retries=0 so any
-# single flake fails its job. This branch = PR head + this workflow file only.
+# verify the flaky-test stabilization. Anonymous mode, all browser projects
+# (chromium, Chrome, firefox, webkit), retries=0 so any single flake fails its
+# job. This branch = PR head + this workflow file only.
 name: flaky-loop
 
 on:
@@ -79,9 +80,9 @@ jobs:
         run: ./mvnw clean install -DskipTests -am -pl python,zeppelin-jupyter-interpreter,zeppelin-web,zeppelin-web-angular -Pweb-classic ${MAVEN_ARGS}
       - name: Setup Test Notebook Directory
         run: mkdir -p $ZEPPELIN_E2E_TEST_NOTEBOOK_DIR
-      - name: Scope the e2e run (keyboard spec, chromium, no retries — real serial suite, 10x via matrix)
+      - name: Scope the e2e run (keyboard spec, ALL browser projects, no retries — real serial suite, 10x via matrix)
         run: |
-          sed -i 's#"e2e": "playwright test"#"e2e": "playwright test e2e/tests/notebook/keyboard/notebook-keyboard-shortcuts.spec.ts --project=chromium --retries=0 --workers=1"#' zeppelin-web-angular/package.json
+          sed -i 's#"e2e": "playwright test"#"e2e": "playwright test e2e/tests/notebook/keyboard/notebook-keyboard-shortcuts.spec.ts --retries=0 --workers=1"#' zeppelin-web-angular/package.json
           grep '"e2e":' zeppelin-web-angular/package.json
       - name: Run keyboard-shortcut E2E (anonymous)
         run: xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./mvnw verify -pl zeppelin-web-angular -Pweb-e2e ${MAVEN_ARGS}
