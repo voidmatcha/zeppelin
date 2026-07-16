@@ -10,78 +10,25 @@
  * limitations under the License.
  */
 
-import { expect, Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { EditorSearchPage } from 'e2e/models/editor-search-page';
 import {
   addPageAnnotationBeforeEach,
   createTestNotebook,
   PAGES,
   performLoginIfRequired,
+  skipWhenAuthenticationIsStillRequired,
   waitForNotebookLinks,
   waitForZeppelinReady
 } from '../../../utils';
 
-const skipWhenAuthenticationIsStillRequired = async (page: Page): Promise<void> => {
-  const loginStillVisible = await page
-    .locator('zeppelin-login')
-    .isVisible()
-    .catch(() => false);
-  test.skip(loginStillVisible, 'Authentication is enabled but no E2E test credentials are configured');
-};
-
-const editor = (page: Page) => page.locator('zeppelin-notebook-paragraph .monaco-editor').first();
-const editorText = (page: Page) => editor(page).locator('.view-lines').first();
-const findWidget = (page: Page) => editor(page).locator('.find-widget').first();
-const findInput = (page: Page) =>
-  findWidget(page).locator('.monaco-findInput .input, input[aria-label="Find"], textarea[aria-label="Find"]').first();
-const replaceInput = (page: Page) =>
-  findWidget(page)
-    .locator('.replace-input .input, input[aria-label="Replace"], textarea[aria-label="Replace"]')
-    .first();
-const matchesCount = (page: Page) => findWidget(page).locator('.matchesCount').first();
-const nextMatchButton = (page: Page) => findWidget(page).locator('.button.next, [title^="Next Match"]').first();
-const previousMatchButton = (page: Page) =>
-  findWidget(page).locator('.button.previous, [title^="Previous Match"]').first();
-const toggleReplaceButton = (page: Page) =>
-  findWidget(page).locator('.button.toggle, [title^="Toggle Replace"]').first();
-const replaceAllButton = (page: Page) =>
-  findWidget(page).locator('.button.replace-all, [title^="Replace All"]').first();
-
-const openNotebook = async (page: Page, noteId: string): Promise<void> => {
-  await page.goto(`/#/notebook/${noteId}`);
-  await waitForZeppelinReady(page);
-  await expect(editor(page)).toBeVisible({ timeout: 15000 });
-};
-
-const setEditorContent = async (page: Page, content: string): Promise<void> => {
-  await editor(page).click();
-  const selectAll = process.platform === 'darwin' ? 'Meta+A' : 'Control+A';
-  await page.keyboard.press(selectAll);
-  await page.keyboard.insertText(content);
-  await expect(editorText(page)).toContainText(content.split('\n')[0], { timeout: 15000 });
-};
-
-const openFindWidget = async (page: Page): Promise<void> => {
-  await editor(page).click();
-  // Move the cursor to the line start so the find widget anchors on the first
-  // match; after seeding content the cursor sits at the end, which makes Monaco
-  // report the last match (e.g. "3 of 3") as the current one. 'Home' is used
-  // because it works under every browser project regardless of the platform
-  // keymap Monaco detects (webkit emulates a mac UA, where Control+Home is a
-  // no-op). The seeded content is single-line, so line start == document start.
-  await page.keyboard.press('Home');
-  await page.keyboard.press('Control+S');
-  await expect(findWidget(page)).toBeVisible({ timeout: 15000 });
-};
-
-const searchFor = async (page: Page, text: string): Promise<void> => {
-  await findInput(page).fill(text);
-  await expect(matchesCount(page)).toBeVisible({ timeout: 15000 });
-};
-
 test.describe('Notebook editor search', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
 
+  let editorSearchPage: EditorSearchPage;
+
   test.beforeEach(async ({ page }) => {
+    editorSearchPage = new EditorSearchPage(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -92,34 +39,36 @@ test.describe('Notebook editor search', () => {
   test('shows match count and navigates next and previous matches', async ({ page }) => {
     const { noteId } = await createTestNotebook(page);
 
-    await openNotebook(page, noteId);
-    await setEditorContent(page, 'alpha target beta target gamma target');
-    await openFindWidget(page);
-    await searchFor(page, 'target');
+    await editorSearchPage.openNotebook(noteId);
+    await editorSearchPage.setEditorContent('alpha target beta target gamma target');
+    await editorSearchPage.openFindWidget();
+    await editorSearchPage.searchFor('target');
 
-    await expect(matchesCount(page)).toContainText(/1 of 3/, { timeout: 15000 });
+    await expect(editorSearchPage.matchesCount).toContainText(/1 of 3/, { timeout: 15000 });
 
-    await nextMatchButton(page).click();
-    await expect(matchesCount(page)).toContainText(/2 of 3/, { timeout: 15000 });
+    await editorSearchPage.nextMatchButton.click();
+    await expect(editorSearchPage.matchesCount).toContainText(/2 of 3/, { timeout: 15000 });
 
-    await previousMatchButton(page).click();
-    await expect(matchesCount(page)).toContainText(/1 of 3/, { timeout: 15000 });
+    await editorSearchPage.previousMatchButton.click();
+    await expect(editorSearchPage.matchesCount).toContainText(/1 of 3/, { timeout: 15000 });
   });
 
   test('replaces all matches in the editor search widget', async ({ page }) => {
     const { noteId } = await createTestNotebook(page);
 
-    await openNotebook(page, noteId);
-    await setEditorContent(page, 'replace_target one replace_target two replace_target');
-    await openFindWidget(page);
-    await searchFor(page, 'replace_target');
-    await expect(matchesCount(page)).toContainText(/1 of 3/, { timeout: 15000 });
+    await editorSearchPage.openNotebook(noteId);
+    await editorSearchPage.setEditorContent('replace_target one replace_target two replace_target');
+    await editorSearchPage.openFindWidget();
+    await editorSearchPage.searchFor('replace_target');
+    await expect(editorSearchPage.matchesCount).toContainText(/1 of 3/, { timeout: 15000 });
 
-    await toggleReplaceButton(page).click();
-    await replaceInput(page).fill('replacement');
-    await replaceAllButton(page).click();
+    await editorSearchPage.toggleReplaceButton.click();
+    await editorSearchPage.replaceInput.fill('replacement');
+    await editorSearchPage.replaceAllButton.click();
 
-    await expect(editorText(page)).toContainText('replacement one replacement two replacement', { timeout: 15000 });
-    await expect(editorText(page)).not.toContainText('replace_target');
+    await expect(editorSearchPage.editorText).toContainText('replacement one replacement two replacement', {
+      timeout: 15000
+    });
+    await expect(editorSearchPage.editorText).not.toContainText('replace_target');
   });
 });

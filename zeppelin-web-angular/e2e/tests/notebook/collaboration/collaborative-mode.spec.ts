@@ -10,48 +10,24 @@
  * limitations under the License.
  */
 
-import { expect, Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { CollaborationPage } from 'e2e/models/collaboration-page';
 import {
   addPageAnnotationBeforeEach,
   createTestNotebook,
   PAGES,
   performLoginIfRequired,
+  skipWhenAuthenticationIsStillRequired,
   waitForNotebookLinks,
   waitForZeppelinReady
 } from '../../../utils';
-
-const paragraph = (page: Page) => page.locator('zeppelin-notebook-paragraph').first();
-const skipWhenAuthenticationIsStillRequired = async (page: Page): Promise<void> => {
-  const loginStillVisible = await page
-    .locator('zeppelin-login')
-    .isVisible()
-    .catch(() => false);
-  test.skip(loginStillVisible, 'Authentication is enabled but no E2E test credentials are configured');
-};
-
-const editor = (page: Page) => paragraph(page).locator('.monaco-editor').first();
-const editorText = (page: Page) => paragraph(page).locator('.view-lines').first();
-
-const openNotebook = async (page: Page, noteId: string): Promise<void> => {
-  await page.goto(`/#/notebook/${noteId}`);
-  await waitForZeppelinReady(page);
-  await expect(paragraph(page)).toBeVisible({ timeout: 15000 });
-};
-
-const switchToCollaborationModeIfAvailable = async (page: Page): Promise<void> => {
-  const collaborationButton = page.getByRole('button', { name: 'Collaboration' });
-
-  if (await collaborationButton.isVisible().catch(() => false)) {
-    await collaborationButton.click();
-    await expect(page.getByRole('button', { name: 'Personalized' })).toBeVisible({ timeout: 15000 });
-  }
-};
 
 test.describe('Collaborative mode', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
 
   test('syncs paragraph editor changes between two notebook viewers', async ({ page, browser }) => {
     const syncText = `collaborative_mode_text_${Date.now()}`;
+    const collaborationPage = new CollaborationPage(page);
 
     await page.goto('/#/');
     await waitForZeppelinReady(page);
@@ -60,27 +36,27 @@ test.describe('Collaborative mode', () => {
     await waitForNotebookLinks(page);
 
     const { noteId } = await createTestNotebook(page);
-    await openNotebook(page, noteId);
-    await switchToCollaborationModeIfAvailable(page);
+    await collaborationPage.openNotebook(noteId);
+    await collaborationPage.switchToCollaborationModeIfAvailable();
 
     const collaboratorContext = await browser.newContext({ storageState: await page.context().storageState() });
     const collaboratorPage = await collaboratorContext.newPage();
+    const collaboratorView = new CollaborationPage(collaboratorPage);
 
     try {
       await collaboratorPage.goto('/#/');
       await waitForZeppelinReady(collaboratorPage);
       await performLoginIfRequired(collaboratorPage);
       await skipWhenAuthenticationIsStillRequired(collaboratorPage);
-      await openNotebook(collaboratorPage, noteId);
+      await collaboratorView.openNotebook(noteId);
 
-      await expect(editor(page)).toBeVisible({ timeout: 15000 });
-      await expect(editor(collaboratorPage)).toBeVisible({ timeout: 15000 });
+      await expect(collaborationPage.editor).toBeVisible({ timeout: 15000 });
+      await expect(collaboratorView.editor).toBeVisible({ timeout: 15000 });
 
-      await editor(page).click();
-      await page.keyboard.type(syncText);
+      await collaborationPage.typeInEditor(syncText);
 
-      await expect(editorText(page)).toContainText(syncText, { timeout: 15000 });
-      await expect(editorText(collaboratorPage)).toContainText(syncText, { timeout: 30000 });
+      await expect(collaborationPage.editorText).toContainText(syncText, { timeout: 15000 });
+      await expect(collaboratorView.editorText).toContainText(syncText, { timeout: 30000 });
     } finally {
       await collaboratorContext.close();
     }
