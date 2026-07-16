@@ -62,6 +62,11 @@ const setEditorContent = async (page: Page, content: string): Promise<void> => {
 
 const openFindWidget = async (page: Page): Promise<void> => {
   await editor(page).click();
+  // Move the cursor to the document start so the find widget anchors on the
+  // first match; after seeding content the cursor sits at the end, which makes
+  // Monaco report the last match (e.g. "3 of 3") as the current one.
+  const cursorToStart = process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home';
+  await page.keyboard.press(cursorToStart);
   await page.keyboard.press('Control+S');
   await expect(findWidget(page)).toBeVisible({ timeout: 15000 });
 };
@@ -90,13 +95,13 @@ test.describe('Notebook editor search', () => {
     await openFindWidget(page);
     await searchFor(page, 'target');
 
-    await expect(matchesCount(page)).toContainText(/1\s*\/\s*3/, { timeout: 15000 });
+    await expect(matchesCount(page)).toContainText(/1 of 3/, { timeout: 15000 });
 
     await nextMatchButton(page).click();
-    await expect(matchesCount(page)).toContainText(/2\s*\/\s*3/, { timeout: 15000 });
+    await expect(matchesCount(page)).toContainText(/2 of 3/, { timeout: 15000 });
 
     await previousMatchButton(page).click();
-    await expect(matchesCount(page)).toContainText(/1\s*\/\s*3/, { timeout: 15000 });
+    await expect(matchesCount(page)).toContainText(/1 of 3/, { timeout: 15000 });
   });
 
   test('replaces all matches in the editor search widget', async ({ page }) => {
@@ -106,7 +111,7 @@ test.describe('Notebook editor search', () => {
     await setEditorContent(page, 'replace_target one replace_target two replace_target');
     await openFindWidget(page);
     await searchFor(page, 'replace_target');
-    await expect(matchesCount(page)).toContainText(/1\s*\/\s*3/, { timeout: 15000 });
+    await expect(matchesCount(page)).toContainText(/1 of 3/, { timeout: 15000 });
 
     await toggleReplaceButton(page).click();
     await replaceInput(page).fill('replacement');
