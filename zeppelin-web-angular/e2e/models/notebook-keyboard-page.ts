@@ -123,6 +123,8 @@ export class NotebookKeyboardPage extends BasePage {
       if (!(await isSettled())) {
         await this.focusParagraphHost(paragraphIndex);
         await press();
+        // Wait for this press's effect before retrying — an immediate recheck would double-press a slow toggle. The wait must comfortably exceed legitimate settle latency so only a genuinely dropped press is retried.
+        await expect.poll(isSettled, { timeout: 10000 }).toBe(true);
       }
       expect(await isSettled()).toBe(true);
     }).toPass({ timeout: 15000 });
@@ -369,7 +371,14 @@ export class NotebookKeyboardPage extends BasePage {
     return this.readEditorText(this.paragraphContainer.first());
   }
 
+  // Gate for emptiness assertions — an empty Monaco model still renders one (empty) .view-line.
+  async waitForEditorRendered(paragraphIndex: number): Promise<void> {
+    const paragraph = this.getParagraphByIndex(paragraphIndex);
+    await expect(paragraph.locator('.monaco-editor .view-line').first()).toBeAttached({ timeout: 10000 });
+  }
+
   // Reconstruct editor text from Monaco's absolutely-positioned `.view-line` divs sorted by top (DOM order need not match line order), via textContent; innerText is "" for off-layout lines in headless Chromium.
+  // Constraints: Monaco virtualizes lines (keep fixtures short); returns '' for both an empty and a not-yet-rendered editor.
   private async readEditorText(paragraph: Locator): Promise<string> {
     const monaco = paragraph.locator('.monaco-editor').first();
     if ((await monaco.count()) > 0) {
@@ -417,35 +426,28 @@ export class NotebookKeyboardPage extends BasePage {
     // Clear existing content with keyboard shortcuts for better reliability
     await editorInput.focus();
 
-    if (browserName === 'firefox') {
-      // Clear by backspacing existing content length
-      const currentContent = await editorInput.inputValue();
-      const contentLength = currentContent.length;
-
-      // Position cursor at end and backspace all content
-      await this.page.keyboard.press('End');
-      for (let i = 0; i < contentLength; i++) {
-        await this.page.keyboard.press('Backspace');
-      }
-
-      // JUSTIFIED: Monaco textarea can be covered by editor overlays during fixture setup.
-      await editorInput.fill(content, { force: true });
-    } else {
-      // Standard clearing for other browsers
+    // Clear until the rendered model is actually empty. Monaco's hidden textarea does
+    // not mirror the full model, so the previous length-based backspacing could leave
+    // stale text that fill() then inserted after (e.g. a surviving "%python" prefix).
+    await expect(async () => {
       await this.pressSelectAll();
       await this.page.keyboard.press('Delete');
-      // JUSTIFIED: Monaco textarea can be overlaid after select+delete during fixture setup.
+      expect((await this.readEditorText(paragraph)).trim()).toBe('');
+    }).toPass({ timeout: 10000 });
+
+    if (content) {
+      // JUSTIFIED: Monaco textarea can be overlaid; force is required for programmatic fill.
       await editorInput.fill(content, { force: true });
     }
 
-    // Wait for the full normalized editor content to avoid stale Monaco renders.
+    // Wait for the full normalized editor content; equality, not containment, so stale text from a previous fixture fails here.
     const expected = content.replace(/\s+/g, '');
     if (expected.length === 0) {
       await expect.poll(async () => (await this.readEditorText(paragraph)).trim(), { timeout: 10000 }).toBe('');
     } else {
       await expect
         .poll(async () => (await this.readEditorText(paragraph)).replace(/\s+/g, ''), { timeout: 10000 })
-        .toContain(expected);
+        .toBe(expected);
     }
   }
 

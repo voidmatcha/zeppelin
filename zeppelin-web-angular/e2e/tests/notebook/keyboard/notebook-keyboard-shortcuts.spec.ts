@@ -309,7 +309,9 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       const finalCount = await keyboardPage.getParagraphCount();
       expect(finalCount).toBe(initialCount + 1);
 
-      // And: the new paragraph at index 0 holds no user content; empty or just an interpreter directive (poll so the async insert/render settles).
+      // And: the new paragraph at index 0 holds no user content; empty or just an interpreter directive.
+      // Render gate: an unrendered editor reads as '' and would vacuously match.
+      await keyboardPage.waitForEditorRendered(0);
       await expect.poll(() => keyboardPage.getCodeEditorContentByIndex(0).then(c => c.trim())).toMatch(/^(%\w+)?$/);
 
       // And the original content moved to index 1 (normalize whitespace; Monaco reflows).
@@ -343,6 +345,8 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       expect(originalParagraphContent).toMatch(/Content\s+for\s+insert\s+below\s+test/);
 
       // And: a new paragraph exists at index 1 holding no user content.
+      // Render gate: an unrendered editor reads as '' and would vacuously match.
+      await keyboardPage.waitForEditorRendered(1);
       await expect.poll(() => keyboardPage.getCodeEditorContentByIndex(1).then(c => c.trim())).toMatch(/^(%\w+)?$/);
     });
   });
@@ -559,8 +563,11 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       const statusElBefore = keyboardPage.paragraphContainer.first().locator('.status');
       await expect(statusElBefore).toHaveText(/FINISHED|ERROR|PENDING|RUNNING/);
 
-      // When: User presses Control+Alt+L (editor hidden after %md run; dispatch from the host)
+      // Gate: without visible output, isSettled starts true and the helper would skip the press entirely.
       const resultLocator = keyboardPage.getParagraphByIndex(0).locator('[data-testid="paragraph-result"]');
+      await expect(resultLocator).toBeVisible();
+
+      // When: User presses Control+Alt+L (editor hidden after %md run; dispatch from the host)
       await keyboardPage.pressShortcutFromHostUntil(
         0,
         () => keyboardPage.pressClearOutput(),
