@@ -140,24 +140,9 @@ test.describe('Notebook Action Bar Functionality', () => {
     await expect(actionBarPage.reloadButton).toBeEnabled();
   });
 
-  test('should handle collaboration mode toggle when available', async () => {
-    test.skip(
-      !(await actionBarPage.collaborationModeToggle.isVisible()),
-      'Collaboration mode not available in this environment'
-    );
-
-    const personalVisible = await actionBarPage.personalModeButton.isVisible();
-    const collaborationVisible = await actionBarPage.collaborationModeButton.isVisible();
-    expect(personalVisible || collaborationVisible).toBe(true);
-
-    if (personalVisible) {
-      await actionBarPage.switchToPersonalMode();
-      await expect(actionBarPage.collaborationModeButton).toBeVisible({ timeout: 5000 });
-    } else if (collaborationVisible) {
-      await actionBarPage.switchToCollaborationMode();
-      await expect(actionBarPage.personalModeButton).toBeVisible({ timeout: 5000 });
-    }
-  });
+  // The personalized-mode toggle is covered by collaboration/collaborative-mode.spec.ts.
+  // A previous test here always skipped: its gate targeted ng-container[ngSwitch=...],
+  // which never renders, and the button names matched nothing.
 
   test('should handle revision controls when supported', async () => {
     test.skip(!(await actionBarPage.commitButton.isVisible()), 'Revision controls not supported in this environment');
