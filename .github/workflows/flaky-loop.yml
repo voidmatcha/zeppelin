@@ -1,0 +1,106 @@
+# TEMPORARY verification branch for the new-ui-e2e-scenarios work: run the
+# editor-search and collaborative-mode Playwright specs 10x per mode
+# (anonymous + auth) in parallel, all browser projects, retries=0 so any single
+# flake fails its job. This branch = new-ui-e2e-scenarios head + this workflow
+# file only. Do not merge.
+name: flaky-loop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'verify/newui-10x-r8'
+
+env:
+  MAVEN_OPTS: >-
+      -Xms1024M -Xmx2048M -XX:MaxMetaspaceSize=1024m -XX:-UseGCOverheadLimit
+      -Dhttp.keepAlive=false
+      -Dmaven.wagon.http.pool=false
+      -Dmaven.wagon.http.retryHandler.count=3
+  MAVEN_ARGS: >-
+      -B --no-transfer-progress
+  ZEPPELIN_HELIUM_REGISTRY: helium
+  SPARK_PRINT_LAUNCH_COMMAND: "true"
+  SPARK_LOCAL_IP: 127.0.0.1
+  ZEPPELIN_LOCAL_IP: 127.0.0.1
+  INTERPRETERS: '!hbase,!jdbc,!file,!flink,!cassandra,!elasticsearch,!bigquery,!livy,!groovy,!java,!neo4j,!sparql,!mongodb'
+  ZEPPELIN_E2E_TEST_NOTEBOOK_DIR: '/tmp/zeppelin-e2e-notebooks'
+
+permissions:
+  contents: read
+
+jobs:
+  newui-specs-loop:
+    runs-on: ubuntu-24.04
+    env:
+      ZEPPELIN_NOTEBOOK_STORAGE: org.apache.zeppelin.notebook.repo.VFSNotebookRepo
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        mode: [anonymous, auth]
+        python: [ 3.9 ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Tune Runner VM
+        uses: ./.github/actions/tune-runner-vm
+      - name: Set up JDK 11
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 11
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('zeppelin-web-angular/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+      - name: Cache local Maven repository
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/org/apache/zeppelin/
+            ~/.spark-dist
+            ~/.cache
+          key: ${{ runner.os }}-zeppelin-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-zeppelin-
+      - name: Setup conda environment with python ${{ matrix.python }}
+        uses: conda-incubator/setup-miniconda@v4
+        with:
+          activate-environment: python_only
+          python-version: ${{ matrix.python }}
+          auto-activate: false
+          use-mamba: true
+          channels: conda-forge,defaults
+          channel-priority: strict
+      - name: Install application
+        run: ./mvnw clean install -DskipTests -am -pl python,zeppelin-jupyter-interpreter,zeppelin-web-angular ${MAVEN_ARGS}
+      - name: Setup Zeppelin Server (Shiro.ini)
+        run: |
+          export ZEPPELIN_CONF_DIR=./conf
+          if [ "${{ matrix.mode }}" != "anonymous" ]; then
+            cp conf/shiro.ini.template conf/shiro.ini
+            sed -i 's/user1 = password2, role1, role2/user1 = password2, role1, role2, admin/' conf/shiro.ini
+          fi
+      - name: Setup Test Notebook Directory
+        run: mkdir -p $ZEPPELIN_E2E_TEST_NOTEBOOK_DIR
+      - name: Scope the e2e run (new-ui specs, all browser projects, no retries — 10x per mode via matrix)
+        run: |
+          sed -i 's#"e2e": "playwright test"#"e2e": "playwright test e2e/tests/notebook/search/editor-search.spec.ts e2e/tests/notebook/collaboration/collaborative-mode.spec.ts --retries=0 --workers=1"#' zeppelin-web-angular/package.json
+          grep '"e2e":' zeppelin-web-angular/package.json
+      - name: Run new-ui E2E specs (${{ matrix.mode }})
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./mvnw verify -pl zeppelin-web-angular -Pweb-e2e ${MAVEN_ARGS}
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.mode }}-run-${{ matrix.run }}
+          path: zeppelin-web-angular/playwright-report/
+          retention-days: 3
+      - name: Print Zeppelin logs
+        if: always()
+        run: if [ -d "logs" ]; then cat logs/*; fi
