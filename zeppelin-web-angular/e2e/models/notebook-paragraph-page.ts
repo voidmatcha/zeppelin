@@ -51,6 +51,15 @@ export class NotebookParagraphPage extends BasePage {
 
   async doubleClickToEdit(): Promise<void> {
     await this.paragraphContainer.dblclick();
+    // Edit mode occasionally doesn't latch on the first dblclick — the dblclick can land
+    // a beat before Angular wires the enter-edit handler. Retry once if the editor didn't open,
+    // then gate on the editor being visible so the helper's contract is "editor is open".
+    try {
+      await this.codeEditor.waitFor({ state: 'visible', timeout: 3000 });
+    } catch {
+      await this.paragraphContainer.dblclick();
+      await this.codeEditor.waitFor({ state: 'visible', timeout: 3000 });
+    }
   }
 
   async runParagraph(): Promise<void> {

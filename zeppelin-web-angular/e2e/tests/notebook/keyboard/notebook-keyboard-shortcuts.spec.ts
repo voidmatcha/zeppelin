@@ -1010,9 +1010,11 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
         await expect(keyboardPage.paragraphResult.first()).toBeVisible({ timeout: 60000 });
       }
 
-      // Then: System should remain stable
+      // Then: System should remain stable. Assert on the paragraph itself, not the code
+      // editor: running a %md paragraph collapses it into rendered mode and detaches the
+      // Monaco editor, so a visible-editor check here is a wrong assumption, not stability.
       // JUSTIFIED: single-paragraph test notebook; first() is deterministic
-      await expect(keyboardPage.codeEditor.first()).toBeVisible();
+      await expect(keyboardPage.paragraphContainer.first()).toBeVisible();
     });
   });
 });

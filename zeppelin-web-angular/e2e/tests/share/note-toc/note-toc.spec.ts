@@ -66,9 +66,13 @@ test.describe('Note Table of Contents', () => {
   });
 
   test('Given TOC toggle button exists, When checking button visibility, Then button should be visible, enabled, and labeled', async () => {
-    await expect(noteTocPage.tocToggleButton).toBeVisible();
-    await expect(noteTocPage.tocToggleButton).toBeEnabled();
-    await expect(noteTocPage.tocToggleButton).toHaveAttribute('aria-label', 'Toggle Table of Contents');
+    // The action bar (and its TOC button) can render a beat after the paragraph on slower
+    // engines like WebKit, so give these assertions room instead of the default timeout.
+    await expect(noteTocPage.tocToggleButton).toBeVisible({ timeout: 15000 });
+    await expect(noteTocPage.tocToggleButton).toBeEnabled({ timeout: 15000 });
+    await expect(noteTocPage.tocToggleButton).toHaveAttribute('aria-label', 'Toggle Table of Contents', {
+      timeout: 15000
+    });
   });
 
   test('Given TOC panel can be toggled, When opening and closing multiple times, Then panel should respond consistently', async () => {
