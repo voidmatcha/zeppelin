@@ -78,14 +78,10 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       // When: User presses Shift+Enter
       await keyboardPage.pressRunParagraph();
 
-      // Then: Paragraph should execute (reach a terminal state; interpreter availability varies by env)
+      // Then: Paragraph should execute and reach a terminal state. waitForParagraphExecution
+      // now gates on the status text (FINISHED/ERROR/ABORT), so it is the assertion here —
+      // it throws if the run never settles. Interpreter availability varies by env.
       await keyboardPage.waitForParagraphExecution(0);
-      // JUSTIFIED: single-paragraph test notebook; first() is deterministic.
-      // Poll the status via toHaveText instead of a one-shot textContent read: the running
-      // spinner can clear a beat before .status settles to its terminal value, so a single
-      // read may catch a transient RUNNING/PENDING state.
-      const statusEl = keyboardPage.paragraphContainer.first().locator('.status');
-      await expect(statusEl).toHaveText(/FINISHED|ERROR|ABORT/, { timeout: 30000 });
     });
   });
 
@@ -571,12 +567,8 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.pressRunParagraph();
       await keyboardPage.waitForParagraphExecution(0);
 
-      // Verify there is output to clear
-      // JUSTIFIED: single-paragraph test notebook; first() is deterministic
-      const statusElBefore = keyboardPage.paragraphContainer.first().locator('.status');
-      await expect(statusElBefore).toHaveText(/FINISHED|ERROR|PENDING|RUNNING/);
-
       // Gate: without visible output, isSettled starts true and the helper would skip the press entirely.
+      // (waitForParagraphExecution already confirmed the run reached a terminal state.)
       const resultLocator = keyboardPage.getParagraphByIndex(0).locator('[data-testid="paragraph-result"]');
       await expect(resultLocator).toBeVisible();
 
@@ -947,7 +939,9 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.tryFocusCodeEditor();
       await keyboardPage.setCodeEditorContent('invalid python syntax here');
       await keyboardPage.pressRunParagraph();
-      await keyboardPage.waitForParagraphExecution(0);
+      // Real interpreter run: allow extra time, since a cold interpreter under CI load can
+      // stay RUNNING past the 30s default before the status settles to a terminal state.
+      await keyboardPage.waitForParagraphExecution(0, 60000);
 
       // Verify error result exists (invalid syntax produces a final ERROR or FINISHED with error output)
       // JUSTIFIED: single-paragraph test notebook; first() is deterministic
@@ -965,12 +959,10 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.setCodeEditorContent('%md\n# Recovery Test\nShortcuts work after error', newParagraphIndex);
       await keyboardPage.pressRunParagraph();
 
-      // Then: Shortcut execution still reaches a terminal state (real interpreter run;
-      // allow extra time as a cold interpreter under CI load can stay RUNNING past 30s)
+      // Then: shortcut execution still reaches a terminal state. waitForParagraphExecution
+      // gates on the status text, so it is the assertion; allow extra time as a cold
+      // interpreter under CI load can stay RUNNING past the 30s default.
       await keyboardPage.waitForParagraphExecution(newParagraphIndex, 60000);
-      // JUSTIFIED: newParagraphIndex is dynamically computed from getParagraphCount(); nth() is the only way to address this specific paragraph
-      const statusElNew = keyboardPage.paragraphContainer.nth(newParagraphIndex).locator('.status');
-      await expect(statusElNew).toHaveText(/FINISHED|ERROR/, { timeout: 60000 });
     });
 
     test('should gracefully handle shortcuts when no paragraph is focused', async () => {
@@ -1002,12 +994,12 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.tryFocusCodeEditor();
       await keyboardPage.setCodeEditorContent('%md\nrapid keyboard test');
 
-      // Rapid Shift+Enter operations
+      // Rapid Shift+Enter operations. waitForParagraphExecution gates on the terminal
+      // status, so each rapid run is confirmed complete without asserting on the result
+      // element, which re-renders (and briefly detaches) on every %md re-run.
       for (let i = 0; i < 3; i++) {
         await keyboardPage.pressRunParagraph();
         await keyboardPage.waitForParagraphExecution(0, 60000);
-        // JUSTIFIED: single-paragraph test notebook; first() is deterministic
-        await expect(keyboardPage.paragraphResult.first()).toBeVisible({ timeout: 60000 });
       }
 
       // Then: System should remain stable. Assert on the paragraph itself, not the code
