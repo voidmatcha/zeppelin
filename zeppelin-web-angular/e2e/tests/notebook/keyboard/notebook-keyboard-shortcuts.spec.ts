@@ -80,10 +80,12 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
 
       // Then: Paragraph should execute (reach a terminal state; interpreter availability varies by env)
       await keyboardPage.waitForParagraphExecution(0);
-      // JUSTIFIED: single-paragraph test notebook; first() is deterministic
+      // JUSTIFIED: single-paragraph test notebook; first() is deterministic.
+      // Poll the status via toHaveText instead of a one-shot textContent read: the running
+      // spinner can clear a beat before .status settles to its terminal value, so a single
+      // read may catch a transient RUNNING/PENDING state.
       const statusEl = keyboardPage.paragraphContainer.first().locator('.status');
-      const statusText = (await statusEl.textContent({ timeout: 30000 }))?.trim();
-      expect(statusText === 'FINISHED' || statusText === 'ERROR' || statusText === 'ABORT').toBe(true);
+      await expect(statusEl).toHaveText(/FINISHED|ERROR|ABORT/, { timeout: 30000 });
     });
   });
 
