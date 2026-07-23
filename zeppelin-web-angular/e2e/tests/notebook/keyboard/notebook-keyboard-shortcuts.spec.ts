@@ -78,14 +78,10 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       // When: User presses Shift+Enter
       await keyboardPage.pressRunParagraph();
 
-      // Then: Paragraph should execute (reach a terminal state; interpreter availability varies by env)
+      // Then: Paragraph should execute and reach a terminal state. waitForParagraphExecution
+      // now gates on the status text (FINISHED/ERROR/ABORT), so it is the assertion here —
+      // it throws if the run never settles. Interpreter availability varies by env.
       await keyboardPage.waitForParagraphExecution(0);
-      // JUSTIFIED: single-paragraph test notebook; first() is deterministic.
-      // Poll the status via toHaveText instead of a one-shot textContent read: the running
-      // spinner can clear a beat before .status settles to its terminal value, so a single
-      // read may catch a transient RUNNING/PENDING state.
-      const statusEl = keyboardPage.paragraphContainer.first().locator('.status');
-      await expect(statusEl).toHaveText(/FINISHED|ERROR|ABORT/, { timeout: 30000 });
     });
   });
 
@@ -1002,12 +998,12 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.tryFocusCodeEditor();
       await keyboardPage.setCodeEditorContent('%md\nrapid keyboard test');
 
-      // Rapid Shift+Enter operations
+      // Rapid Shift+Enter operations. waitForParagraphExecution gates on the terminal
+      // status, so each rapid run is confirmed complete without asserting on the result
+      // element, which re-renders (and briefly detaches) on every %md re-run.
       for (let i = 0; i < 3; i++) {
         await keyboardPage.pressRunParagraph();
         await keyboardPage.waitForParagraphExecution(0, 60000);
-        // JUSTIFIED: single-paragraph test notebook; first() is deterministic
-        await expect(keyboardPage.paragraphResult.first()).toBeVisible({ timeout: 60000 });
       }
 
       // Then: System should remain stable. Assert on the paragraph itself, not the code
