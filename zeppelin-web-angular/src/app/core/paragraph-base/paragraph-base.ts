@@ -159,10 +159,29 @@ export abstract class ParagraphBase extends MessageListenersManager {
       if (!this.paragraph.text) {
         this.paragraph.text = '';
       }
-      this.paragraph.text = this.diffMatchPatch.patch_apply(patch, this.paragraph.text)[0];
+      // Require patches to match their context exactly. With fuzzy matching a patch whose
+      // base has diverged can silently apply at the wrong offset (results still true) and
+      // corrupt the text; exact matching turns that into a detectable failure instead.
+      this.diffMatchPatch.Match_Threshold = 0;
+      this.diffMatchPatch.Patch_DeleteThreshold = 0;
+      const [patched, results] = this.diffMatchPatch.patch_apply(patch, this.paragraph.text);
+      this.paragraph.text = patched;
       this.originalText = this.paragraph.text;
       this.cdr.markForCheck();
+
+      // patch_apply silently returns a partial result when a hunk can't be applied (a lost or
+      // out-of-order patch under load). Left unhandled, this editor stays permanently desynced
+      // from the sender. If any hunk failed, resync from the server's authoritative note.
+      if (results.some(applied => !applied)) {
+        this.requestNoteResync();
+      }
     }
+  }
+
+  // Resync this paragraph from the server's authoritative note after a failed collaborative
+  // patch. The base has no note id; concrete paragraphs that hold the note override this.
+  protected requestNoteResync(): void {
+    // no-op by default
   }
 
   @MessageListener(OP.ANGULAR_OBJECT_UPDATE)
