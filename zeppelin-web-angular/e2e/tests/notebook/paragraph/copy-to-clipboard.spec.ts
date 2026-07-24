@@ -40,7 +40,7 @@ test.describe('Copy table result to clipboard', () => {
     paragraphPage = new NotebookParagraphPage(page);
 
     await page.goto(`/#/notebook/${testNotebook.noteId}`);
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('zeppelin-notebook-paragraph').first()).toBeVisible({ timeout: 15000 });
 
     // Type a paragraph that outputs a TABLE result using the %sh interpreter
     await paragraphPage.doubleClickToEdit();
@@ -124,7 +124,9 @@ test.describe('Copy table result to clipboard', () => {
     await keyboard.pressSelectAll();
     await page.keyboard.type('%sh\nprintf "col1\\tcol2\\nsay \\"hi\\"\\t1\\n"');
     await new NotebookParagraphPage(page).runParagraph();
-    await page.waitForLoadState('networkidle');
+    // runParagraph only clicks Run, and the previous table result is still rendered, so wait for
+    // the new output before exporting or the clipboard reads the stale table.
+    await expect(paragraphPage.resultDisplay).toContainText('col2', { timeout: 30000 });
 
     const exportDropdownTrigger = page
       .locator('.export-dropdown .export-dropdown-icon-btn, .export-dropdown button:last-child')

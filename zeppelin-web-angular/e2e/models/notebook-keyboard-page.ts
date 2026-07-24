@@ -485,13 +485,13 @@ export class NotebookKeyboardPage extends BasePage {
     // Step 1: Wait for execution to start
     await this.waitForExecutionStart(paragraphIndex);
 
-    // Step 2: Wait for execution to complete
-    const runningIndicator = paragraph.locator(
-      '.paragraph-control .fa-spin, .running-indicator, .paragraph-status-running'
-    );
-    await this.waitForExecutionComplete(runningIndicator, paragraphIndex, timeout);
+    // Step 2: Wait for the run to finish by checking the paragraph status.
+    // The spinner detaching can be missed or swallowed under load, so gate on the status text.
+    // On a fast re-run the status can briefly still read the previous terminal state, so callers
+    // in tight re-run loops should treat this as a stability gate rather than per-run completion.
+    await expect(paragraph.locator('.status')).toHaveText(/FINISHED|ERROR|ABORT/, { timeout });
 
-    // Step 3: Wait for result to be visible
+    // Step 3: Wait for the result to render, for callers that read output.
     await this.waitForResultVisible(paragraphIndex, timeout);
   }
 
@@ -599,18 +599,6 @@ export class NotebookKeyboardPage extends BasePage {
         console.log(`Warning: Could not detect execution start for paragraph ${paragraphIndex}`);
       }
     }
-  }
-
-  private async waitForExecutionComplete(
-    runningIndicator: Locator,
-    paragraphIndex: number,
-    timeout: number
-  ): Promise<void> {
-    if (this.page.isClosed()) {
-      return;
-    }
-
-    await runningIndicator.waitFor({ state: 'detached', timeout: timeout / 2 }).catch(() => {}); // JUSTIFIED: UI stabilization — paragraph may have completed before indicator appeared
   }
 
   private async waitForResultVisible(paragraphIndex: number, timeout: number): Promise<void> {

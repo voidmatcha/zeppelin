@@ -85,10 +85,14 @@ test.describe('Home Page Note Operations', () => {
   test.describe('Given rename note functionality', () => {
     test('When rename button is clicked Then should open rename dialog', async ({ page }) => {
       const testNote = page.locator('.node .file').filter({ hasText: testNoteName });
+      // WebSocket note updates re-render the list and can detach a hovered row mid-interaction.
+      // Re-confirm the row and re-hover right before revealing the action.
+      await expect(testNote).toBeVisible({ timeout: 15000 });
       await testNote.hover();
 
       const renameButton = testNote.locator('.operation a[nztooltiptitle="Rename note"]');
       await expect(renameButton).toBeVisible();
+      await testNote.hover();
       await renameButton.click();
 
       // JUSTIFIED: compound selector targets rename dialog; first() picks the visible modal instance

@@ -102,6 +102,9 @@ test.describe('React Paragraph Footer', () => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
 
+    // JUSTIFIED: this test asserts the absence of a late pageerror after destroy-while-loading.
+    // Home has no paragraph to wait on, so there is no positive element signal.
+    // A fixed settle window lets any delayed remoteEntry error surface before we assert none did.
     await page.waitForTimeout(2500);
 
     expect(consoleErrors).toEqual([]);
