@@ -196,6 +196,10 @@ export class NotebookParagraphComponent
     this.messageService.patchParagraph(this.paragraph.id, this.note.id, patch);
   }
 
+  protected override requestNoteResync(): void {
+    this.messageService.getNote(this.note.id);
+  }
+
   startSaveTimer() {
     this.saveNoteTimer.emit();
   }
