@@ -24,6 +24,7 @@ import { addPageAnnotationBeforeEach, PAGES } from '../../../utils';
 const ALPHA_NOTE_NAME = 'JobManagerRemovalAlpha';
 const BETA_NOTE_NAME = 'JobManagerRemovalBeta';
 const GAMMA_NOTE_NAME = 'JobManagerRemovalGamma';
+const SENTINEL_NOTE_NAME = 'JobManagerRemovalSentinel';
 const UNLISTED_NOTE_ID = 'notOwnedByThisViewer';
 
 // ZEPPELIN-6551: deleting a note broadcasts a field-less removal stub to every Job Manager
@@ -53,9 +54,12 @@ test.describe('Job Manager removal broadcast', () => {
 
   test('Given a note absent from the list When its removal is broadcast Then no runtime error is raised', async () => {
     socketStub.broadcastRemoval(UNLISTED_NOTE_ID);
+    // Await a sentinel sent after the removal (FIFO) so the removal is provably processed.
+    socketStub.broadcastUpdate([{ ...buildNoteJob(SENTINEL_NOTE_NAME), isRunningJob: true }]);
+    await expect(jobManagerPage.jobItemByName(SENTINEL_NOTE_NAME)).toBeVisible();
 
-    // The stub carries no `noteName`, so rendering it would throw; it must not reach the list.
-    await expect(jobManagerPage.jobItems).toHaveCount(2);
+    // 3 = 2 seeded + sentinel; a dropped stub would make it 4 and crash filterJobs.
+    await expect(jobManagerPage.jobItems).toHaveCount(3);
     expectNoNoteNameAccessError(runtimeErrors);
   });
 
@@ -76,6 +80,9 @@ test.describe('Job Manager removal broadcast', () => {
 
   test('Given a note absent from the list When its removal is broadcast Then no listed job is dropped', async () => {
     socketStub.broadcastRemoval(UNLISTED_NOTE_ID);
+    // Await a sentinel sent after the removal (FIFO) so the removal is provably processed.
+    socketStub.broadcastUpdate([{ ...buildNoteJob(SENTINEL_NOTE_NAME), isRunningJob: true }]);
+    await expect(jobManagerPage.jobItemByName(SENTINEL_NOTE_NAME)).toBeVisible();
 
     // Guarding the removal inside the `currentJobIndex === -1` branch matters: folding the
     // guard into that condition would send the stub to the `else` branch and have it
