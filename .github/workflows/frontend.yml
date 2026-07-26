@@ -40,9 +40,10 @@ jobs:
         with:
           node-version-file: 'zeppelin-web-angular/.nvmrc'
       # TODO: Add zeppelin-web-angular root audit after Angular version upgrade and stabilization
+      # --omit=dev: the highs are dev-only and blocked upstream (eslint-plugin-react pins minimatch@3)
       - name: Run npm audit on zeppelin-react
         working-directory: zeppelin-web-angular/projects/zeppelin-react
-        run: npm ci --ignore-scripts && npm audit --audit-level=high
+        run: npm ci --ignore-scripts && npm audit --omit=dev --audit-level=high
 
   run-playwright-e2e-tests:
     runs-on: ubuntu-24.04
