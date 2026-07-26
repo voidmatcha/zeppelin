@@ -52,6 +52,11 @@ export class InterpreterRepositoryModal extends BasePage {
     await this.idInput.waitFor({ state: 'visible' });
   }
 
+  async fillRepository(form: { id: string; url: string }): Promise<void> {
+    await this.fillAndVerifyInput(this.idInput, form.id);
+    await this.fillAndVerifyInput(this.urlInput, form.url);
+  }
+
   async fillProxyRepository(form: RepositoryProxyCredentials): Promise<void> {
     await this.fillAndVerifyInput(this.idInput, form.id);
     await this.fillAndVerifyInput(this.urlInput, form.url);
