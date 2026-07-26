@@ -14,7 +14,7 @@ import { Injectable } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { AnyExposedModule } from './react-mount-handle';
 
-export interface RemoteContainer {
+interface RemoteContainer {
   get<T>(key: string): Promise<() => T>;
   init?: (shareScope: unknown) => Promise<void>;
 }
