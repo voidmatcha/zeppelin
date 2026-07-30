@@ -23,8 +23,12 @@ function isAscii(ch: string): boolean {
 }
 
 export class KeyCodeConverter {
+  // Monaco reads WinCtrl as Control on macOS and as the Meta key elsewhere; CtrlCmd is the inverse.
+  private static readonly controlKeyMod =
+    typeof navigator !== 'undefined' && navigator.appVersion.indexOf('Mac') !== -1 ? KeyMod.WinCtrl : KeyMod.CtrlCmd;
+
   private static angularToMonacoKeyConverter: Record<string, number> = {
-    control: KeyMod.WinCtrl,
+    control: KeyCodeConverter.controlKeyMod,
     alt: KeyMod.Alt,
     shift: KeyMod.Shift,
     a: KeyCode.KeyA,

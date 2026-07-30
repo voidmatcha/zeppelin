@@ -83,11 +83,7 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
     });
   });
 
-  // TODO: Fix the previously skipped tests - ZEPPELIN-6379
   test.describe('ParagraphActions.RunAbove: Control+Shift+ArrowUp', () => {
-    // eslint-disable-next-line playwright/no-skipped-test -- tracked by ZEPPELIN-6379
-    test.skip();
-
     test('should run all paragraphs above current with Control+Shift+ArrowUp', async () => {
       // Given: Multiple paragraphs
       await keyboardPage.tryFocusCodeEditor(0);
@@ -98,10 +94,12 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       // Focus on second paragraph
       await keyboardPage.tryFocusCodeEditor(1);
       await keyboardPage.setCodeEditorContent('%md\n# Second Paragraph\nTest content for second paragraph', 1);
-      await keyboardPage.tryFocusCodeEditor(1); // Ensure focus on the second paragraph
 
       // JUSTIFIED: single-paragraph test notebook; first() is deterministic
       await expect(keyboardPage.paragraphContainer.first()).toBeVisible({ timeout: 15000 });
+
+      // Running a %md paragraph collapses its editor. The host carries the same binding.
+      await keyboardPage.focusParagraphHost(1);
 
       // When: User presses Control+Shift+ArrowUp from second paragraph
       await keyboardPage.pressRunAbove();
@@ -115,11 +113,7 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
     });
   });
 
-  // TODO: Fix the previously skipped tests - ZEPPELIN-6379
   test.describe('ParagraphActions.RunBelow: Control+Shift+ArrowDown', () => {
-    // eslint-disable-next-line playwright/no-skipped-test -- tracked by ZEPPELIN-6379
-    test.skip();
-
     test('should run current and all paragraphs below with Control+Shift+ArrowDown', async () => {
       // Given: Multiple paragraphs with content
       await keyboardPage.tryFocusCodeEditor(0);
@@ -131,8 +125,8 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.tryFocusCodeEditor(1);
       await keyboardPage.setCodeEditorContent('%md\n# Second Paragraph\nContent for run below test', 1);
 
-      // Focus first paragraph
-      await keyboardPage.tryFocusCodeEditor(0);
+      // Running a %md paragraph collapses its editor. The host carries the same binding.
+      await keyboardPage.focusParagraphHost(0);
 
       // When: User presses Control+Shift+ArrowDown
       await keyboardPage.pressRunBelow();
@@ -651,12 +645,14 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
 
   // ===== EDITOR LINE OPERATIONS =====
 
-  // TODO: Fix the previously skipped tests - ZEPPELIN-6379
   test.describe('ParagraphActions.CutLine: Control+K', () => {
-    // eslint-disable-next-line playwright/no-skipped-test -- tracked by ZEPPELIN-6379
-    test.skip();
-
     test('should cut line with Control+K', async () => {
+      // handleCutLine writes to navigator.clipboard,
+      // and the config grants that permission only in the chromium project.
+      // Supported permissions differ per browser:
+      // https://playwright.dev/docs/api/class-browsercontext
+      test.skip(test.info().project.name !== 'chromium', 'Clipboard permission is chromium-project only');
+
       // Given: Code editor with content
       await keyboardPage.tryFocusCodeEditor();
       await keyboardPage.setCodeEditorContent('first line\nsecond line\nthird line');
@@ -695,12 +691,12 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
     });
   });
 
-  // TODO: Fix the previously skipped tests - ZEPPELIN-6379
   test.describe('ParagraphActions.PasteLine: Control+Y', () => {
-    // eslint-disable-next-line playwright/no-skipped-test -- tracked by ZEPPELIN-6379
-    test.skip();
-
     test('should paste line with Control+Y', async () => {
+      // Cut and paste round-trip through navigator.clipboard,
+      // and the config grants that permission only in the chromium project.
+      test.skip(test.info().project.name !== 'chromium', 'Clipboard permission is chromium-project only');
+
       // Given: Content in the editor
       await keyboardPage.tryFocusCodeEditor();
       const originalContent = 'line to cut and paste';
