@@ -188,6 +188,17 @@ module.exports = tseslint.config(
     }
   },
   {
+    // Shell unit tests are excluded from src/tsconfig.json so the app build never compiles them, which leaves
+    // `project: true` unable to resolve a program for them. Point type-aware linting at a spec-only tsconfig.
+    files: ['src/**/*.spec.ts', 'src/test-setup.shell.ts', 'vitest.shell.config.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: ['src/tsconfig.spec.json'],
+        tsconfigRootDir: __dirname
+      }
+    }
+  },
+  {
     files: ['**/*.html'],
     // == legacy `plugin:@angular-eslint/template/recommended`
     extends: [...angular.configs.templateRecommended]

@@ -53,7 +53,7 @@ export class ReactMountDirective implements OnChanges, OnDestroy {
   ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
-    this.latestProps = this.reactProps ?? {};
+    this.latestProps = this.zoneSafe(this.reactProps ?? {});
 
     if (changes.module && !changes.module.firstChange && this.mountedModule) {
       // Module swap after first mount is unsupported. Report via onError
@@ -125,6 +125,19 @@ export class ReactMountDirective implements OnChanges, OnDestroy {
     } finally {
       this.loading = false;
     }
+  }
+
+  /**
+   * A remote receives these props and may invoke `onError` itself, from React lifecycle code that runs outside the
+   * Angular zone because we mounted there. Wrapping once here means every remote is safe, rather than each remote
+   * having to know about Angular's zone.
+   */
+  private zoneSafe(props: ReactProps & ReactHostCallbacks): ReactProps & ReactHostCallbacks {
+    const onError = props.onError;
+    if (typeof onError !== 'function') {
+      return props;
+    }
+    return { ...props, onError: (error: unknown) => this.ngZone.run(() => onError(error)) };
   }
 
   private reportError(error: unknown): void {
