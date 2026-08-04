@@ -84,8 +84,12 @@ export class NotebookParagraphComponent
   implements OnInit, OnChanges, OnDestroy, AfterViewInit, AngularKeyboardEventHandler
 {
   @HostBinding('attr.tabindex') tabindex = '-1';
-  @ViewChild(NotebookParagraphCodeEditorComponent, { static: false })
   notebookParagraphCodeEditorComponent?: NotebookParagraphCodeEditorComponent;
+  @ViewChild(NotebookParagraphCodeEditorComponent, { static: false })
+  set codeEditorComponent(component: NotebookParagraphCodeEditorComponent | undefined) {
+    this.notebookParagraphCodeEditorComponent = component;
+    component?.highlightMatches(this.searchTerm);
+  }
   @ViewChildren(NotebookParagraphResultComponent)
   notebookParagraphResultComponents!: QueryList<NotebookParagraphResultComponent>;
   @Input() paragraph!: ParagraphItem;
@@ -145,6 +149,7 @@ export class NotebookParagraphComponent
   @Output() readonly openSearchMenu = new EventEmitter();
 
   private destroy$ = new Subject<void>();
+  private searchTerm = '';
 
   private mode: Mode = 'command';
   waitConfirmFromEdit = false;
@@ -171,6 +176,7 @@ export class NotebookParagraphComponent
   }
 
   highlightMatches(searchText: string) {
+    this.searchTerm = searchText;
     this.notebookParagraphCodeEditorComponent?.highlightMatches(searchText);
   }
 

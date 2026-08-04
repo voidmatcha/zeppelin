@@ -17,6 +17,7 @@ import {
   createTestNotebook,
   PAGES,
   performLoginIfRequired,
+  setParagraphEditorHidden,
   setParagraphText,
   skipWhenAuthenticationIsStillRequired,
   waitForNotebookLinks,
@@ -87,6 +88,26 @@ test.describe('Notebook editor search', () => {
 
     await test.step('When the notebook is opened with the term in the query string', async () => {
       await editorSearchPage.openNotebookWithSearchTerm(noteId, 'target');
+    });
+
+    await test.step('Then every occurrence is highlighted', async () => {
+      await expect(editorSearchPage.termHighlights).toHaveCount(3);
+    });
+  });
+
+  test('highlights the deep-link term when a hidden editor is shown', async ({ page }) => {
+    const { noteId, paragraphId } = await createTestNotebook(page);
+
+    await test.step('Given a hidden paragraph editor containing the term three times', async () => {
+      await setParagraphText(page, noteId, paragraphId, 'alpha target beta target gamma target');
+      await setParagraphEditorHidden(page, noteId, paragraphId, true);
+    });
+
+    await test.step('When the notebook is opened with the term and the editor is shown', async () => {
+      await editorSearchPage.navigateToNotebookWithSearchTerm(noteId, 'target');
+      await expect(editorSearchPage.editor).toHaveCount(0);
+      await editorSearchPage.paragraphCodeToggle.click();
+      await expect(editorSearchPage.editor).toBeVisible({ timeout: 15000 });
     });
 
     await test.step('Then every occurrence is highlighted', async () => {
