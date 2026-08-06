@@ -43,7 +43,7 @@ By default, only first two of them will be automatically kept in sync by Zeppeli
 
 </br>
 
-## Notebook Storage in local Git repository <a name="Git"></a>
+## Notebook Storage in local Git repository <a name="Git" id="Git"></a>
 
 To enable versioning for all your local notebooks though a standard Git repository - uncomment the next property in `zeppelin-site.xml` in order to use GitNotebookRepo class:
 
@@ -57,7 +57,7 @@ To enable versioning for all your local notebooks though a standard Git reposito
 
 </br>
 
-## Notebook Storage in hadoop compatible file system repository <a name="Hdfs"></a>
+## Notebook Storage in hadoop compatible file system repository <a name="Hdfs" id="Hdfs"></a>
 
 Notes may be stored in hadoop compatible file system such as hdfs, so that multiple Zeppelin instances can share the same notes. It supports all the versions of hadoop 2.x. If you use `FileSystemNotebookRepo`, then `zeppelin.notebook.dir` is the path on the hadoop compatible file system. And you need to specify `HADOOP_CONF_DIR` in `zeppelin-env.sh` so that zeppelin can find the right hadoop configuration files.
 If your hadoop cluster is kerberized, then you need to specify `zeppelin.server.kerberos.keytab` and `zeppelin.server.kerberos.principal`
@@ -73,7 +73,7 @@ If your hadoop cluster is kerberized, then you need to specify `zeppelin.server.
 
 </br>
 
-## Notebook Storage in S3 <a name="S3"></a>
+## Notebook Storage in S3 <a name="S3" id="S3"></a>
 
 Notebooks may be stored in S3, and optionally encrypted.  The [``DefaultAWSCredentialsProviderChain``](https://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/auth/DefaultAWSCredentialsProviderChain.html) credentials provider is used for credentials and checks the following:
 
@@ -248,7 +248,7 @@ Or using the following setting in **zeppelin-site.xml**:
 
 </br>
 
-## Notebook Storage in Azure <a name="Azure"></a>
+## Notebook Storage in Azure <a name="Azure" id="Azure"></a>
 
 Using `AzureNotebookRepo` you can connect your Zeppelin with your Azure account for notebook storage.
 
@@ -310,7 +310,7 @@ Optionally, you can specify Azure folder structure name in the file **zeppelin-s
 
 </br>
 
-## Notebook Storage in Google Cloud Storage <a name="GCS"></a>
+## Notebook Storage in Google Cloud Storage <a name="GCS" id="GCS"></a>
 
 Using `GCSNotebookRepo` you can connect Zeppelin with Google Cloud Storage using [Application Default Credentials](https://cloud.google.com/docs/authentication/production).
 
@@ -416,7 +416,7 @@ file for authentication with GCS, update the following property :
 
 </br>
 
-## Notebook Storage in OSS <a name="OSS"></a>
+## Notebook Storage in OSS <a name="OSS" id="OSS"></a>
 
 Notebooks may be stored in Aliyun OSS.
 
@@ -477,7 +477,7 @@ Uncomment the next property for use OSSNotebookRepo class:
 </property>
 ```
 
-## Notebook Storage in MongoDB <a name="MongoDB"></a>
+## Notebook Storage in MongoDB <a name="MongoDB" id="MongoDB"></a>
 Using `MongoNotebookRepo`, you can store your notebook in [MongoDB](https://www.mongodb.com/).
 
 ### Why MongoDB?
