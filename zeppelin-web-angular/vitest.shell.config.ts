@@ -13,6 +13,12 @@
 const { defineConfig } = require('vitest/config');
 
 module.exports = defineConfig({
+  oxc: {
+    decorator: {
+      legacy: true,
+      emitDecoratorMetadata: true
+    }
+  },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.spec.ts'],

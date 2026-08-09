@@ -10,7 +10,8 @@
  * limitations under the License.
  */
 
-import { Directive, ElementRef, HostBinding, Input, OnChanges } from '@angular/core';
+import { Directive, ElementRef, HostBinding, Input, OnChanges, SecurityContext } from '@angular/core';
+import { DomSanitizer } from '@angular/platform-browser';
 
 @Directive({
   // eslint-disable-next-line
@@ -22,12 +23,27 @@ export class ExternalLinkDirective implements OnChanges {
   @HostBinding('attr.target') targetAttr: HTMLAnchorElement['target'] | null = null;
   @Input() href?: string;
 
-  constructor(private elementRef: ElementRef) {}
+  constructor(
+    private elementRef: ElementRef,
+    private sanitizer: DomSanitizer
+  ) {}
 
   ngOnChanges() {
-    this.elementRef.nativeElement.href = this.href;
+    const anchor = this.elementRef.nativeElement as HTMLAnchorElement;
 
-    if (this.isLinkExternal()) {
+    if (this.href == null) {
+      anchor.removeAttribute('href');
+      this.relAttr = null;
+      this.targetAttr = null;
+      return;
+    }
+
+    // Angular stops sanitizing a property once a directive input claims it.
+    // The sanitizer it emitted for [href] never runs, so apply one here.
+    const safeHref = this.sanitizer.sanitize(SecurityContext.URL, this.href) ?? '';
+    anchor.href = safeHref;
+
+    if (this.isLinkExternal(safeHref)) {
       // https://developers.google.com/web/tools/lighthouse/audits/noopener
       this.relAttr = 'noopener noreferrer';
       this.targetAttr = '_blank';
@@ -37,7 +53,13 @@ export class ExternalLinkDirective implements OnChanges {
     }
   }
 
-  private isLinkExternal() {
-    return !this.elementRef.nativeElement.hostname.includes(location.hostname);
+  private isLinkExternal(href: string): boolean {
+    try {
+      // Compare the whole host, not a substring.
+      // `<our-host>.example.com` would otherwise read as internal and lose the noopener pair.
+      return new URL(href, location.href).hostname !== location.hostname;
+    } catch {
+      return false;
+    }
   }
 }
