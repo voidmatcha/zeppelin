@@ -107,6 +107,8 @@ test.describe('React Paragraph Footer', () => {
 
     await test.step('Given a remote that answers slowly but well inside the budget', async () => {
       await page.route('**/remoteEntry.js', async route => {
+        // JUSTIFIED: the delay is the stub's behaviour under test, not synchronisation.
+        // The point is that a remote answering inside the budget still renders.
         await new Promise(r => setTimeout(r, 2000));
         await route.continue();
       });

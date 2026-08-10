@@ -96,11 +96,15 @@ export class ReactRemoteLoaderService {
       return cached as Promise<T>;
     }
 
-    const promise = (async () => {
-      const container = await this.loadContainer();
-      const factory = await container.get<T>(exposedKey);
-      return factory();
-    })();
+    // loadContainer bounds only the entry script; the chunk it pulls uses the remote's 120s chunkLoadTimeout.
+    const promise = this.withinBudget(
+      (async () => {
+        const container = await this.loadContainer();
+        const factory = await container.get<T>(exposedKey);
+        return factory();
+      })(),
+      `Timed out after ${environment.reactRemoteLoadTimeoutMs} ms loading the React remote module ${exposedKey}`
+    );
 
     this.modulePromises.set(exposedKey, promise);
 
@@ -110,5 +114,26 @@ export class ReactRemoteLoaderService {
     });
 
     return promise;
+  }
+
+  private withinBudget<T>(work: Promise<T>, message: string): Promise<T> {
+    const timeoutMs = environment.reactRemoteLoadTimeoutMs;
+    if (!(timeoutMs > 0)) {
+      return work;
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      work.then(
+        value => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
   }
 }
