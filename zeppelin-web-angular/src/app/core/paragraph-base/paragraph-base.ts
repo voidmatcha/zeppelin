@@ -258,6 +258,7 @@ export abstract class ParagraphBase extends MessageListenersManager {
         } else {
           // if there're local update, keep it.
           this.paragraph.text = newPara.text;
+          this.originalText = newPara.text;
         }
       } else {
         this.paragraph.text = newPara.text;

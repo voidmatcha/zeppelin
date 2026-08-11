@@ -19,6 +19,7 @@
 package org.apache.zeppelin.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.bitbucket.cowwoc.diffmatchpatch.DiffMatchPatch;
 import org.apache.zeppelin.conf.ZeppelinConfiguration;
 import org.apache.zeppelin.interpreter.Interpreter;
 import org.apache.zeppelin.interpreter.Interpreter.FormType;
@@ -752,5 +754,87 @@ class NotebookServiceTest {
       assertEquals("text without checksum", note.getParagraph(paragraphId).getText());
       return null;
     });
+  }
+
+  @Test
+  void testPatchParagraphAcceptsPatchWithMatchingChecksums() throws IOException {
+    String noteId = notebookService.createNote("/note_patch_checksum_valid", "test", true,
+        context, callback);
+    String paragraphId = setParagraphText(noteId, "server text");
+    CapturingCallback<NotebookService.PatchParagraphResult> patchCallback =
+        new CapturingCallback<>();
+    String patch = patchText("server text", "server text edited");
+
+    notebookService.patchParagraph(noteId, paragraphId, patch, "server text".hashCode(),
+        "server text edited".hashCode(), context, patchCallback);
+
+    assertTrue(patchCallback.result.isAccepted());
+    assertEquals(patch, patchCallback.result.getPatchText());
+    notebook.processNote(noteId, note -> {
+      assertEquals("server text edited", note.getParagraph(paragraphId).getText());
+      return null;
+    });
+  }
+
+  @Test
+  void testPatchParagraphRejectsStaleBaseChecksum() throws IOException {
+    String noteId = notebookService.createNote("/note_patch_checksum_stale", "test", true,
+        context, callback);
+    String paragraphId = setParagraphText(noteId, "server text");
+    CapturingCallback<NotebookService.PatchParagraphResult> patchCallback =
+        new CapturingCallback<>();
+    String patch = patchText("old text", "old text edited");
+
+    notebookService.patchParagraph(noteId, paragraphId, patch, "old text".hashCode(),
+        "old text edited".hashCode(), context, patchCallback);
+
+    assertFalse(patchCallback.result.isAccepted());
+    assertEquals("server text", patchCallback.result.getParagraph().getText());
+    notebook.processNote(noteId, note -> {
+      assertEquals("server text", note.getParagraph(paragraphId).getText());
+      return null;
+    });
+  }
+
+  @Test
+  void testPatchParagraphRejectsAfterChecksumMismatch() throws IOException {
+    String noteId = notebookService.createNote("/note_patch_checksum_after", "test", true,
+        context, callback);
+    String paragraphId = setParagraphText(noteId, "server text");
+    CapturingCallback<NotebookService.PatchParagraphResult> patchCallback =
+        new CapturingCallback<>();
+    String patch = patchText("server text", "server text edited");
+
+    notebookService.patchParagraph(noteId, paragraphId, patch, "server text".hashCode(),
+        "different text".hashCode(), context, patchCallback);
+
+    assertFalse(patchCallback.result.isAccepted());
+    assertEquals("server text", patchCallback.result.getParagraph().getText());
+    notebook.processNote(noteId, note -> {
+      assertEquals("server text", note.getParagraph(paragraphId).getText());
+      return null;
+    });
+  }
+
+  private String setParagraphText(String noteId, String text) throws IOException {
+    return notebook.processNote(noteId, note -> {
+      Paragraph p = note.getParagraph(0);
+      p.setText(text);
+      return p.getId();
+    });
+  }
+
+  private String patchText(String before, String after) {
+    DiffMatchPatch dmp = new DiffMatchPatch();
+    return dmp.patchToText(dmp.patchMake(before, after));
+  }
+
+  private static class CapturingCallback<T> extends SimpleServiceCallback<T> {
+    private T result;
+
+    @Override
+    public void onSuccess(T result, ServiceContext context) {
+      this.result = result;
+    }
   }
 }

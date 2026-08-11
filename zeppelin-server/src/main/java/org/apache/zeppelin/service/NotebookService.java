@@ -1511,43 +1511,105 @@ public class NotebookService {
   public void patchParagraph(final String noteId, final String paragraphId, String patchText,
                              ServiceContext context,
                              ServiceCallback<String> callback) throws IOException {
+    patchParagraph(noteId, paragraphId, patchText, null, null, context,
+        new SimpleServiceCallback<PatchParagraphResult>() {
+          @Override
+          public void onSuccess(PatchParagraphResult result, ServiceContext context)
+              throws IOException {
+            if (result.isAccepted()) {
+              callback.onSuccess(result.getPatchText(), context);
+            }
+          }
+
+          @Override
+          public void onFailure(Exception ex, ServiceContext context) throws IOException {
+            callback.onFailure(ex, context);
+          }
+        });
+  }
+
+  public void patchParagraph(final String noteId, final String paragraphId, String patchText,
+                             Integer baseChecksum, Integer afterChecksum,
+                             ServiceContext context,
+                             ServiceCallback<PatchParagraphResult> callback) throws IOException {
 
     try {
       if (!checkPermission(noteId, Permission.WRITER, Message.OP.PATCH_PARAGRAPH, context,
           callback)) {
         return;
       }
-
-
       notebook.processNote(noteId,
-        note -> {
-          if (note == null) {
-            return null;
-          }
-          Paragraph p = note.getParagraph(paragraphId);
-          if (p == null) {
-            return null;
-          }
+          note -> {
+            if (note == null) {
+              return null;
+            }
+            Paragraph p = note.getParagraph(paragraphId);
+            if (p == null) {
+              return null;
+            }
 
-          DiffMatchPatch dmp = new DiffMatchPatch();
-          LinkedList<DiffMatchPatch.Patch> patches = null;
-          try {
-            patches = (LinkedList<DiffMatchPatch.Patch>) dmp.patchFromText(patchText);
-          } catch (ClassCastException e) {
-            LOGGER.error("Failed to parse patches", e);
-          }
-          if (patches == null) {
-            return null;
-          }
+            DiffMatchPatch dmp = new DiffMatchPatch();
+            LinkedList<DiffMatchPatch.Patch> patches = null;
+            try {
+              patches = (LinkedList<DiffMatchPatch.Patch>) dmp.patchFromText(patchText);
+            } catch (ClassCastException e) {
+              LOGGER.error("Failed to parse patches", e);
+            }
+            if (patches == null) {
+              return null;
+            }
 
-          String paragraphText = p.getText() == null ? "" : p.getText();
-          paragraphText = (String) dmp.patchApply(patches, paragraphText)[0];
-          p.setText(paragraphText);
-          callback.onSuccess(patchText, context);
-          return null;
-      });
+            String paragraphText = p.getText() == null ? "" : p.getText();
+            if (baseChecksum != null && baseChecksum != checksum(paragraphText)) {
+              LOGGER.info("Rejecting stale patch of paragraph {} in note {}", paragraphId, noteId);
+              callback.onSuccess(PatchParagraphResult.rejected(p), context);
+              return null;
+            }
+            String patchedText = (String) dmp.patchApply(patches, paragraphText)[0];
+            if (afterChecksum != null && afterChecksum != checksum(patchedText)) {
+              LOGGER.info(
+                  "Rejecting mismatched patch of paragraph {} in note {}", paragraphId, noteId);
+              callback.onSuccess(PatchParagraphResult.rejected(p), context);
+              return null;
+            }
+            p.setText(patchedText);
+            callback.onSuccess(PatchParagraphResult.accepted(patchText, p), context);
+            return null;
+          });
     } catch (IOException e) {
       callback.onFailure(new IOException("Fail to patch", e), context);
+    }
+  }
+
+  public static class PatchParagraphResult {
+    private final boolean accepted;
+    private final String patchText;
+    private final Paragraph paragraph;
+
+    private PatchParagraphResult(boolean accepted, String patchText, Paragraph paragraph) {
+      this.accepted = accepted;
+      this.patchText = patchText;
+      this.paragraph = paragraph;
+    }
+
+    static PatchParagraphResult accepted(String patchText, Paragraph paragraph) {
+      return new PatchParagraphResult(true, patchText, paragraph);
+    }
+
+    static PatchParagraphResult rejected(Paragraph paragraph) {
+      return new PatchParagraphResult(false, null, paragraph);
+    }
+
+    public boolean isAccepted() {
+      return accepted;
+    }
+
+    public String getPatchText() {
+      return patchText;
+    }
+
+    public Paragraph getParagraph() {
+      return paragraph;
     }
   }
 

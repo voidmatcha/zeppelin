@@ -89,6 +89,7 @@ import org.apache.zeppelin.scheduler.Job.Status;
 import org.apache.zeppelin.service.ConfigurationService;
 import org.apache.zeppelin.service.JobManagerService;
 import org.apache.zeppelin.service.NotebookService;
+import org.apache.zeppelin.service.NotebookService.PatchParagraphResult;
 import org.apache.zeppelin.service.ServiceContext;
 import org.apache.zeppelin.service.SimpleServiceCallback;
 import org.apache.zeppelin.service.exception.JobManagerForbiddenException;
@@ -1134,16 +1135,25 @@ public class NotebookServer implements AngularObjectRegistryListener,
     }
     // checksums of the sender's text before and after the patch, so receivers can tell whether
     // their own patchApply produced the same text. Absent for clients that do not send them.
-    Object baseChecksum = fromMessage.get("baseChecksum");
-    Object afterChecksum = fromMessage.get("afterChecksum");
+    Integer baseChecksum = fromMessage.get("baseChecksum") == null
+        ? null : ((Number) fromMessage.get("baseChecksum")).intValue();
+    Integer afterChecksum = fromMessage.get("afterChecksum") == null
+        ? null : ((Number) fromMessage.get("afterChecksum")).intValue();
 
-    getNotebookService().patchParagraph(noteId, paragraphId, patchText, context,
-        new WebSocketServiceCallback<String>(conn) {
+    getNotebookService().patchParagraph(noteId, paragraphId, patchText, baseChecksum, afterChecksum,
+        context,
+        new WebSocketServiceCallback<PatchParagraphResult>(conn) {
           @Override
-          public void onSuccess(String result, ServiceContext context) throws IOException {
+          public void onSuccess(PatchParagraphResult result, ServiceContext context)
+              throws IOException {
             super.onSuccess(result, context);
+            if (!result.isAccepted()) {
+              conn.send(serializeMessage(new Message(OP.PARAGRAPH)
+                  .put("paragraph", result.getParagraph())));
+              return;
+            }
             Message message = new Message(OP.PATCH_PARAGRAPH)
-                .put("patch", result)
+                .put("patch", result.getPatchText())
                 .put("paragraphId", paragraphId)
                 .put("noteId", noteId2)
                 .put("baseChecksum", baseChecksum)

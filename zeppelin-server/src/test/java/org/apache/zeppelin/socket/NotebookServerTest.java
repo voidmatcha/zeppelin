@@ -77,6 +77,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -299,10 +300,64 @@ class NotebookServerTest extends AbstractTestRestApi {
     notebook.removeNote(createdNoteInfo.getId(), anonymous);
   }
 
+  @Test
+  void testRejectedPatchSendsAuthoritativeParagraphOnlyToSender() throws IOException {
+    if (!zepServer.getZeppelinConfiguration().isZeppelinNotebookCollaborativeModeEnable()) {
+      return;
+    }
+    NotebookSocket sock1 = createWebSocket();
+    NotebookSocket sock2 = createWebSocket();
+
+    String noteName = "Rejected patch note " + System.currentTimeMillis();
+    notebookServer.onMessage(sock1, new Message(OP.NEW_NOTE).put("name", noteName).toJson());
+    NoteInfo createdNoteInfo = null;
+    for (NoteInfo noteInfo : notebook.getNotesInfo()) {
+      if (notebook.processNote(noteInfo.getId(), Note::getName).equals(noteName)) {
+        createdNoteInfo = noteInfo;
+        break;
+      }
+    }
+
+    Message getNoteMessage = new Message(OP.GET_NOTE).put("id", createdNoteInfo.getId());
+    notebookServer.onMessage(sock1, getNoteMessage.toJson());
+    notebookServer.onMessage(sock2, getNoteMessage.toJson());
+
+    Paragraph paragraph = notebook.processNote(createdNoteInfo.getId(), note -> {
+      Paragraph p = note.getParagraphs().get(0);
+      p.setText("server text");
+      return p;
+    });
+    String patch = "@@ -1,8 +1,15 @@\n old text\n+ edited\n";
+
+    reset(sock1);
+    reset(sock2);
+    patchParagraph(sock1, paragraph.getId(), patch, "old text".hashCode(),
+        "old text edited".hashCode());
+
+    assertEquals("server text", paragraph.getText());
+    ArgumentCaptor<String> senderMessage = ArgumentCaptor.forClass(String.class);
+    verify(sock1).send(senderMessage.capture());
+    assertEquals(OP.PARAGRAPH, Message.fromJson(senderMessage.getValue()).op);
+    assertTrue(senderMessage.getValue().contains("server text"));
+    verify(sock2, never()).send(anyString());
+
+    notebook.removeNote(createdNoteInfo.getId(), anonymous);
+  }
+
   private void patchParagraph(NotebookSocket noteSocket, String paragraphId, String patch) {
     Message message = new Message(OP.PATCH_PARAGRAPH);
     message.put("patch", patch);
     message.put("id", paragraphId);
+    notebookServer.onMessage(noteSocket, message.toJson());
+  }
+
+  private void patchParagraph(NotebookSocket noteSocket, String paragraphId, String patch,
+                              int baseChecksum, int afterChecksum) {
+    Message message = new Message(OP.PATCH_PARAGRAPH);
+    message.put("patch", patch);
+    message.put("id", paragraphId);
+    message.put("baseChecksum", baseChecksum);
+    message.put("afterChecksum", afterChecksum);
     notebookServer.onMessage(noteSocket, message.toJson());
   }
 
