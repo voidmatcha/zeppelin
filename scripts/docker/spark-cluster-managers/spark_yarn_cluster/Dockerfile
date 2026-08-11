@@ -41,12 +41,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh
 
+COPY resolve-hadoop-archive.sh /usr/local/bin/resolve-hadoop-archive
+RUN chmod 755 /usr/local/bin/resolve-hadoop-archive
+
 # hadoop
-RUN case "$TARGETARCH" in \
-      amd64) HADOOP_ARCHIVE="hadoop-$HADOOP_VERSION.tar.gz" ;; \
-      arm64) HADOOP_ARCHIVE="hadoop-$HADOOP_VERSION-aarch64.tar.gz" ;; \
-      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
-    esac \
+RUN HADOOP_ARCHIVE="$(resolve-hadoop-archive "$HADOOP_VERSION" "$TARGETARCH")" \
     && HADOOP_URL="https://archive.apache.org/dist/hadoop/common/hadoop-$HADOOP_VERSION/$HADOOP_ARCHIVE" \
     && curl -fL "$HADOOP_URL" -o "/tmp/$HADOOP_ARCHIVE" \
     && curl -fL "$HADOOP_URL.sha512" -o "/tmp/$HADOOP_ARCHIVE.sha512" \

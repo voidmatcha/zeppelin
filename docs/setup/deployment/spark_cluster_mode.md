@@ -87,6 +87,8 @@ You can find docker script files under `scripts/docker/spark-cluster-managers`.
 The image uses the official Apache Spark Ubuntu image with Java 11. Its Spark 3.5.8, Scala 2.12, and Hadoop 3.3.6 defaults match Zeppelin's build versions.
 You can override `JAVA_VERSION`, `SPARK_VERSION`, and `SCALA_VERSION` when a matching Apache Spark image tag is available.
 The image supports `linux/amd64` and `linux/arm64`; override `HADOOP_VERSION` only when the Apache Hadoop archive provides a release artifact for the selected target architecture.
+BuildKit builds set `TARGETARCH` automatically.
+Classic `docker build` detects the native package-manager architecture inside the image.
 Hadoop 3.3.x supports Java 8 and Java 11 at runtime, so keep `JAVA_VERSION=11` when using the default Hadoop 3.3.6. Use another Java version only with a Hadoop release that officially supports it.
 
 ```bash

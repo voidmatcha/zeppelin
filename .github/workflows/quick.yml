@@ -50,3 +50,5 @@ jobs:
           java-version: 11
       - name: Run Maven Validate
         run: ./mvnw validate -Pinclude-hadoop ${MAVEN_ARGS}
+      - name: Validate Spark cluster Docker build configuration
+        run: scripts/docker/spark-cluster-managers/validate-build-config.sh
