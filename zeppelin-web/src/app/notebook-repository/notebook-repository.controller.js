@@ -66,7 +66,7 @@ function NotebookRepositoryCtrl($http, baseUrlSrv, ngToast) {
       .success(function(data, status, headers, config) {
         vm.notebookRepos = data.body;
       }).error(function(data, status, headers, config) {
-        if (status === 401) {
+        if (status === 403) {
           ngToast.danger({
             content: 'You don\'t have permission on this page',
             verticalPosition: 'bottom',

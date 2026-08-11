@@ -52,7 +52,7 @@ function NodeCtrl($scope, $routeParams, $http, baseUrlSrv, ngToast) {
         console.log(JSON.stringify($scope.intpProcesses));
       })
       .error(function(data, status, headers, config) {
-        if (status === 401) {
+        if (status === 403) {
           ngToast.danger({
             content: 'You don\'t have permission on this page',
             verticalPosition: 'bottom',

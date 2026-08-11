@@ -43,7 +43,7 @@ describe('Controller: Configuration', function() {
     ctrl = $controller('ConfigurationCtrl', {$scope: $scope, baseUrlSrv: baseUrlSrvMock});
     spyOn(ngToast, 'danger');
 
-    $httpBackend.when('GET', '/configurations/all').respond(401, {});
+    $httpBackend.when('GET', '/configurations/all').respond(403, {});
     $httpBackend.expectGET('/configurations/all');
     $httpBackend.flush();
 

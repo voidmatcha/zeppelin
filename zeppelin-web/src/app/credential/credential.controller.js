@@ -51,7 +51,7 @@ function CredentialController($scope, $rootScope, $http, baseUrlSrv, ngToast) {
         console.log('Success %o %o', status, $scope.credentialInfo);
       })
       .error(function(data, status, headers, config) {
-        if (status === 401) {
+        if (status === 403) {
           showToast('You do not have permission on this page', 'danger');
           setTimeout(function() {
             window.location = baseUrlSrv.getBase();
