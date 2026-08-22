@@ -84,33 +84,28 @@ export class BarChartVisualizationComponent extends G2VisualizationComponentBase
   setScale(chart: G2.Chart) {
     const key = this.getKey();
     const tickCount = calcTickCount(this.container.nativeElement);
-    chart.scale(key, {
-      tickCount,
-      type: 'cat'
-    });
+    chart.scale({ [key]: { tickCount, type: 'point' } });
   }
 
   renderBefore(config: GraphConfig, chart: G2.Chart) {
     const key = this.getKey();
     this.setScale(chart);
 
-    chart.tooltip({
-      shared: false
-    });
+    const tooltip = { shared: false };
     if (get(config.setting, 'multiBarChart.stacked', false)) {
-      chart.intervalStack().position(`${key}*__value__`).color('__key__').opacity(1);
+      chart
+        .interval()
+        .encode({ x: key, y: '__value__', color: '__key__' })
+        .style({ fillOpacity: 1 })
+        .transform({ type: 'stackY' })
+        .tooltip(tooltip);
     } else {
       chart
         .interval()
-        .position(`${key}*__value__`)
-        .color('__key__')
-        .opacity(1)
-        .adjust([
-          {
-            type: 'dodge',
-            marginRatio: 0
-          }
-        ]);
+        .encode({ x: key, y: '__value__', color: '__key__' })
+        .style({ fillOpacity: 1 })
+        .transform({ type: 'dodgeX' })
+        .tooltip(tooltip);
     }
     setChartXAxis(this.visualization, 'multiBarChart', chart, key);
   }

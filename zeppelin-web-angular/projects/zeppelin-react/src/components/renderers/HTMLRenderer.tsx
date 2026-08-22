@@ -32,7 +32,7 @@ export const HTMLRenderer = ({ html }: HTMLRendererProps) => {
       const codeEle = container.querySelector('pre code');
       if (codeEle) {
         import('highlight.js').then(({ default: hljs }) => {
-          hljs.highlightBlock(codeEle as HTMLElement);
+          hljs.highlightElement(codeEle as HTMLElement);
         });
       }
 

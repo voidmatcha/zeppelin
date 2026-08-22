@@ -10,8 +10,6 @@
  * limitations under the License.
  */
 
-import * as G2 from '@antv/g2';
-
 const DEFAULT_COLOR = '#03578c';
 const COLOR_PLATE_8 = ['#03578c', '#179bd4', '#bf4f07', '#005041', '#8543E0', '#57c2e9', '#03138c', '#8c0357'];
 
@@ -32,98 +30,16 @@ const COLOR_PLATE_16 = [
   '#F04864',
   '#D598D9'
 ];
-const COLOR_PLATE_24 = [
-  '#03588C',
-  '#66B5FF',
-  '#82B8D9',
-  '#025959',
-  '#027368',
-  '#9AE65C',
-  '#FACC14',
-  '#E6965C',
-  '#57AD71',
-  '#223273',
-  '#738AE6',
-  '#7564CC',
-  '#8543E0',
-  '#A877ED',
-  '#5C8EE6',
-  '#13C2C2',
-  '#70E0E0',
-  '#5CA3E6',
-  '#3436C7',
-  '#8082FF',
-  '#DD81E6',
-  '#F04864',
-  '#FA7D92',
-  '#D598D9'
-];
-const COLOR_PIE = ['#03588C', '#13C2C2', '#025959', '#FACC14', '#F04864', '#8543E0', '#3436C7', '#223273'];
-const COLOR_PIE_16 = [
-  '#03588C',
-  '#73C9E6',
-  '#13C2C2',
-  '#6CD9B3',
-  '#025959',
-  '#9DD96C',
-  '#FACC14',
-  '#E6965C',
-  '#F04864',
-  '#D66BCA',
-  '#8543E0',
-  '#8E77ED',
-  '#3436C7',
-  '#737EE6',
-  '#223273',
-  '#7EA2E6'
-];
-
 const zeppelinTheme = {
-  defaultColor: DEFAULT_COLOR,
-  colors: COLOR_PLATE_8,
-  colors_16: COLOR_PLATE_16,
-  colors_24: COLOR_PLATE_24,
-  colors_pie: COLOR_PIE,
-  colors_pie_16: COLOR_PIE_16,
-  shape: {
-    point: {
-      fill: DEFAULT_COLOR
-    },
-    hollowPoint: {
-      stroke: DEFAULT_COLOR
-    },
-    interval: {
-      fill: DEFAULT_COLOR
-    },
-    hollowInterval: {
-      stroke: DEFAULT_COLOR
-    },
-    area: {
-      fill: DEFAULT_COLOR
-    },
-    polygon: {
-      fill: DEFAULT_COLOR
-    },
-    hollowPolygon: {
-      stroke: DEFAULT_COLOR
-    },
-    hollowArea: {
-      stroke: DEFAULT_COLOR
-    },
-    line: {
-      stroke: DEFAULT_COLOR
-    },
-    edge: {
-      stroke: DEFAULT_COLOR
-    },
-    schema: {
-      stroke: DEFAULT_COLOR
-    }
-  }
+  category10: COLOR_PLATE_8,
+  category20: COLOR_PLATE_16,
+  interval: { rect: { fill: DEFAULT_COLOR } },
+  area: { area: { fill: DEFAULT_COLOR } },
+  line: { line: { stroke: DEFAULT_COLOR } },
+  point: { point: { fill: DEFAULT_COLOR }, hollowPoint: { stroke: DEFAULT_COLOR } }
 };
 
 export function setTheme() {
-  const theme = G2.Util.deepMix(G2.Global, zeppelinTheme);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (G2.Global as any).setTheme(theme);
+  register('theme.zeppelin', () => zeppelinTheme);
 }
+import { register } from '@antv/g2';

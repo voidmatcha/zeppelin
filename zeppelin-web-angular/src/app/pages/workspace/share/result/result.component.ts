@@ -27,12 +27,12 @@ import {
 } from '@angular/core';
 import { DomSanitizer, SafeHtml, SafeUrl } from '@angular/platform-browser';
 import { AnsiUp } from 'ansi_up';
-import * as hljs from 'highlight.js';
+import hljs from 'highlight.js';
 import { cloneDeep, isEqual } from 'lodash';
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { utils, writeFile, WritingOptions } from 'xlsx';
+import { utils, writeFile, WritingOptions } from 'xlsx-js-style';
 
 import {
   DatasetType,
@@ -357,7 +357,7 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
     div.innerHTML = this.result.data;
     const codeEle = div.querySelector('pre code');
     if (codeEle) {
-      hljs.highlightBlock(codeEle);
+      hljs.highlightElement(codeEle as HTMLElement);
     }
     this.innerHTML = this.sanitizer.bypassSecurityTrustHtml(div.innerHTML);
   }

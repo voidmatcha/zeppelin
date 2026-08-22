@@ -53,22 +53,13 @@ export class PieChartVisualizationComponent extends G2VisualizationComponentBase
   }
 
   renderBefore(_config: GraphConfig, chart: G2.Chart) {
-    chart.tooltip({
-      showTitle: false
-    });
-    chart.coord('theta', {
-      radius: 0.75
-    });
     chart
-      .intervalStack()
-      .position('__value__')
-      .color('__key__')
-      .style({
-        lineWidth: 1,
-        stroke: '#fff'
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .tooltip('__key__*__value__', (name: any, value: any) => ({ name, value }));
+      .interval()
+      .encode({ y: '__value__', color: '__key__' })
+      .coordinate({ type: 'theta', outerRadius: 0.75 })
+      .transform({ type: 'stackY' })
+      .style({ lineWidth: 1, stroke: '#fff' })
+      .tooltip({ items: [{ channel: 'color' }, { channel: 'y' }] });
   }
 
   ngAfterViewInit() {

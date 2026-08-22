@@ -37,7 +37,7 @@ export abstract class G2VisualizationComponentBase implements OnDestroy {
     this.config = this.visualization.getConfig();
     this.refreshSetting(this.config);
     const chart = this.initChart(this.config);
-    chart.source(this.visualization.transformed);
+    chart.data(this.visualization.transformed?.rows || []);
     this.renderBefore(this.config, chart);
     chart.render();
     this.renderAfter(this.config);
@@ -61,7 +61,7 @@ export abstract class G2VisualizationComponentBase implements OnDestroy {
       throw new Error(`Can't find the chart, Please make sure on correct assignment.`);
     }
     this.config = this.visualization.getConfig();
-    this.chart.changeHeight(this.config.height || 400);
+    this.chart.changeSize(this.container.nativeElement.clientWidth || 1, this.config.height || 400);
     setTimeout(() => {
       if (!this.chart) {
         throw new Error('Can not refresh the chart, Please make sure on correct assignment.');
@@ -77,20 +77,14 @@ export abstract class G2VisualizationComponentBase implements OnDestroy {
     } else {
       if (this.container && this.container.nativeElement) {
         this.chart = new G2.Chart({
-          forceFit: true,
+          autoFit: true,
           container: this.container.nativeElement,
           height: config.height || 400,
-          padding: {
-            top: 80,
-            left: 50,
-            right: 50,
-            bottom: 50
-          }
+          padding: 50,
+          paddingTop: 80,
+          theme: 'zeppelin'
         });
-        this.chart.legend({
-          position: 'top-right'
-          // eslint-disable-next-line
-        } as any);
+        this.chart.legend({ color: { position: 'top-right' } });
       } else {
         throw new Error(`Can't find the container, Please make sure on correct assignment.`);
       }

@@ -60,7 +60,6 @@
       const origin = window.location.origin;
       const pathname = window.location.pathname;
       config.root = window.location.origin + (
-        // remove trailing slash
         pathname.charAt(pathname.length - 1) === '/' ?
           pathname.slice(0, -1) :
           pathname

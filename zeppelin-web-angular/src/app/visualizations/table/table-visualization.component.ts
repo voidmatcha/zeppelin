@@ -14,7 +14,7 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Inject, OnInit, 
 
 import { filter, maxBy, minBy, orderBy, sumBy } from 'lodash';
 import { NzTableComponent, NzTableSortOrder } from 'ng-zorro-antd/table';
-import { utils, writeFile, WorkSheet } from 'xlsx';
+import { utils, writeFile, WorkSheet } from 'xlsx-js-style';
 
 import { TableData, Visualization, VISUALIZATION } from '@zeppelin/visualization';
 

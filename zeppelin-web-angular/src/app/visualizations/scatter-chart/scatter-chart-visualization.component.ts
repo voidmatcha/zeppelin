@@ -57,33 +57,23 @@ export class ScatterChartVisualizationComponent extends G2VisualizationComponent
   setScale(chart: G2.Chart) {
     const key = this.getKey();
     const tickCount = calcTickCount(this.container.nativeElement);
-    chart.scale(key, {
-      tickCount,
-      type: 'cat'
-    });
+    chart.scale({ [key]: { tickCount, type: 'point' } });
   }
 
   renderBefore(config: GraphConfig, chart: G2.Chart) {
     const key = this.getKey();
     const size = get(config.setting, 'scatterChart.size.name');
     this.setScale(chart);
-    chart.tooltip({
-      crosshairs: {
-        type: 'cross'
-      }
-    });
-    chart.legend('__value__', false);
+    const tooltip = { crosshairs: { type: 'cross' } };
     // point
     const geom = chart
       .point()
-      .position(`${key}*__value__`)
-      .color('__key__')
-      // .adjust('jitter')
-      .opacity(0.65)
-      .shape('circle');
+      .encode({ x: key, y: '__value__', color: '__key__', shape: 'circle' })
+      .style({ fillOpacity: 0.65 })
+      .tooltip(tooltip);
 
     if (size) {
-      geom.size('__value__');
+      geom.encode({ size: '__value__' });
     }
   }
 

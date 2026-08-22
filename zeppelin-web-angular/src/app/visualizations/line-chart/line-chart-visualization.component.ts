@@ -89,10 +89,7 @@ export class LineChartVisualizationComponent extends G2VisualizationComponentBas
   setScale(chart: G2.Chart) {
     const key = this.getKey();
     const tickCount = calcTickCount(this.container.nativeElement);
-    chart.scale(key, {
-      tickCount,
-      type: 'cat'
-    });
+    chart.scale({ [key]: { tickCount, type: 'point' } });
   }
 
   renderBefore(config: GraphConfig, chart: G2.Chart) {
@@ -102,7 +99,7 @@ export class LineChartVisualizationComponent extends G2VisualizationComponentBas
     }
     const setting = config.setting.lineChart;
     this.setScale(chart);
-    chart.line().position(`${key}*__value__`).color('__key__');
+    chart.line().encode({ x: key, y: '__value__', color: '__key__' });
     setChartXAxis(this.visualization, 'lineChart', chart, key);
 
     if (setting.isDateFormat) {
@@ -141,12 +138,8 @@ export class LineChartVisualizationComponent extends G2VisualizationComponentBas
       config.setting.lineChart = new VisualizationLineChart();
     }
     const setting = config.setting.lineChart;
-    if (setting.lineWithFocus) {
-      // eslint-disable-next-line
-      (this.chart as any).interact('brush');
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.chart as any).clearInteraction();
+    if (this.chart) {
+      this.chart.interaction({ brushXHighlight: setting.lineWithFocus });
     }
   }
 

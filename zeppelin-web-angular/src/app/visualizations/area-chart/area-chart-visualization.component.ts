@@ -85,10 +85,7 @@ export class AreaChartVisualizationComponent extends G2VisualizationComponentBas
   setScale(chart: G2.Chart) {
     const key = this.getKey();
     const tickCount = calcTickCount(this.container.nativeElement);
-    chart.scale(key, {
-      tickCount,
-      type: 'cat'
-    });
+    chart.scale({ [key]: { tickCount, type: 'point' } });
   }
 
   renderBefore(_config: GraphConfig, chart: G2.Chart) {
@@ -96,13 +93,19 @@ export class AreaChartVisualizationComponent extends G2VisualizationComponentBas
     this.setScale(chart);
     if (this.style === 'stack') {
       // area:stack
-      chart.areaStack().position(`${key}*__value__`).color('__key__');
+      chart.area().encode({ x: key, y: '__value__', color: '__key__' }).transform({ type: 'stackY' });
     } else if (this.style === 'stream') {
       // area:stream
-      chart.area().position(`${key}*__value__`).adjust(['stack', 'symmetric']).color('__key__');
+      chart
+        .area()
+        .encode({ x: key, y: '__value__', color: '__key__' })
+        .transform([{ type: 'stackY' }, { type: 'symmetryY' }]);
     } else {
       // area:percent
-      chart.areaStack().position(`${key}*__percent__`).color('__key__');
+      chart
+        .area()
+        .encode({ x: key, y: '__percent__', color: '__key__' })
+        .transform([{ type: 'stackY' }, { type: 'normalizeY' }]);
     }
 
     setChartXAxis(this.visualization, 'stackedAreaChart', chart, key);
