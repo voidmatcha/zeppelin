@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { expect, Page, test } from '@playwright/test';
+import { expect, Locator, Page, test } from '@playwright/test';
 import { NotebookKeyboardPage } from 'e2e/models/notebook-keyboard-page';
 import { addPageAnnotationBeforeEach, performLoginIfRequired, waitForZeppelinReady, PAGES } from '../../utils';
 
@@ -45,18 +45,28 @@ const openInlineCompletionEditor = async (page: Page) => {
     .poll(async () => (await viewLines.last().textContent())?.replace(/\s+/g, ' ') ?? '', { timeout: 15000 })
     .toContain('print("history")');
 
-  return { noteId, inputArea: page.locator('.monaco-editor textarea.inputarea').first() };
+  return { noteId, viewLines, inputArea: page.locator('.monaco-editor textarea.inputarea').first() };
+};
+
+// The Escape command in code-editor.component.ts is bound behind
+// `!suggestWidgetVisible && !inlineSuggestionVisible`, so it only blurs once the
+// suggestion is gone. Pressing again before that lets Monaco consume the key too.
+const expectSuggestionDismissed = async (viewLines: Locator) => {
+  await expect
+    .poll(async () => (await viewLines.last().textContent())?.replace(/\s+/g, ' ') ?? '', { timeout: 15000 })
+    .not.toContain('print("history")');
 };
 
 test.describe('Inline completion', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_PARAGRAPH_CODE_EDITOR);
 
   test('shows history completion and preserves focus when dismissed', async ({ page }) => {
-    const { noteId, inputArea } = await openInlineCompletionEditor(page);
+    const { noteId, viewLines, inputArea } = await openInlineCompletionEditor(page);
 
     try {
       await expect(inputArea).toBeFocused();
       await page.keyboard.press('Escape');
+      await expectSuggestionDismissed(viewLines);
       await expect(inputArea).toBeFocused();
     } finally {
       await page.request.delete(`/api/notebook/${noteId}`);
@@ -65,11 +75,12 @@ test.describe('Inline completion', () => {
 
   test('blurs the editor on the second Escape after dismissing completion', async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'Monaco handles the second Escape differently in Firefox and WebKit');
-    const { noteId, inputArea } = await openInlineCompletionEditor(page);
+    const { noteId, viewLines, inputArea } = await openInlineCompletionEditor(page);
 
     try {
       await expect(inputArea).toBeFocused();
       await page.keyboard.press('Escape');
+      await expectSuggestionDismissed(viewLines);
       await expect(inputArea).toBeFocused();
       await page.keyboard.press('Escape');
       await expect(inputArea).not.toBeFocused();
