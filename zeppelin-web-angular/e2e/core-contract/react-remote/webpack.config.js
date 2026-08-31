@@ -56,7 +56,8 @@ module.exports = {
   plugins: [
     new ModuleFederationPlugin({
       exposes: {
-        './NotebookCorePortProbe': './NotebookCorePortProbe'
+        './NotebookCorePortProbe': './NotebookCorePortProbe',
+        './NotebookRouteBoundaryProbe': './NotebookCorePortProbe'
       },
       filename: 'remoteEntry.js',
       name: 'reactApp'
