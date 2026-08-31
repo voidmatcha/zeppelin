@@ -326,9 +326,14 @@
         }
       ],
       "coverage": {
-        "status": "gap",
-        "tests": [],
-        "issues": ["ZEPPELIN-6661"]
+        "status": "covered",
+        "tests": [
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/persistence/notebook-save-timing.spec.ts",
+            "title": "[NB-PARITY-050] persists the latest paragraph text after typing stops"
+          }
+        ],
+        "issues": []
       }
     },
     {
@@ -362,9 +367,14 @@
         }
       ],
       "coverage": {
-        "status": "gap",
-        "tests": [],
-        "issues": ["ZEPPELIN-6661"]
+        "status": "covered",
+        "tests": [
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/persistence/notebook-save-timing.spec.ts",
+            "title": "[NB-PARITY-051] keeps an edit made while an earlier save is still pending"
+          }
+        ],
+        "issues": []
       }
     },
     {
