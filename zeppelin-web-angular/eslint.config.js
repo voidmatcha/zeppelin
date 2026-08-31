@@ -152,7 +152,11 @@ module.exports = tseslint.config(
   },
   {
     // Library projects publish under the `lib` selector prefix, not `zeppelin`.
-    files: ['projects/zeppelin-sdk/**/*.ts', 'projects/zeppelin-visualization/**/*.ts'],
+    files: [
+      'projects/zeppelin-notebook-core/**/*.ts',
+      'projects/zeppelin-sdk/**/*.ts',
+      'projects/zeppelin-visualization/**/*.ts'
+    ],
     rules: {
       '@angular-eslint/component-selector': ['error', { type: 'element', prefix: 'lib', style: 'kebab-case' }],
       '@angular-eslint/directive-selector': ['error', { type: 'attribute', prefix: 'lib', style: 'camelCase' }]
@@ -163,8 +167,9 @@ module.exports = tseslint.config(
     // *.spec.ts. Point type-aware linting at the spec program explicitly.
     files: [
       'src/**/*.spec.ts',
-      'projects/zeppelin-{sdk,visualization}/**/*.spec.ts',
+      'projects/zeppelin-{notebook-core,sdk,visualization}/**/*.spec.ts',
       'test/test-setup.ts',
+      'vitest.notebook-core.config.mts',
       'vitest.shell.config.mts'
     ],
     languageOptions: {
@@ -176,7 +181,7 @@ module.exports = tseslint.config(
   },
   {
     // Catch specs that cannot fail, as eslint-plugin-playwright does for e2e.
-    files: ['src/**/*.spec.ts', 'projects/zeppelin-{sdk,visualization}/**/*.spec.ts'],
+    files: ['src/**/*.spec.ts', 'projects/zeppelin-{notebook-core,sdk,visualization}/**/*.spec.ts'],
     plugins: { vitest },
     rules: {
       'vitest/expect-expect': 'error',
