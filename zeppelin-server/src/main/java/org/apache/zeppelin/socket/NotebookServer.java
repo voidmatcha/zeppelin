@@ -494,7 +494,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
               + "success=false, errorType={}",
           operation, principal, e.getClass().getSimpleName());
       try {
-        conn.send(serializeMessage(new Message(OP.ERROR_INFO).put("info", e.getMessage())));
+        conn.send(serializeMessage(new Message(OP.ERROR_INFO)
+            .withMsgId(receivedMessage == null ? null : receivedMessage.msgId)
+            .put("info", e.getMessage())));
       } catch (IOException iox) {
         LOGGER.error("Fail to send error info", iox);
       }
@@ -624,7 +626,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           if (!authorizationService.isReader(noteId, context.getUserAndRoles())) {
             permissionError(conn, "get interpreter bindings from",
                 context.getAutheInfo().getUser(), context.getUserAndRoles(),
-                authorizationService.getReaders(noteId));
+                authorizationService.getReaders(noteId), fromMessage.msgId);
             return null;
           }
           List<InterpreterSetting> bindedSettings =
@@ -634,7 +636,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
                 setting.getInterpreterInfos(), true));
           }
         }
-        conn.send(serializeMessage(new Message(OP.INTERPRETER_BINDINGS).put("interpreterBindings", settingList)));
+        conn.send(serializeMessage(new Message(OP.INTERPRETER_BINDINGS)
+            .withMsgId(fromMessage.msgId)
+            .put("interpreterBindings", settingList)));
         return null;
       });
   }
@@ -650,7 +654,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           if (!authorizationService.isWriter(noteId, context.getUserAndRoles())) {
             permissionError(conn, "save interpreter bindings for",
                 context.getAutheInfo().getUser(), context.getUserAndRoles(),
-                authorizationService.getWriters(noteId));
+                authorizationService.getWriters(noteId), fromMessage.msgId);
             return false;
           }
           List<String> settingIdList =
@@ -672,7 +676,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
       });
     if (permitted) {
       conn.send(serializeMessage(
-          new Message(OP.INTERPRETER_BINDINGS).put("interpreterBindings", settingList)));
+          new Message(OP.INTERPRETER_BINDINGS)
+              .withMsgId(fromMessage.msgId)
+              .put("interpreterBindings", settingList)));
     }
   }
 
@@ -763,10 +769,17 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
   void permissionError(NotebookSocket conn, String op, String userName, Set<String> userAndRoles,
                        Set<String> allowed) throws IOException {
+    permissionError(conn, op, userName, userAndRoles, allowed, null);
+  }
+
+  void permissionError(NotebookSocket conn, String op, String userName, Set<String> userAndRoles,
+                       Set<String> allowed, String msgId) throws IOException {
     LOGGER.info("Cannot {}. Connection readers {}. Allowed readers {}", op, userAndRoles, allowed);
 
-    conn.send(serializeMessage(new Message(OP.AUTH_INFO).put("info",
-        "Insufficient privileges to " + op
+    conn.send(serializeMessage(new Message(OP.AUTH_INFO)
+        .withMsgId(msgId)
+        .put("info",
+            "Insufficient privileges to " + op
             + " note.\n\n" + "Allowed users or roles: "
             + allowed
             .toString() + "\n\n" + "But the user "
@@ -1612,7 +1625,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String commitMessage = (String) fromMessage.get("commitMessage");
 
     getNotebookService().checkpointNote(noteId, commitMessage, context,
-        new WebSocketServiceCallback<Revision>(conn) {
+        new WebSocketServiceCallback<Revision>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Revision revision, ServiceContext context) throws IOException {
             super.onSuccess(revision, context);
@@ -1620,11 +1633,15 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
               List<Revision> revisions = getNotebook().processNote(noteId,
                 note -> getNotebook().listRevisionHistory(noteId, note.getPath(), context.getAutheInfo()));
-              conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY).put("revisionList", revisions)));
+              conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY)
+                  .withMsgId(fromMessage.msgId)
+                  .put("revisionList", revisions)));
             } else {
               conn.send(serializeMessage(
-                  new Message(OP.ERROR_INFO).put("info",
-                      "Couldn't checkpoint note revision: possibly no changes found or storage doesn't support versioning. "
+                  new Message(OP.ERROR_INFO)
+                      .withMsgId(fromMessage.msgId)
+                      .put("info",
+                          "Couldn't checkpoint note revision: possibly no changes found or storage doesn't support versioning. "
                           + "Please check the logs for more details.")));
             }
           }
@@ -1636,11 +1653,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
                                    Message fromMessage) throws IOException {
     String noteId = (String) fromMessage.get("noteId");
     getNotebookService().listRevisionHistory(noteId, context,
-        new WebSocketServiceCallback<List<Revision>>(conn) {
+        new WebSocketServiceCallback<List<Revision>>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(List<Revision> revisions, ServiceContext context) throws IOException {
             super.onSuccess(revisions, context);
-            conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY).put("revisionList", revisions)));
+            conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY)
+                .withMsgId(fromMessage.msgId)
+                .put("revisionList", revisions)));
           }
         });
   }
@@ -1651,12 +1670,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String noteId = (String) fromMessage.get("noteId");
     String revisionId = (String) fromMessage.get("revisionId");
     getNotebookService().setNoteRevision(noteId, revisionId, context,
-        new WebSocketServiceCallback<Note>(conn) {
+        new WebSocketServiceCallback<Note>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
             Note reloadedNote = getNotebook().loadNoteFromRepo(noteId, context.getAutheInfo());
-            conn.send(serializeMessage(new Message(OP.SET_NOTE_REVISION).put("status", true)));
+            conn.send(serializeMessage(new Message(OP.SET_NOTE_REVISION)
+                .withMsgId(fromMessage.msgId)
+                .put("status", true)));
             broadcastNote(reloadedNote);
           }
         });
@@ -1669,12 +1690,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String noteId = (String) fromMessage.get("noteId");
     String revisionId = (String) fromMessage.get("revisionId");
     getNotebookService().getNotebyRevision(noteId, revisionId, context,
-        new WebSocketServiceCallback<Note>(conn) {
+        new WebSocketServiceCallback<Note>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
             conn.send(serializeMessage(
                 new Message(OP.NOTE_REVISION)
+                    .withMsgId(fromMessage.msgId)
                     .put("noteId", noteId)
                     .put("revisionId", revisionId)
                     .put("note", note)));
@@ -2333,9 +2355,15 @@ public class NotebookServer implements AngularObjectRegistryListener,
   public class WebSocketServiceCallback<T> extends SimpleServiceCallback<T> {
 
     private final NotebookSocket conn;
+    private final String requestMsgId;
 
     WebSocketServiceCallback(NotebookSocket conn) {
+      this(conn, null);
+    }
+
+    WebSocketServiceCallback(NotebookSocket conn, String requestMsgId) {
       this.conn = conn;
+      this.requestMsgId = requestMsgId;
     }
 
     @Override
@@ -2347,13 +2375,16 @@ public class NotebookServer implements AngularObjectRegistryListener,
         Map<String, String> jsonObject =
             gson.fromJson(((ForbiddenException) ex).getResponse().getEntity().toString(), type);
         conn.send(serializeMessage(new Message(OP.AUTH_INFO)
+            .withMsgId(requestMsgId)
             .put("info", jsonObject.get("message"))));
       } else {
         String message = ex.getMessage();
         if (ex.getCause() != null) {
           message += ", cause: " + ex.getCause().getMessage();
         }
-        conn.send(serializeMessage(new Message(OP.ERROR_INFO).put("info", message)));
+        conn.send(serializeMessage(new Message(OP.ERROR_INFO)
+            .withMsgId(requestMsgId)
+            .put("info", message)));
       }
     }
   }

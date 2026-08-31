@@ -27,6 +27,7 @@ import {
   ParagraphConfig,
   ParagraphParams,
   PersonalizedMode,
+  SendReceipt,
   SendArgumentsType,
   SendNote,
   SendParagraph,
@@ -41,6 +42,12 @@ import { TicketService } from './ticket.service';
 })
 export class MessageService extends Message implements OnDestroy {
   private readonly localAddFocusMsgIds = new Set<string>();
+  private readonly notebookScopedReplyRequests = new Map<
+    string,
+    { op: OP; noteId: string; revisionId?: string; routeGeneration: number }
+  >();
+  private activeNotebookRouteKey?: string;
+  private notebookRouteGeneration = 0;
 
   constructor(
     private baseUrlService: BaseUrlService,
@@ -78,12 +85,102 @@ export class MessageService extends Message implements OnDestroy {
     return super.received();
   }
 
-  send<K extends keyof MessageSendDataTypeMap>(...args: SendArgumentsType<K>): void {
-    super.send<K>(...args);
+  send<K extends keyof MessageSendDataTypeMap>(...args: SendArgumentsType<K>): SendReceipt<K> {
+    return super.send<K>(...args);
   }
 
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
     return super.receive<K>(op);
+  }
+
+  receiveEnvelope<K extends keyof MessageReceiveDataTypeMap>(
+    op: K
+  ): Observable<WebSocketMessage<MessageReceiveDataTypeMap, K>> {
+    return super.receiveEnvelope<K>(op);
+  }
+
+  isCurrentNotebookReply(
+    envelope: WebSocketMessage<MessageReceiveDataTypeMap>,
+    expectedOp: OP,
+    activeNoteId: string | undefined,
+    activeRevisionId?: string
+  ): boolean {
+    if (!envelope.msgId || !activeNoteId) {
+      return false;
+    }
+    const pending = this.notebookScopedReplyRequests.get(envelope.msgId);
+    if (!pending) {
+      return false;
+    }
+    if (
+      pending.op !== expectedOp ||
+      pending.noteId !== activeNoteId ||
+      (pending.revisionId !== undefined && pending.revisionId !== activeRevisionId) ||
+      pending.routeGeneration !== this.notebookRouteGeneration
+    ) {
+      return false;
+    }
+    if (expectedOp === OP.NOTE_REVISION) {
+      const data = envelope.data as MessageReceiveDataTypeMap[OP.NOTE_REVISION] | undefined;
+      if (!data || data.noteId !== pending.noteId || data.revisionId !== pending.revisionId) {
+        return false;
+      }
+    }
+    this.notebookScopedReplyRequests.delete(envelope.msgId);
+    return true;
+  }
+
+  settleNotebookScopedFailure(
+    envelope: WebSocketMessage<MessageReceiveDataTypeMap>,
+    activeNoteId: string | undefined,
+    activeRevisionId?: string
+  ): boolean {
+    if (!envelope.msgId || !activeNoteId) {
+      return false;
+    }
+    const pending = this.notebookScopedReplyRequests.get(envelope.msgId);
+    if (
+      !pending ||
+      pending.noteId !== activeNoteId ||
+      (pending.revisionId !== undefined && pending.revisionId !== activeRevisionId) ||
+      pending.routeGeneration !== this.notebookRouteGeneration
+    ) {
+      return false;
+    }
+    this.notebookScopedReplyRequests.delete(envelope.msgId);
+    return true;
+  }
+
+  private rememberNotebookScopedReply(
+    op: OP,
+    noteId: string,
+    message: SendReceipt | undefined,
+    revisionId?: string
+  ): void {
+    if (message?.msgId) {
+      this.notebookScopedReplyRequests.set(message.msgId, {
+        op,
+        noteId,
+        revisionId,
+        routeGeneration: this.notebookRouteGeneration
+      });
+    }
+  }
+
+  activateNotebookRoute(noteId: string, revisionId?: string): void {
+    const routeKey = JSON.stringify([noteId, revisionId ?? null]);
+    if (this.activeNotebookRouteKey === routeKey) {
+      return;
+    }
+    this.activeNotebookRouteKey = routeKey;
+    this.notebookRouteGeneration += 1;
+    this.notebookScopedReplyRequests.clear();
+  }
+
+  deactivateNotebookRoute(): void {
+    this.activeNotebookRouteKey = undefined;
+    this.notebookRouteGeneration += 1;
+    this.notebookScopedReplyRequests.clear();
   }
 
   consumeLocalAddFocusMsgId(msgId: string | undefined): boolean {
@@ -316,20 +413,28 @@ export class MessageService extends Message implements OnDestroy {
     super.importNote(note);
   }
 
-  checkpointNote(noteId: string, commitMessage: string): void {
-    super.checkpointNote(noteId, commitMessage);
+  checkpointNote(noteId: string, commitMessage: string): SendReceipt<OP.CHECKPOINT_NOTE> {
+    const message = super.checkpointNote(noteId, commitMessage);
+    this.rememberNotebookScopedReply(OP.LIST_REVISION_HISTORY, noteId, message);
+    return message;
   }
 
-  setNoteRevision(noteId: string, revisionId: string): void {
-    super.setNoteRevision(noteId, revisionId);
+  setNoteRevision(noteId: string, revisionId: string): SendReceipt<OP.SET_NOTE_REVISION> {
+    const message = super.setNoteRevision(noteId, revisionId);
+    this.rememberNotebookScopedReply(OP.SET_NOTE_REVISION, noteId, message);
+    return message;
   }
 
-  listRevisionHistory(noteId: string): void {
-    super.listRevisionHistory(noteId);
+  listRevisionHistory(noteId: string): SendReceipt<OP.LIST_REVISION_HISTORY> {
+    const message = super.listRevisionHistory(noteId);
+    this.rememberNotebookScopedReply(OP.LIST_REVISION_HISTORY, noteId, message);
+    return message;
   }
 
-  noteRevision(noteId: string, revisionId: string): void {
-    super.noteRevision(noteId, revisionId);
+  noteRevision(noteId: string, revisionId: string): SendReceipt<OP.NOTE_REVISION> {
+    const message = super.noteRevision(noteId, revisionId);
+    this.rememberNotebookScopedReply(OP.NOTE_REVISION, noteId, message, revisionId);
+    return message;
   }
 
   noteRevisionForCompare(noteId: string, revisionId: string, position: string): void {
@@ -348,12 +453,16 @@ export class MessageService extends Message implements OnDestroy {
     super.unsubscribeUpdateNoteJobs();
   }
 
-  getInterpreterBindings(noteId: string): void {
-    super.getInterpreterBindings(noteId);
+  getInterpreterBindings(noteId: string): SendReceipt<OP.GET_INTERPRETER_BINDINGS> {
+    const message = super.getInterpreterBindings(noteId);
+    this.rememberNotebookScopedReply(OP.INTERPRETER_BINDINGS, noteId, message);
+    return message;
   }
 
-  saveInterpreterBindings(noteId: string, selectedSettingIds: string[]): void {
-    super.saveInterpreterBindings(noteId, selectedSettingIds);
+  saveInterpreterBindings(noteId: string, selectedSettingIds: string[]): SendReceipt<OP.SAVE_INTERPRETER_BINDINGS> {
+    const message = super.saveInterpreterBindings(noteId, selectedSettingIds);
+    this.rememberNotebookScopedReply(OP.INTERPRETER_BINDINGS, noteId, message);
+    return message;
   }
 
   listConfigurations(): void {

@@ -37,6 +37,13 @@ const DATA_TYPE_MAP_SOURCE = path.join(
 );
 const OPERATION_NAME = /^[A-Z][A-Z0-9_]*$/;
 const FRONTEND_ONLY_TAG = 'frontendOnly';
+const NOTEBOOK_SCOPED_REPLY_PAIRS = [
+  ['GET_INTERPRETER_BINDINGS', 'INTERPRETER_BINDINGS'],
+  ['SAVE_INTERPRETER_BINDINGS', 'INTERPRETER_BINDINGS'],
+  ['CHECKPOINT_NOTE', 'LIST_REVISION_HISTORY'],
+  ['LIST_REVISION_HISTORY', 'LIST_REVISION_HISTORY'],
+  ['SET_NOTE_REVISION', 'SET_NOTE_REVISION']
+];
 
 function fail(message) {
   throw new Error(`Websocket contract check failed: ${message}`);
@@ -271,6 +278,15 @@ function validateContract(javaOperations, typeScriptOperations, sendOperations, 
       fail(`Frontend-only operation ${operation} must be in MessageReceiveDataTypeMap`);
     }
   }
+
+  for (const [requestOperation, responseOperation] of NOTEBOOK_SCOPED_REPLY_PAIRS) {
+    if (!sendOperations.has(requestOperation)) {
+      fail(`Notebook-scoped request operation ${requestOperation} must be in MessageSendDataTypeMap`);
+    }
+    if (!receiveOperations.has(responseOperation)) {
+      fail(`Notebook-scoped response operation ${responseOperation} must be in MessageReceiveDataTypeMap`);
+    }
+  }
 }
 
 function main() {
@@ -298,6 +314,7 @@ module.exports = {
   parseDataTypeMapOperations,
   parseJavaOperations,
   parseTypeScriptOperations,
+  NOTEBOOK_SCOPED_REPLY_PAIRS,
   validateContract
 };
 

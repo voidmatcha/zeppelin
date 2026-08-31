@@ -23,6 +23,7 @@ const {
   parseDataTypeMapOperations,
   parseJavaOperations,
   parseTypeScriptOperations,
+  NOTEBOOK_SCOPED_REPLY_PAIRS,
   validateContract
 } = require('./check-websocket-contract');
 
@@ -90,18 +91,38 @@ test('requires valid TypeScript wire values and frontend-only explanations', () 
 });
 
 test('compares Java and TypeScript operation sets without requiring the same order', () => {
-  const javaOperations = new Set(['FIRST', 'SECOND']);
+  const notebookScopedOperations = [...new Set(NOTEBOOK_SCOPED_REPLY_PAIRS.flat())];
+  const javaOperations = new Set(['FIRST', 'SECOND', ...notebookScopedOperations]);
   const typeScriptOperations = parseTypeScriptOperations(`
     export enum OP {
       SECOND = 'SECOND',
       FIRST = 'FIRST',
+      GET_INTERPRETER_BINDINGS = 'GET_INTERPRETER_BINDINGS',
+      INTERPRETER_BINDINGS = 'INTERPRETER_BINDINGS',
+      SAVE_INTERPRETER_BINDINGS = 'SAVE_INTERPRETER_BINDINGS',
+      CHECKPOINT_NOTE = 'CHECKPOINT_NOTE',
+      LIST_REVISION_HISTORY = 'LIST_REVISION_HISTORY',
+      SET_NOTE_REVISION = 'SET_NOTE_REVISION',
       /** @frontendOnly Emitted locally without using the websocket. */
       LOCAL = 'LOCAL'
     }
   `);
   const dataTypeMaps = `
-    interface MessageSendDataTypeMap { [OP.FIRST]: undefined; }
-    interface MessageReceiveDataTypeMap { [OP.SECOND]: undefined; [OP.LOCAL]: undefined; }
+    interface MessageSendDataTypeMap {
+      [OP.FIRST]: undefined;
+      [OP.GET_INTERPRETER_BINDINGS]: undefined;
+      [OP.SAVE_INTERPRETER_BINDINGS]: undefined;
+      [OP.CHECKPOINT_NOTE]: undefined;
+      [OP.LIST_REVISION_HISTORY]: undefined;
+      [OP.SET_NOTE_REVISION]: undefined;
+    }
+    interface MessageReceiveDataTypeMap {
+      [OP.SECOND]: undefined;
+      [OP.LOCAL]: undefined;
+      [OP.INTERPRETER_BINDINGS]: undefined;
+      [OP.LIST_REVISION_HISTORY]: undefined;
+      [OP.SET_NOTE_REVISION]: undefined;
+    }
   `;
   const sendOperations = parseDataTypeMapOperations(dataTypeMaps, 'MessageSendDataTypeMap');
   const receiveOperations = parseDataTypeMapOperations(dataTypeMaps, 'MessageReceiveDataTypeMap');
@@ -110,11 +131,17 @@ test('compares Java and TypeScript operation sets without requiring the same ord
 });
 
 test('reports operation drift and rejects frontend-only send operations', () => {
-  const javaOperations = new Set(['FIRST', 'MISSING']);
+  const javaOperations = new Set(['FIRST', 'MISSING', ...new Set(NOTEBOOK_SCOPED_REPLY_PAIRS.flat())]);
   const typeScriptOperations = parseTypeScriptOperations(`
     export enum OP {
       FIRST = 'FIRST',
       EXTRA = 'EXTRA',
+      GET_INTERPRETER_BINDINGS = 'GET_INTERPRETER_BINDINGS',
+      INTERPRETER_BINDINGS = 'INTERPRETER_BINDINGS',
+      SAVE_INTERPRETER_BINDINGS = 'SAVE_INTERPRETER_BINDINGS',
+      CHECKPOINT_NOTE = 'CHECKPOINT_NOTE',
+      LIST_REVISION_HISTORY = 'LIST_REVISION_HISTORY',
+      SET_NOTE_REVISION = 'SET_NOTE_REVISION',
       /** @frontendOnly Emitted locally without using the websocket. */
       LOCAL = 'LOCAL'
     }
@@ -129,12 +156,36 @@ test('reports operation drift and rejects frontend-only send operations', () => 
     export enum OP {
       FIRST = 'FIRST',
       MISSING = 'MISSING',
+      GET_INTERPRETER_BINDINGS = 'GET_INTERPRETER_BINDINGS',
+      INTERPRETER_BINDINGS = 'INTERPRETER_BINDINGS',
+      SAVE_INTERPRETER_BINDINGS = 'SAVE_INTERPRETER_BINDINGS',
+      CHECKPOINT_NOTE = 'CHECKPOINT_NOTE',
+      LIST_REVISION_HISTORY = 'LIST_REVISION_HISTORY',
+      SET_NOTE_REVISION = 'SET_NOTE_REVISION',
       /** @frontendOnly Emitted locally without using the websocket. */
       LOCAL = 'LOCAL'
     }
   `);
+  const requiredSendOperations = new Set([
+    'LOCAL',
+    ...NOTEBOOK_SCOPED_REPLY_PAIRS.map(([requestOperation]) => requestOperation)
+  ]);
+  const requiredReceiveOperations = new Set([
+    'LOCAL',
+    ...NOTEBOOK_SCOPED_REPLY_PAIRS.map(([, responseOperation]) => responseOperation)
+  ]);
   assert.throws(
-    () => validateContract(javaOperations, matchingTypeScriptOperations, new Set(['LOCAL']), new Set(['LOCAL'])),
+    () => validateContract(javaOperations, matchingTypeScriptOperations, requiredSendOperations, requiredReceiveOperations),
     /Frontend-only operation LOCAL cannot be in MessageSendDataTypeMap/
   );
+});
+
+test('keeps notebook-scoped reply correlation operations inventoried', () => {
+  assert.deepEqual(NOTEBOOK_SCOPED_REPLY_PAIRS, [
+    ['GET_INTERPRETER_BINDINGS', 'INTERPRETER_BINDINGS'],
+    ['SAVE_INTERPRETER_BINDINGS', 'INTERPRETER_BINDINGS'],
+    ['CHECKPOINT_NOTE', 'LIST_REVISION_HISTORY'],
+    ['LIST_REVISION_HISTORY', 'LIST_REVISION_HISTORY'],
+    ['SET_NOTE_REVISION', 'SET_NOTE_REVISION']
+  ]);
 });

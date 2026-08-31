@@ -11,9 +11,17 @@
  */
 
 // vite is pinned in package.json: the React remote keeps its own lockfile and drifted to a different minor.
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@zeppelin/sdk': fileURLToPath(new URL('./projects/zeppelin-sdk/src/public-api.ts', import.meta.url)),
+      '@zeppelin': fileURLToPath(new URL('./src/app', import.meta.url))
+    }
+  },
   // oxc does not apply the decorator options from tsconfig.base.json to specs,
   // which src/tsconfig.json excludes. Undeclared, a decorated spec fails to
   // parse with "Invalid or unexpected token".

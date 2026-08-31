@@ -116,7 +116,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  @MessageListener(OP.INTERPRETER_BINDINGS)
   loadInterpreterBindings(data: MessageReceiveDataTypeMap[OP.INTERPRETER_BINDINGS]) {
     this.interpreterBindings = data.interpreterBindings;
     if (!this.interpreterBindings.some(item => item.selected)) {
@@ -185,7 +184,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.setNoteFormsStatus();
   }
 
-  @MessageListener(OP.NOTE_REVISION)
   getNoteRevision(data: MessageReceiveDataTypeMap[OP.NOTE_REVISION]) {
     const note = data.note;
     if (isNil(note)) {
@@ -197,7 +195,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  @MessageListener(OP.SET_NOTE_REVISION)
   setNoteRevision(_data: MessageReceiveDataTypeMap[OP.SET_NOTE_REVISION]) {
     const { noteId } = this.activatedRoute.snapshot.params;
     this.router.navigate(['/notebook', noteId]).then();
@@ -253,7 +250,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.cdr.markForCheck();
   }
 
-  @MessageListener(OP.LIST_REVISION_HISTORY)
   listRevisionHistory(data: MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY]) {
     this.noteRevisions = data.revisionList;
     if (this.noteRevisions) {
@@ -439,6 +435,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   ngOnInit() {
+    this.subscribeNotebookScopedReplies();
     this.activatedRoute.queryParamMap
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(params => {
@@ -480,8 +477,10 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
           throw new Error('Route parameter `noteId` is required.');
         }
         if (revisionId) {
+          this.messageService.activateNotebookRoute(noteId, revisionId);
           this.messageService.noteRevision(noteId, revisionId);
         } else {
+          this.messageService.activateNotebookRoute(noteId);
           this.messageService.getNote(noteId);
         }
         this.cdr.markForCheck();
@@ -509,9 +508,78 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     super.ngOnDestroy();
     this.killSaveTimer();
     this.saveNote();
+    this.messageService.deactivateNotebookRoute();
     this.destroy$.next();
     this.destroy$.complete();
     this.titleService.setTitle('Zeppelin');
+  }
+
+  private subscribeNotebookScopedReplies(): void {
+    this.messageService
+      .receiveEnvelope(OP.INTERPRETER_BINDINGS)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.INTERPRETER_BINDINGS)) {
+          this.loadInterpreterBindings(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.LIST_REVISION_HISTORY)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.LIST_REVISION_HISTORY)) {
+          this.listRevisionHistory(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.SET_NOTE_REVISION)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.SET_NOTE_REVISION)) {
+          this.setNoteRevision(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.NOTE_REVISION)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.NOTE_REVISION, message.data.revisionId)) {
+          this.getNoteRevision(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.AUTH_INFO)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        this.settleNotebookScopedFailure(message);
+      });
+    this.messageService
+      .receiveEnvelope(OP.ERROR_INFO)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        this.settleNotebookScopedFailure(message);
+      });
+  }
+
+  private isCurrentNotebookReply(
+    message: Parameters<MessageService['isCurrentNotebookReply']>[0],
+    op: OP,
+    revisionId?: string
+  ): boolean {
+    return this.messageService.isCurrentNotebookReply(
+      message,
+      op,
+      this.activatedRoute.snapshot.params.noteId,
+      revisionId
+    );
+  }
+
+  private settleNotebookScopedFailure(message: Parameters<MessageService['settleNotebookScopedFailure']>[0]): boolean {
+    return this.messageService.settleNotebookScopedFailure(
+      message,
+      this.activatedRoute.snapshot.params.noteId,
+      this.activatedRoute.snapshot.params.revisionId
+    );
   }
 
   // The term can arrive before the paragraphs exist: the query param subscription emits during
