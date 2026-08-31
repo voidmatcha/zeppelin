@@ -11,11 +11,25 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, NgModule } from '@angular/core';
+import { Component, Injectable, NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { ReactMountDirective } from '@zeppelin/share/react-mount';
+import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule, RouterStateSnapshot } from '@angular/router';
+import { TRASH_FOLDER_ID_TOKEN } from '@zeppelin/interfaces';
 import type { NotebookCorePort, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import { NotebookComponent } from '@zeppelin/pages/workspace/notebook/notebook.component';
+import {
+  NOTEBOOK_CHILD_ROUTE_PATHS,
+  NOTEBOOK_ROUTE_PATH
+} from '@zeppelin/pages/workspace/notebook/notebook-route-boundary';
+import { WorkspaceGuard } from '@zeppelin/pages/workspace/workspace.guard';
+import { MessageService, ReactFeatureService } from '@zeppelin/services';
+import { HeliumService } from '@zeppelin/services/helium.service';
+import { ThemeService } from '@zeppelin/services/theme.service';
+import { TicketService } from '@zeppelin/services/ticket.service';
+import { ShareModule } from '@zeppelin/share';
+import { NzMessageService } from 'ng-zorro-antd/message';
+import { BehaviorSubject, NEVER, filter } from 'rxjs';
 
 declare global {
   interface Window {
@@ -24,8 +38,87 @@ declare global {
       proofs: unknown[];
       receivedCore?: NotebookCorePort;
     };
+    __zeppelinNotebookRouteBoundaryProof?: {
+      activatedProductionNotebookComponents: boolean[];
+      hostCore: NotebookCorePort;
+      messageCalls: Array<{ method: string; noteId: string; revisionId?: string }>;
+      proofs: unknown[];
+      receivedCore?: NotebookCorePort;
+      receivedCores: NotebookCorePort[];
+      routePaths: string[];
+      workspaceGuardCalls: string[];
+    };
   }
 }
+
+@Component({
+  selector: 'zeppelin-notebook-core-port-proof-app',
+  standalone: false,
+  template: `
+    <router-outlet></router-outlet>
+    @if (notebookRouteActive) {
+      <button type="button" data-testid="navigate-notebook-note" [routerLink]="['/notebook', 'note-route-updated']">
+        navigate note
+      </button>
+      <button
+        type="button"
+        data-testid="navigate-notebook-revision"
+        [routerLink]="['/notebook', 'note-route-updated', 'revision', 'revision-from-route']"
+      >
+        navigate revision
+      </button>
+      <div [zeppelin-react-mount]="'./NotebookRouteBoundaryProbe'" [reactProps]="routeReactProps"></div>
+    }
+  `
+})
+export class NotebookCorePortProofAppComponent {
+  notebookRouteActive = false;
+  readonly routeReactProps: Readonly<{
+    core: NotebookCorePort;
+    expectedCore: NotebookCorePort;
+    onProof: (proof: unknown) => void;
+    onReceivedCore: (receivedCore: NotebookCorePort) => void;
+  }>;
+
+  constructor(router: Router, portHost: NotebookRouteBoundaryPortHost) {
+    this.routeReactProps = {
+      core: portHost.core,
+      expectedCore: portHost.core,
+      onProof: proof => window.__zeppelinNotebookRouteBoundaryProof?.proofs.push(proof),
+      onReceivedCore: receivedCore => {
+        const state = window.__zeppelinNotebookRouteBoundaryProof;
+        if (state) {
+          state.receivedCore = receivedCore;
+          state.receivedCores.push(receivedCore);
+        }
+      }
+    };
+    router.events.pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd)).subscribe(() => {
+      const notebookRoute = findActivatedNotebookRoute(router.routerState.snapshot.root);
+      this.notebookRouteActive = notebookRoute !== undefined;
+      if (notebookRoute) {
+        window.__zeppelinNotebookRouteBoundaryProof?.activatedProductionNotebookComponents.push(
+          notebookRoute.component === NotebookComponent
+        );
+        portHost.publish({
+          noteId: notebookRoute.paramMap.get('noteId') ?? '',
+          revisionId: notebookRoute.paramMap.get('revisionId')
+        });
+      }
+    });
+  }
+}
+
+const findActivatedNotebookRoute = (root: ActivatedRouteSnapshot): ActivatedRouteSnapshot | undefined => {
+  let route: ActivatedRouteSnapshot | null = root;
+  while (route) {
+    if (route.component === NotebookComponent) {
+      return route;
+    }
+    route = route.firstChild;
+  }
+  return undefined;
+};
 
 @Component({
   selector: 'zeppelin-notebook-core-port-proof',
@@ -45,13 +138,10 @@ export class NotebookCorePortProofComponent {
       return () => this.listeners.delete(listener);
     }
   });
-
   readonly reactProps = {
     core: this.core,
     expectedCore: this.core,
-    onProof: (proof: unknown) => {
-      window.__zeppelinNotebookCorePortProof?.proofs.push(proof);
-    },
+    onProof: (proof: unknown) => window.__zeppelinNotebookCorePortProof?.proofs.push(proof),
     onReceivedCore: (receivedCore: NotebookCorePort) => {
       window.__zeppelinNotebookCorePortProof = window.__zeppelinNotebookCorePortProof ?? {
         hostCore: this.core,
@@ -60,15 +150,11 @@ export class NotebookCorePortProofComponent {
       window.__zeppelinNotebookCorePortProof.receivedCore = receivedCore;
     }
   };
-
   private snapshot: NotebookCoreSnapshot = { noteId: 'note-host-owned', revisionId: null };
   private readonly listeners = new Set<() => void>();
 
   constructor() {
-    window.__zeppelinNotebookCorePortProof = {
-      hostCore: this.core,
-      proofs: []
-    };
+    window.__zeppelinNotebookCorePortProof = { hostCore: this.core, proofs: [] };
   }
 
   publishRevision(): void {
@@ -79,10 +165,101 @@ export class NotebookCorePortProofComponent {
   }
 }
 
+@Injectable({ providedIn: 'root' })
+export class NotebookRouteBoundaryPortHost {
+  readonly core: NotebookCorePort = Object.freeze({
+    getSnapshot: () => this.snapshot,
+    subscribe: listener => {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+  });
+  private snapshot: NotebookCoreSnapshot = { noteId: '', revisionId: null };
+  private readonly listeners = new Set<() => void>();
+
+  constructor() {
+    window.__zeppelinNotebookRouteBoundaryProof = {
+      activatedProductionNotebookComponents: [],
+      hostCore: this.core,
+      messageCalls: [],
+      proofs: [],
+      receivedCores: [],
+      routePaths: NOTEBOOK_CHILD_ROUTE_PATHS.map(path => `${NOTEBOOK_ROUTE_PATH}/${path}`),
+      workspaceGuardCalls: []
+    };
+  }
+
+  publish(snapshot: NotebookCoreSnapshot): void {
+    this.snapshot = snapshot;
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+}
+
+class ProofMessageService {
+  readonly connectedStatus = true;
+  readonly connectedStatus$ = new BehaviorSubject(true);
+  receive() {
+    return NEVER;
+  }
+  bootstrap() {}
+  close() {}
+  connect() {}
+  getNote(noteId: string) {
+    window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'getNote', noteId });
+  }
+  noteRevision(noteId: string, revisionId: string) {
+    window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'noteRevision', noteId, revisionId });
+  }
+  listRevisionHistory(noteId: string) {
+    window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'listRevisionHistory', noteId });
+  }
+}
+
+@Injectable()
+class ProofWorkspaceGuard {
+  canActivate(_route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean {
+    window.__zeppelinNotebookRouteBoundaryProof?.workspaceGuardCalls.push(state.url);
+    return true;
+  }
+}
+
 @NgModule({
-  bootstrap: [NotebookCorePortProofComponent],
-  declarations: [NotebookCorePortProofComponent, ReactMountDirective],
-  imports: [BrowserModule, CommonModule]
+  bootstrap: [NotebookCorePortProofAppComponent],
+  declarations: [NotebookCorePortProofAppComponent, NotebookCorePortProofComponent],
+  imports: [
+    BrowserModule,
+    CommonModule,
+    ShareModule,
+    RouterModule.forRoot(
+      [
+        { path: 'port-identity', component: NotebookCorePortProofComponent },
+        {
+          path: '',
+          loadChildren: () =>
+            import('@zeppelin/pages/workspace/workspace.module').then(module => module.WorkspaceModule)
+        }
+      ],
+      { useHash: true }
+    )
+  ],
+  providers: [
+    { provide: WorkspaceGuard, useClass: ProofWorkspaceGuard },
+    { provide: MessageService, useClass: ProofMessageService },
+    { provide: HeliumService, useValue: { initPackages: () => undefined } },
+    { provide: NzMessageService, useValue: { loading: () => ({ messageId: 'proof' }), remove: () => undefined } },
+    { provide: ReactFeatureService, useValue: { isEnabled: () => false } },
+    { provide: ThemeService, useValue: { updateMonacoTheme: () => undefined } },
+    {
+      provide: TicketService,
+      useValue: {
+        getTicket: () => NEVER,
+        ticket: { init: true, principal: 'anonymous', screenUsername: 'anonymous' }
+      }
+    },
+    { provide: TRASH_FOLDER_ID_TOKEN, useValue: '~Trash' }
+  ]
 })
 export class NotebookCorePortProofModule {}
 

@@ -37,7 +37,11 @@ import {
 describe('notebook core import boundary', () => {
   it('lets Maven skip the separate-build proof when tests are skipped', () => {
     const pom = readFileSync(resolve(zeppelinWebAngularRoot, 'pom.xml'), 'utf8');
-    for (const id of ['npm build notebook core port identity proof', 'npm test notebook core port identity']) {
+    for (const id of [
+      'npm build notebook core port identity proof',
+      'npm test notebook core port identity',
+      'npm test notebook route boundary'
+    ]) {
       const execution = pom.match(new RegExp(`<execution>\\s*<id>${id}</id>([\\s\\S]*?)</execution>`))?.[1];
       expect(execution).toContain('<skip>${skipTests}</skip>');
     }

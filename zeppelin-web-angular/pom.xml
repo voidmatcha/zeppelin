@@ -202,6 +202,18 @@
           </execution>
 
           <execution>
+            <id>npm test notebook route boundary</id>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <phase>test</phase>
+            <configuration>
+              <skip>${skipTests}</skip>
+              <arguments>run test:notebook-route-boundary</arguments>
+            </configuration>
+          </execution>
+
+          <execution>
             <id>npm e2e</id>
             <goals>
               <goal>npm</goal>

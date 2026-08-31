@@ -235,6 +235,29 @@ scenarios must cover a running Zeppelin server, authorization, collaboration,
 reconnection, interpreter execution, streaming output, performance, and
 accessibility.
 
+### Notebook route boundary proof
+
+`npm run build:notebook-core-port-proof` builds the React consumer and Angular
+route host separately. `npm run test:notebook-route-boundary` then checks the
+current `/notebook/:noteId` and `/notebook/:noteId/revision/:revisionId` route
+shapes in Chromium. The proof bootstraps the production `WorkspaceModule` lazy
+route, follows its `NotebookModule` lazy route, and asserts that the activated
+component is the production `NotebookComponent`. Its browser-only message-service
+double records the production component's `getNote`, `noteRevision`, and revision
+history requests. The Angular harness reads the resulting activated-route snapshot
+into one host-owned test Core; the remote receives only its stable
+`NotebookCorePort`, reads the selected note and revision snapshot, and observes
+route-driven subscription updates. The browser assertion records the two production
+paths explicitly, so a route-shape change requires an intentional proof update. The
+Maven test phase runs the build and both browser proofs in the normal browser CI job.
+
+This proof leaves the physical WebSocket connect, close and reconnect lifecycle,
+the SDK, and Angular services with the shell. Future Core work owns note
+re-subscription and state recovery only after stale uncorrelated replies have an
+enforceable rejection mechanism. The harness does not implement those lifecycle
+rules, switch the production renderer, or move production notebook state out of
+Angular.
+
 ### How a replay reports failure
 
 The Playwright adapter reports a broken fixture by rejecting the route handler, which
