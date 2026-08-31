@@ -96,6 +96,14 @@ jobs:
         if: matrix.mode == 'anonymous'
         working-directory: zeppelin-web-angular
         run: ./node/npm run check:websocket-contract
+      - name: Typecheck notebook core contract
+        if: matrix.mode == 'anonymous'
+        working-directory: zeppelin-web-angular
+        run: ./node/npm run typecheck:notebook-core
+      - name: Test notebook core contract
+        if: matrix.mode == 'anonymous'
+        working-directory: zeppelin-web-angular
+        run: ./node/npm run test:notebook-core
       # Keeps the Karma coverage previously run by the removed zeppelin-web e2e job
       - name: Run zeppelin-web unit tests
         if: matrix.mode == 'anonymous'
