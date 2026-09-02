@@ -85,8 +85,10 @@ const completeCodeThroughEditor = async (
 };
 
 test.describe('Notebook Core production route feasibility proof', () => {
-  // JUSTIFIED: these scenarios share one server-side Python interpreter; cancellation must not abort another proof.
-  test.describe.configure({ mode: 'default' });
+  test.skip(
+    process.env.ZEPPELIN_E2E_MODE === 'auth',
+    'The shared Python execution proof runs on the anonymous CI leg; duplicating it in auth starves paragraph E2E scenarios.'
+  );
   test.skip(
     ({ browserName }) => browserName !== 'chromium',
     'This architecture proof is single-browser; existing notebook E2E specs retain cross-browser coverage.'
