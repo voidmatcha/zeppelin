@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-import { assertType, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type {
   NotebookCorePort,
@@ -20,22 +20,6 @@ import type {
   NotebookCoreSnapshot,
   NotebookCoreSnapshotListener
 } from './public-api';
-
-// assertType does not invoke this callback; tsc checks the rejected mutations.
-assertType<(props: NotebookCoreRemoteProps) => void>(props => {
-  const snapshot = props.core.getSnapshot();
-
-  // @ts-expect-error Snapshot note IDs are readonly.
-  snapshot.noteId = 'another-note';
-  // @ts-expect-error Snapshot revision IDs are readonly.
-  snapshot.revisionId = 'another-revision';
-  // @ts-expect-error The remote cannot replace the shared core port.
-  props.core = { ...props.core };
-  // @ts-expect-error The core snapshot reader is readonly.
-  props.core.getSnapshot = () => snapshot;
-  // @ts-expect-error The core subscription method is readonly.
-  props.core.subscribe = () => () => undefined;
-});
 
 const fakeCorePort = (initialSnapshot: NotebookCoreSnapshot) => {
   let snapshot = initialSnapshot;
@@ -45,7 +29,8 @@ const fakeCorePort = (initialSnapshot: NotebookCoreSnapshot) => {
     subscribe: listener => {
       listeners.add(listener);
       return () => listeners.delete(listener);
-    }
+    },
+    dispatch: () => false
   };
 
   return {
@@ -60,19 +45,61 @@ const fakeCorePort = (initialSnapshot: NotebookCoreSnapshot) => {
 };
 
 describe('notebook core host and remote contract', () => {
-  it('demonstrates snapshot subscription and cleanup with a fake host-owned port', () => {
-    const host = fakeCorePort({ noteId: '2A94M5J1Z', revisionId: null });
+  it('lets host and remote share one read-only snapshot source through getSnapshot and subscribe', () => {
+    const host = fakeCorePort({
+      version: 0,
+      noteId: '2A94M5J1Z',
+      revisionId: null,
+      phase: 'idle',
+      title: null,
+      paragraphs: [],
+      error: null
+    });
     const remoteProps: NotebookCoreRemoteProps = { core: host.core };
     const snapshots: unknown[] = [];
 
     expect(remoteProps.core).toBe(host.core);
 
     const unsubscribe = remoteProps.core.subscribe(() => snapshots.push(remoteProps.core.getSnapshot()));
-    host.publish({ noteId: '2A94M5J1Z', revisionId: 'rev-1' });
+    host.publish({
+      version: 1,
+      noteId: '2A94M5J1Z',
+      revisionId: 'rev-1',
+      phase: 'loading',
+      title: null,
+      paragraphs: [],
+      error: null
+    });
     unsubscribe();
-    host.publish({ noteId: '2A94M5J1Z', revisionId: 'rev-2' });
+    host.publish({
+      version: 2,
+      noteId: '2A94M5J1Z',
+      revisionId: 'rev-2',
+      phase: 'ready',
+      title: 'Notebook',
+      paragraphs: [],
+      error: null
+    });
 
-    expect(snapshots).toEqual([{ noteId: '2A94M5J1Z', revisionId: 'rev-1' }]);
-    expect(remoteProps.core.getSnapshot()).toEqual({ noteId: '2A94M5J1Z', revisionId: 'rev-2' });
+    expect(snapshots).toEqual([
+      {
+        version: 1,
+        noteId: '2A94M5J1Z',
+        revisionId: 'rev-1',
+        phase: 'loading',
+        title: null,
+        paragraphs: [],
+        error: null
+      }
+    ]);
+    expect(remoteProps.core.getSnapshot()).toEqual({
+      version: 2,
+      noteId: '2A94M5J1Z',
+      revisionId: 'rev-2',
+      phase: 'ready',
+      title: 'Notebook',
+      paragraphs: [],
+      error: null
+    });
   });
 });

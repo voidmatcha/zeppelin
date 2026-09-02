@@ -11,3 +11,4 @@
  */
 
 export * from './host-remote-contract';
+export * from './notebook-core';

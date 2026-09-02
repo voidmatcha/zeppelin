@@ -144,6 +144,7 @@ export class NotebookParagraphComponent
   @Output() readonly saveNoteTimer = new EventEmitter();
   @Output() readonly triggerSaveParagraph = new EventEmitter<string>();
   @Output() readonly selected = new EventEmitter<string>();
+  @Output() readonly paragraphTextChanged = new EventEmitter<{ paragraphId: string; text: string }>();
   @Output() readonly selectAtIndex = new EventEmitter<number>();
   @Output() readonly openSearchMenu = new EventEmitter();
 
@@ -192,6 +193,7 @@ export class NotebookParagraphComponent
   textChanged(text: string) {
     this.dirtyText = text;
     this.paragraph.text = text;
+    this.paragraphTextChanged.emit({ paragraphId: this.paragraph.id, text });
     if (this.dirtyText !== this.originalText) {
       if (this.collaborativeMode) {
         this.sendPatch();
