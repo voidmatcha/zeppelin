@@ -136,6 +136,7 @@
             </goals>
             <phase>test</phase>
             <configuration>
+              <skip>${skipTests}</skip>
               <arguments>run typecheck:notebook-core</arguments>
             </configuration>
           </execution>
@@ -147,6 +148,7 @@
             </goals>
             <phase>test</phase>
             <configuration>
+              <skip>${skipTests}</skip>
               <arguments>run test:notebook-core</arguments>
             </configuration>
           </execution>

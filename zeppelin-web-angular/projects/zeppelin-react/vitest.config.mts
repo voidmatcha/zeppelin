@@ -19,6 +19,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@zeppelin/notebook-core': fileURLToPath(new URL('../zeppelin-notebook-core/src/public-api.ts', import.meta.url)),
       '@zeppelin/sdk': fileURLToPath(new URL('../zeppelin-sdk/src', import.meta.url))
     }
   },

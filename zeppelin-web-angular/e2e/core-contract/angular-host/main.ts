@@ -11,13 +11,14 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, Injectable, NgModule } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, Injectable, NgModule } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BrowserModule } from '@angular/platform-browser';
 import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
 import { ActivatedRoute, RouterModule, UrlMatcher } from '@angular/router';
+import { createNotebookCore, type NotebookCorePort, type NotebookCoreSnapshot } from '@zeppelin/notebook-core';
 import { ReactMountDirective } from '@zeppelin/share/react-mount';
-import type { NotebookCorePort, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import { Observable } from 'rxjs';
 
 declare global {
   interface Window {
@@ -53,13 +54,8 @@ export class NotebookCorePortProofAppComponent {}
   `
 })
 export class NotebookCorePortProofComponent {
-  readonly core: NotebookCorePort = Object.freeze({
-    getSnapshot: () => this.snapshot,
-    subscribe: listener => {
-      this.listeners.add(listener);
-      return () => this.listeners.delete(listener);
-    }
-  });
+  private readonly runtime = createNotebookCore({ noteId: 'note-host-owned', revisionId: null });
+  readonly core: NotebookCorePort = this.runtime.port;
 
   readonly reactProps = {
     core: this.core,
@@ -76,9 +72,6 @@ export class NotebookCorePortProofComponent {
     }
   };
 
-  private snapshot: NotebookCoreSnapshot = { noteId: 'note-host-owned', revisionId: null };
-  private readonly listeners = new Set<() => void>();
-
   constructor() {
     window.__zeppelinNotebookCorePortProof = {
       hostCore: this.core,
@@ -87,31 +80,47 @@ export class NotebookCorePortProofComponent {
   }
 
   publishRevision(): void {
-    this.snapshot = { noteId: 'note-host-owned', revisionId: 'revision-from-angular-host' };
-    for (const listener of this.listeners) {
-      listener();
-    }
+    this.runtime.apply({
+      type: 'route-changed',
+      noteId: 'note-host-owned',
+      revisionId: 'revision-from-angular-host'
+    });
   }
 }
 
 @Injectable({ providedIn: 'root' })
 export class NotebookRouteBoundaryPortHost {
-  readonly core: NotebookCorePort = Object.freeze({
-    getSnapshot: () => this.snapshot,
-    subscribe: listener => {
-      this.listeners.add(listener);
-      return () => this.listeners.delete(listener);
-    }
+  private readonly runtime = createNotebookCore();
+  readonly core: NotebookCorePort = this.runtime.port;
+  readonly snapshot$ = new Observable<NotebookCoreSnapshot>(subscriber => {
+    subscriber.next(this.core.getSnapshot());
+    return this.core.subscribe(() => subscriber.next(this.core.getSnapshot()));
   });
 
-  private snapshot: NotebookCoreSnapshot = { noteId: '', revisionId: null };
-  private readonly listeners = new Set<() => void>();
+  enterRoute(noteId: string, revisionId: string | null): void {
+    this.runtime.apply({ type: 'route-changed', noteId, revisionId });
+    this.runtime.apply({ type: 'load-started' });
+  }
 
-  publish(snapshot: NotebookCoreSnapshot): void {
-    this.snapshot = snapshot;
-    for (const listener of this.listeners) {
-      listener();
-    }
+  loadFixtureForRoute(noteId: string, revisionId: string | null): void {
+    this.runtime.apply({
+      type: 'note-loaded',
+      noteId,
+      revisionId,
+      title: `Fixture ${noteId}`,
+      paragraphs: [
+        { id: 'paragraph-1', text: '%md shared state', status: 'FINISHED' },
+        { id: 'paragraph-2', text: '%spark 1 + 1', status: 'READY' }
+      ]
+    });
+  }
+
+  applyParagraphAdded(index: number): void {
+    this.runtime.apply({
+      type: 'paragraph-added',
+      index,
+      paragraph: { id: 'paragraph-incremental', text: '%md incremental state', status: 'READY' }
+    });
   }
 }
 
@@ -129,20 +138,68 @@ export class NotebookRouteBoundaryPortHost {
     >
       navigate revision
     </button>
-    <div [zeppelin-react-mount]="'./NotebookRouteBoundaryProbe'" [reactProps]="reactProps"></div>
+    <button type="button" data-testid="load-notebook-fixture" (click)="loadFixture()">load fixture</button>
+    <button type="button" data-testid="load-stale-notebook-fixture" (click)="loadStaleFixture()">
+      load stale fixture
+    </button>
+    <button type="button" data-testid="apply-notebook-mutation" (click)="applyMutation()">apply mutation</button>
+    @if (snapshot$ | async; as snapshot) {
+      <section
+        data-testid="notebook-angular-adapter"
+        [attr.data-note-id]="snapshot.noteId"
+        [attr.data-revision-id]="snapshot.revisionId ?? ''"
+        [attr.data-phase]="snapshot.phase"
+        [attr.data-title]="snapshot.title ?? ''"
+        [attr.data-paragraph-count]="snapshot.paragraphs.length"
+        [attr.data-version]="snapshot.version"
+      >
+        {{ snapshot.title ?? snapshot.noteId }}
+      </section>
+      @if (reactFailed) {
+        <section
+          data-testid="notebook-angular-fallback"
+          [attr.data-note-id]="snapshot.noteId"
+          [attr.data-phase]="snapshot.phase"
+          [attr.data-title]="snapshot.title ?? ''"
+          [attr.data-paragraph-count]="snapshot.paragraphs.length"
+          [attr.data-version]="snapshot.version"
+        >
+          Angular fallback: {{ snapshot.title ?? snapshot.noteId }}
+        </section>
+      }
+    }
+    @if (!reactFailed) {
+      <div [zeppelin-react-mount]="reactModule" [reactProps]="reactProps"></div>
+    }
   `
 })
 export class NotebookRouteBoundaryProofComponent {
   readonly core: NotebookCorePort;
+  readonly snapshot$: Observable<NotebookCoreSnapshot>;
+  readonly reactModule: string;
   readonly reactProps: Readonly<{
     core: NotebookCorePort;
     expectedCore: NotebookCorePort;
     onProof: (proof: unknown) => void;
     onReceivedCore: (receivedCore: NotebookCorePort) => void;
+    onReady: () => void;
+    onError: (error: unknown) => void;
   }>;
+  reactFailed = false;
+  reactReady = false;
 
-  constructor(activatedRoute: ActivatedRoute, destroyRef: DestroyRef, portHost: NotebookRouteBoundaryPortHost) {
-    this.core = portHost.core;
+  constructor(
+    private readonly portHost: NotebookRouteBoundaryPortHost,
+    activatedRoute: ActivatedRoute,
+    destroyRef: DestroyRef,
+    cdr: ChangeDetectorRef
+  ) {
+    this.core = this.portHost.core;
+    this.snapshot$ = this.portHost.snapshot$;
+    this.reactModule =
+      activatedRoute.snapshot.queryParamMap.get('simulateRemoteFailure') === 'true'
+        ? './MissingNotebookRouteBoundaryProbe'
+        : './NotebookRouteBoundaryProbe';
     this.reactProps = {
       core: this.core,
       expectedCore: this.core,
@@ -155,6 +212,14 @@ export class NotebookRouteBoundaryProofComponent {
           proofState.receivedCore = receivedCore;
           proofState.receivedCores.push(receivedCore);
         }
+      },
+      onReady: () => {
+        this.reactReady = true;
+        cdr.markForCheck();
+      },
+      onError: () => {
+        this.reactFailed = true;
+        cdr.markForCheck();
       }
     };
 
@@ -165,11 +230,22 @@ export class NotebookRouteBoundaryProofComponent {
     };
 
     activatedRoute.paramMap.pipe(takeUntilDestroyed(destroyRef)).subscribe(params => {
-      portHost.publish({
-        noteId: params.get('noteId') ?? '',
-        revisionId: params.get('revisionId')
-      });
+      this.portHost.enterRoute(params.get('noteId') ?? '', params.get('revisionId'));
     });
+  }
+
+  loadFixture(): void {
+    const { noteId, revisionId } = this.core.getSnapshot();
+    this.portHost.loadFixtureForRoute(noteId, revisionId);
+  }
+
+  loadStaleFixture(): void {
+    this.portHost.loadFixtureForRoute('note-from-route', null);
+  }
+
+  applyMutation(): void {
+    const index = this.core.getSnapshot().paragraphs.length;
+    this.portHost.applyParagraphAdded(index);
   }
 }
 

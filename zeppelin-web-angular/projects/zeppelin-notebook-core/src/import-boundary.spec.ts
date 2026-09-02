@@ -13,13 +13,19 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const sourceRoot = fileURLToPath(new URL('.', import.meta.url));
+const zeppelinWebAngularRoot = resolve(sourceRoot, '../../..');
+const reactNotebookCoreBoundaryFiles = [
+  resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/main.ts'),
+  resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/notebookCoreContract.ts'),
+  resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/components/notebook/NotebookCoreAdapter.tsx')
+];
 const forbiddenModulePrefixes = [
   '@angular/',
   '@zeppelin/sdk',
@@ -31,6 +37,12 @@ const forbiddenModulePrefixes = [
   'rxjs',
   'axios'
 ];
+const forbiddenReactNotebookCoreConsumerModulePrefixes = [
+  '@angular/common/http',
+  '@zeppelin/sdk',
+  'axios',
+  'rxjs/webSocket'
+];
 const forbiddenGlobals = new Set(['fetch', 'WebSocket', 'XMLHttpRequest']);
 const transportGlobalOwners = new Set(['globalThis', 'window']);
 
@@ -40,8 +52,14 @@ const sourceFiles = (dir: string): string[] =>
     if (statSync(path).isDirectory()) {
       return sourceFiles(path);
     }
-    return path.endsWith('.ts') && !path.endsWith('.spec.ts') ? [path] : [];
+    return isCheckedSourceFile(path) ? [path] : [];
   });
+
+const checkedSourceExtensions = ['.ts', '.tsx', '.mts', '.cts'];
+
+const isCheckedSourceFile = (path: string): boolean => {
+  return checkedSourceExtensions.some(extension => path.endsWith(extension)) && !/\.spec\.[cm]?tsx?$/.test(path);
+};
 
 describe('notebook core import boundary', () => {
   it('stays framework-neutral and transport-neutral', () => {
@@ -51,6 +69,15 @@ describe('notebook core import boundary', () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it('keeps the React notebook core adapter independent from Zeppelin transport implementations', () => {
+    const violations = reactNotebookCoreBoundaryFiles.flatMap(path => {
+      const source = readFileSync(path, 'utf8');
+      return findViolations(path, source, forbiddenReactNotebookCoreConsumerModulePrefixes);
+    });
+
+    expect(formatViolations(violations)).toEqual([]);
   });
 
   it('ignores forbidden words in comments and string values', () => {
@@ -63,6 +90,7 @@ describe('notebook core import boundary', () => {
     const source = [
       `import type { OP } from '@zeppelin/sdk';`,
       `export { useMemo } from 'react';`,
+      `type LeakedMessage = import('@zeppelin/sdk').Message;`,
       `import { createRoot } from 'react-dom/client';`,
       `import { Provider } from 'react-redux';`,
       `const router = () => import('react-router-dom');`,
@@ -75,6 +103,7 @@ describe('notebook core import boundary', () => {
     expect(findViolations('violation-fixture.ts', source)).toEqual([
       'violation-fixture.ts: import @zeppelin/sdk',
       'violation-fixture.ts: import react',
+      'violation-fixture.ts: import @zeppelin/sdk',
       'violation-fixture.ts: import react-dom/client',
       'violation-fixture.ts: import react-redux',
       'violation-fixture.ts: import react-router-dom',
@@ -86,13 +115,17 @@ describe('notebook core import boundary', () => {
   });
 });
 
-const findViolations = (path: string, source: string): string[] => {
-  const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const findViolations = (
+  path: string,
+  source: string,
+  forbiddenPrefixes: readonly string[] = forbiddenModulePrefixes
+): string[] => {
+  const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, getScriptKind(path));
   const violations: string[] = [];
 
   const visit = (node: ts.Node): void => {
     const moduleSpecifier = getModuleSpecifier(node);
-    if (moduleSpecifier && forbiddenModulePrefixes.some(prefix => matchesModulePrefix(moduleSpecifier, prefix))) {
+    if (moduleSpecifier && forbiddenPrefixes.some(prefix => matchesModulePrefix(moduleSpecifier, prefix))) {
       violations.push(`${path}: import ${moduleSpecifier}`);
     }
 
@@ -108,9 +141,23 @@ const findViolations = (path: string, source: string): string[] => {
   return violations;
 };
 
+const formatViolations = (violations: readonly string[]): string[] => {
+  return violations.map(violation => violation.replace(`${zeppelinWebAngularRoot}/`, ''));
+};
+
+const getScriptKind = (path: string): ts.ScriptKind => {
+  if (path.endsWith('.tsx')) {
+    return ts.ScriptKind.TSX;
+  }
+  return ts.ScriptKind.TS;
+};
+
 const getModuleSpecifier = (node: ts.Node): string | null => {
   if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
     return ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : null;
+  }
+  if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
+    return node.argument.literal.text;
   }
   if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
     const expression = node.moduleReference.expression;
