@@ -10,18 +10,41 @@
  * limitations under the License.
  */
 
+export type NotebookParagraphStatus = 'UNKNOWN' | 'READY' | 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'ABORT';
+
+export type NotebookParagraphSnapshot = Readonly<{
+  id: string;
+  text: string;
+  status: NotebookParagraphStatus;
+}>;
+
+export type NotebookCorePhase = 'idle' | 'loading' | 'ready' | 'error';
+
 export type NotebookCoreSnapshot = Readonly<{
+  version: number;
   noteId: string;
   revisionId: string | null;
+  phase: NotebookCorePhase;
+  title: string | null;
+  paragraphs: readonly NotebookParagraphSnapshot[];
+  error: string | null;
 }>;
 
 export type NotebookCoreUnsubscribe = () => void;
 
 export type NotebookCoreSnapshotListener = () => void;
 
+export type NotebookCoreCommand = Readonly<{
+  type: 'run-paragraph';
+  paragraphId: string;
+}>;
+
+export type NotebookCoreCommandHandler = (command: NotebookCoreCommand) => boolean;
+
 export type NotebookCorePort = Readonly<{
   getSnapshot: () => NotebookCoreSnapshot;
   subscribe: (listener: NotebookCoreSnapshotListener) => NotebookCoreUnsubscribe;
+  dispatch: NotebookCoreCommandHandler;
 }>;
 
 export type NotebookCoreRemoteProps = Readonly<{

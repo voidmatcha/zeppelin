@@ -14,3 +14,4 @@ export * from './renderers';
 export * from './visualizations';
 export * from './common';
 export * from './paragraph';
+export * from './notebook';

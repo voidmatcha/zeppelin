@@ -10,6 +10,23 @@
 ~ limitations under the License.
 -->
 
+@if (coreProofEnabled && (coreProofSnapshot$ | async); as coreSnapshot) {
+  <output
+    hidden
+    data-testid="notebook-core-production-route-proof"
+    [attr.data-version]="coreSnapshot.version"
+    [attr.data-note-id]="coreSnapshot.noteId"
+    [attr.data-revision-id]="coreSnapshot.revisionId ?? ''"
+    [attr.data-phase]="coreSnapshot.phase"
+    [attr.data-title]="coreSnapshot.title ?? ''"
+    [attr.data-paragraph-count]="coreSnapshot.paragraphs.length"
+    [attr.data-paragraph-ids]="coreProofParagraphIds(coreSnapshot)"
+    [attr.data-paragraph-texts]="coreProofParagraphTexts(coreSnapshot)"
+    [attr.data-paragraph-statuses]="coreProofParagraphStatuses(coreSnapshot)"
+  ></output>
+  <div [zeppelin-react-mount]="'./NotebookCoreAdapter'" [reactProps]="coreProofReactProps"></div>
+}
+
 @if (note) {
   <div class="notebook-container" [class.simple]="note.config.looknfeel !== 'default'">
     <zeppelin-notebook-action-bar
@@ -104,6 +121,7 @@
                 [attr.data-testid]="p.id"
                 (selectAtIndex)="onSelectAtIndex($event)"
                 (selected)="onParagraphSelect($event)"
+                (paragraphTextChanged)="updateCoreParagraphText($event)"
                 (triggerSaveParagraph)="saveParagraph($event)"
                 (saveNoteTimer)="startSaveTimer()"
                 (openSearchMenu)="actionBar.openSearchMenu()"

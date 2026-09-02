@@ -34,7 +34,7 @@ test('React remote receives the exact host-owned NotebookCorePort object', async
   const probe = page.getByTestId('notebook-core-port-probe');
   await expect(probe).toHaveAttribute('data-same-identity', 'true');
   await expect(probe).toHaveAttribute('data-note-id', 'note-host-owned');
-  await expect(probe).toHaveAttribute('data-update-count', '0');
+  await expect(probe).toHaveAttribute('data-version', '0');
 
   const hostIdentity = await page.evaluate(() =>
     Object.is(window.__zeppelinNotebookCorePortProof.hostCore, window.__zeppelinNotebookCorePortProof.receivedCore)
@@ -44,12 +44,20 @@ test('React remote receives the exact host-owned NotebookCorePort object', async
   await page.getByTestId('publish-notebook-core-revision').click();
 
   await expect(probe).toHaveAttribute('data-revision-id', 'revision-from-angular-host');
-  await expect(probe).toHaveAttribute('data-update-count', '1');
+  await expect(probe).toHaveAttribute('data-version', '1');
 
   const latestProof = await page.evaluate(() => window.__zeppelinNotebookCorePortProof.proofs.at(-1));
   assert.deepEqual(latestProof, {
     sameIdentity: true,
-    snapshot: { noteId: 'note-host-owned', revisionId: 'revision-from-angular-host' },
+    snapshot: {
+      version: 1,
+      noteId: 'note-host-owned',
+      revisionId: 'revision-from-angular-host',
+      phase: 'idle',
+      title: null,
+      paragraphs: [],
+      error: null
+    },
     updateCount: 1
   });
 

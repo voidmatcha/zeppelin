@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
 
@@ -19,6 +19,7 @@ export type NotebookCorePortProbeProps = NotebookCoreRemoteProps &
     expectedCore?: NotebookCorePort;
     onReceivedCore?: (core: NotebookCorePort) => void;
     onProof?: (proof: NotebookCorePortProbeProof) => void;
+    onReady?: () => void;
   }>;
 
 export type NotebookCorePortProbeProof = Readonly<{
@@ -27,22 +28,25 @@ export type NotebookCorePortProbeProof = Readonly<{
   updateCount: number;
 }>;
 
-export const NotebookCorePortProbe = ({ core, expectedCore, onProof, onReceivedCore }: NotebookCorePortProbeProps) => {
-  const [snapshot, setSnapshot] = useState(() => core.getSnapshot());
-  const [updateCount, setUpdateCount] = useState(0);
+export const NotebookCorePortProbe = ({
+  core,
+  expectedCore,
+  onProof,
+  onReady,
+  onReceivedCore
+}: NotebookCorePortProbeProps) => {
+  const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
+  const updateCount = snapshot.version;
   const sameIdentity = Object.is(core, expectedCore);
+
+  useEffect(() => {
+    onReady?.();
+  }, [onReady]);
 
   useEffect(() => {
     onProof?.({ sameIdentity, snapshot, updateCount });
     onReceivedCore?.(core);
   }, [core, onProof, onReceivedCore, sameIdentity, snapshot, updateCount]);
-
-  useEffect(() => {
-    return core.subscribe(() => {
-      setSnapshot(core.getSnapshot());
-      setUpdateCount(value => value + 1);
-    });
-  }, [core]);
 
   return (
     <section
@@ -50,6 +54,10 @@ export const NotebookCorePortProbe = ({ core, expectedCore, onProof, onReceivedC
       data-same-identity={sameIdentity ? 'true' : 'false'}
       data-note-id={snapshot.noteId}
       data-revision-id={snapshot.revisionId ?? ''}
+      data-phase={snapshot.phase}
+      data-title={snapshot.title ?? ''}
+      data-paragraph-count={String(snapshot.paragraphs.length)}
+      data-version={String(snapshot.version)}
       data-update-count={String(updateCount)}
     >
       <span>{snapshot.noteId}</span>

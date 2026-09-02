@@ -50,20 +50,27 @@ import {
 } from '@zeppelin/services';
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
+import type { NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
+
+type LoadedNote = Exclude<Note['note'], undefined>;
+type LoadedParagraph = LoadedNote['paragraphs'][number];
 
 @Component({
   selector: 'zeppelin-notebook',
   templateUrl: './notebook.component.html',
   styleUrls: ['./notebook.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [NotebookCoreRouteAdapter],
   standalone: false
 })
 export class NotebookComponent extends MessageListenersManager implements OnInit, AfterViewInit, OnDestroy {
   @ViewChildren(NotebookParagraphComponent) listOfNotebookParagraphComponent!: QueryList<NotebookParagraphComponent>;
-  private destroy$ = new Subject<void>();
-  private searchTerm = '';
-  note?: Exclude<Note['note'], undefined>;
+  coreProofEnabled = false;
+  readonly coreProofSnapshot$ = this.notebookCoreRouteAdapter.snapshot$;
+  readonly coreProofReactProps: NotebookCoreRemoteProps & Readonly<Record<string, unknown>>;
+  note?: LoadedNote;
   permissions?: Permissions;
   selectId: string | null = null;
   scrolledId: string | null = null;
@@ -82,6 +89,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   sidebarAnimationFrame = -1;
   isSidebarOpen = false;
   useReactFooter = false;
+  private destroy$ = new Subject<void>();
+  private searchTerm = '';
 
   @MessageListener(OP.NOTE)
   getNote(data: MessageReceiveDataTypeMap[OP.NOTE]) {
@@ -89,8 +98,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (isNil(note)) {
       this.router.navigate(['/']).then();
     } else {
+      const paragraphs = this.notebookCoreRouteAdapter.acceptNote(note, null);
+      if (!paragraphs) {
+        return;
+      }
       this.removeParagraphFromNgZ();
-      this.note = note;
+      this.note = { ...note, paragraphs: [...paragraphs] };
       const { paragraphId } = this.activatedRoute.snapshot.params;
       if (paragraphId) {
         this.note = this.cleanParagraphExcept(this.note, paragraphId);
@@ -136,9 +149,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
     const definedNote = this.note;
     const paragraphIndex = definedNote.paragraphs.findIndex(p => p.id === data.id);
-    definedNote.paragraphs = definedNote.paragraphs.filter((p, index) => index !== paragraphIndex);
+    const paragraphs = this.notebookCoreRouteAdapter.acceptParagraphRemoved(data.id);
+    if (!this.renderParagraphProjection(paragraphs)) {
+      return;
+    }
     const adjustedCursorIndex =
-      paragraphIndex === definedNote.paragraphs.length ? paragraphIndex - 1 : paragraphIndex + 1;
+      paragraphIndex === this.note.paragraphs.length ? paragraphIndex - 1 : paragraphIndex + 1;
     const targetParagraph = this.listOfNotebookParagraphComponent.find((_, index) => index === adjustedCursorIndex);
     if (targetParagraph) {
       targetParagraph.focusEditor();
@@ -155,11 +171,13 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (!this.note) {
       return;
     }
-    const definedNote = this.note;
-    definedNote.paragraphs.splice(data.index, 0, data.paragraph);
-    const paragraphIndex = definedNote.paragraphs.findIndex(p => p.id === data.paragraph.id);
+    const paragraphs = this.notebookCoreRouteAdapter.acceptParagraphAdded(data.paragraph, data.index);
+    if (!this.renderParagraphProjection(paragraphs)) {
+      return;
+    }
+    const paragraphIndex = this.note.paragraphs.findIndex(p => p.id === data.paragraph.id);
 
-    definedNote.paragraphs[paragraphIndex].focus = true;
+    this.note.paragraphs[paragraphIndex].focus = true;
     this.cdr.markForCheck();
 
     // Focus the editor only for a clone/insert initiated by this client (not auto-append on run or remote inserts).
@@ -191,7 +209,11 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (isNil(note)) {
       this.router.navigate(['/']).then();
     } else {
-      this.note = note;
+      const paragraphs = this.notebookCoreRouteAdapter.acceptNote(note, data.revisionId);
+      if (!paragraphs) {
+        return;
+      }
+      this.note = { ...note, paragraphs: [...paragraphs] };
       this.initializeLookAndFeel(this.note);
       this.cdr.markForCheck();
     }
@@ -209,10 +231,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       return;
     }
     if (!this.revisionView) {
-      const movedPara = this.note.paragraphs.find(p => p.id === data.id);
-      if (movedPara) {
-        const listOfRestPara = this.note.paragraphs.filter(p => p.id !== data.id);
-        this.note.paragraphs = [...listOfRestPara.slice(0, data.index), movedPara, ...listOfRestPara.slice(data.index)];
+      const paragraphs = this.notebookCoreRouteAdapter.acceptParagraphMoved(data.id, data.index);
+      if (this.renderParagraphProjection(paragraphs)) {
         const paragraphComponent = this.listOfNotebookParagraphComponent.find(e => e.paragraph.id === data.id);
         this.cdr.markForCheck();
         if (paragraphComponent) {
@@ -233,10 +253,27 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.cdr.markForCheck();
   }
 
+  @MessageListener(OP.PARAGRAPH)
+  updateCoreParagraph(data: MessageReceiveDataTypeMap[OP.PARAGRAPH]) {
+    this.notebookCoreRouteAdapter.acceptParagraphUpdated(data.paragraph);
+  }
+
+  @MessageListener(OP.PARAGRAPH_STATUS)
+  updateCoreParagraphStatus(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_STATUS]) {
+    this.notebookCoreRouteAdapter.acceptParagraphStatus(data.id, data.status);
+  }
+
   @MessageListener(OP.PATCH_PARAGRAPH)
-  patchParagraph(_data: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH]) {
+  patchParagraph(data: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH]) {
     this.collaborativeMode = true;
+    if (!this.notebookCoreRouteAdapter.acceptParagraphPatch(data.paragraphId, data.patch)) {
+      this.requestCurrentNote();
+    }
     this.cdr.markForCheck();
+  }
+
+  updateCoreParagraphText({ paragraphId, text }: { paragraphId: string; text: string }): void {
+    this.notebookCoreRouteAdapter.acceptParagraphText(paragraphId, text);
   }
 
   @MessageListener(OP.NOTE_UPDATED)
@@ -249,6 +286,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
     this.note.config = data.config;
     this.note.info = data.info;
+    this.notebookCoreRouteAdapter.acceptNoteUpdated(data.name);
     this.initializeLookAndFeel(this.note);
     this.cdr.markForCheck();
   }
@@ -277,6 +315,18 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   onParagraphSearch(term: string) {
     this.searchTerm = term || '';
     this.highlightSearchTerm();
+  }
+
+  coreProofParagraphIds(snapshot: NotebookCoreSnapshot): string {
+    return snapshot.paragraphs.map(paragraph => paragraph.id).join(',');
+  }
+
+  coreProofParagraphTexts(snapshot: NotebookCoreSnapshot): string {
+    return JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.text));
+  }
+
+  coreProofParagraphStatuses(snapshot: NotebookCoreSnapshot): string {
+    return JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.status));
   }
 
   saveParagraph(id: string) {
@@ -433,9 +483,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private router: Router,
     private titleService: Title,
     private themeService: ThemeService,
-    private reactFeature: ReactFeatureService
+    private reactFeature: ReactFeatureService,
+    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter
   ) {
     super(messageService);
+    this.coreProofReactProps = {
+      core: notebookCoreRouteAdapter.port,
+      expectedCore: notebookCoreRouteAdapter.port
+    };
   }
 
   ngOnInit() {
@@ -451,6 +506,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(data => {
         this.useReactFooter = this.reactFeature.isEnabled('paragraphFooter', data);
+        this.coreProofEnabled = data.get('coreProof') === 'true';
         this.cdr.markForCheck();
       });
     this.activatedRoute.params.pipe(takeUntil(this.destroy$), distinctUntilKeyChanged('noteId')).subscribe(() => {
@@ -458,6 +514,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     });
     this.activatedRoute.params.pipe(takeUntil(this.destroy$)).subscribe(param => {
       this.revisionView = !!param.revisionId;
+      this.notebookCoreRouteAdapter.enterRoute(param.noteId, param.revisionId ?? null);
       this.cdr.markForCheck();
     });
     this.revisionView = !!this.activatedRoute.snapshot.params.revisionId;
@@ -475,16 +532,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         if (!connected) {
           return;
         }
-        const { noteId, revisionId } = params;
-        if (!noteId) {
-          throw new Error('Route parameter `noteId` is required.');
-        }
-        if (revisionId) {
-          this.messageService.noteRevision(noteId, revisionId);
-        } else {
-          this.messageService.getNote(noteId);
-        }
+        this.requestCurrentNote();
         this.cdr.markForCheck();
+        const { noteId } = params;
         this.messageService.listRevisionHistory(noteId);
         // TODO(hsuanxyz) scroll to current paragraph
       });
@@ -512,6 +562,26 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.destroy$.next();
     this.destroy$.complete();
     this.titleService.setTitle('Zeppelin');
+  }
+
+  private requestCurrentNote(): void {
+    const { noteId, revisionId } = this.activatedRoute.snapshot.params;
+    if (!noteId) {
+      throw new Error('Route parameter `noteId` is required.');
+    }
+    if (revisionId) {
+      this.messageService.noteRevision(noteId, revisionId);
+    } else {
+      this.messageService.getNote(noteId);
+    }
+  }
+
+  private renderParagraphProjection(paragraphs: readonly LoadedParagraph[] | null): boolean {
+    if (!this.note || !paragraphs) {
+      return false;
+    }
+    this.note = { ...this.note, paragraphs: [...paragraphs] };
+    return true;
   }
 
   // The term can arrive before the paragraphs exist: the query param subscription emits during

@@ -23,7 +23,8 @@ const sourceRoot = fileURLToPath(new URL('.', import.meta.url));
 const zeppelinWebAngularRoot = resolve(sourceRoot, '../../..');
 const reactNotebookCoreBoundaryFiles = [
   resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/main.ts'),
-  resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/notebookCoreContract.ts')
+  resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/notebookCoreContract.ts'),
+  resolve(zeppelinWebAngularRoot, 'projects/zeppelin-react/src/components/notebook/NotebookCoreAdapter.tsx')
 ];
 const forbiddenModulePrefixes = [
   '@angular/',
