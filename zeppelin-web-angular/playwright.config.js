@@ -19,6 +19,8 @@ process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || defaultBase
 // https://playwright.dev/docs/test-configuration
 module.exports = defineConfig({
   ...baseConfig,
+  // Node's core-contract *.test.mjs proofs run separately through node:test.
+  testMatch: /tests\/.*\.spec\.ts/,
   // The legacy classic UI suite runs separately via playwright.classic.config.js.
   testIgnore: /tests\/classic\/.*\.spec\.ts/,
   reporter: [
