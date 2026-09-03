@@ -53,7 +53,9 @@ export function MessageListener<K extends keyof MessageReceiveDataTypeMap>(op: K
             // @ts-ignore
             oldValue.apply(this, [data]);
           } catch (error) {
+            // Rethrow: swallowing this would hide the error from Angular's ErrorHandler.
             console.error(`Failed to handle WebSocket OP ${String(op)}`, error);
+            throw error;
           }
         })
       );
