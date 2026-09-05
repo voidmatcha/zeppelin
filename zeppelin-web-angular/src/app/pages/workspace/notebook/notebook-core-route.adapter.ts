@@ -20,7 +20,7 @@ import {
   type NotebookParagraphStatus
 } from '@zeppelin/notebook-core';
 import type { Note } from '@zeppelin/sdk';
-import { NgZService } from '@zeppelin/services/ng-z.service';
+import { MessageService, NgZService } from '@zeppelin/services';
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { Observable } from 'rxjs';
 
@@ -56,7 +56,10 @@ export class NotebookCoreRouteAdapter {
   private readonly diffMatchPatch = new DiffMatchPatch();
   private readonly paragraphViewsById = new Map<string, LoadedParagraph>();
 
-  constructor(private readonly ngZService: NgZService) {
+  constructor(
+    private readonly ngZService: NgZService,
+    private readonly messageService: MessageService
+  ) {
     this.runtime = createNotebookCore({ dispatchCommand: command => this.dispatchCommand(command) });
     this.port = this.runtime.port;
     this.snapshot$ = new Observable<NotebookCoreSnapshot>(subscriber => {
@@ -180,11 +183,33 @@ export class NotebookCoreRouteAdapter {
     }
 
     const coreParagraph = snapshot.paragraphs.find(paragraph => paragraph.id === command.paragraphId);
-    if (!coreParagraph?.text || coreParagraph.status === 'PENDING' || coreParagraph.status === 'RUNNING') {
+    if (!coreParagraph) {
       return false;
     }
 
-    this.ngZService.runParagraph(command.paragraphId);
+    if (command.type === 'run-paragraph') {
+      if (!coreParagraph.text || coreParagraph.status === 'PENDING' || coreParagraph.status === 'RUNNING') {
+        return false;
+      }
+      this.ngZService.runParagraph(command.paragraphId);
+      return true;
+    }
+
+    if (!coreParagraph.isDirty) {
+      return false;
+    }
+    const paragraph = this.paragraphViewsById.get(command.paragraphId);
+    if (!paragraph) {
+      return false;
+    }
+    this.messageService.commitParagraph(
+      paragraph.id,
+      paragraph.title,
+      coreParagraph.text,
+      paragraph.config,
+      paragraph.settings.params,
+      snapshot.noteId
+    );
     return true;
   }
 

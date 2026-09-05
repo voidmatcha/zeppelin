@@ -39,6 +39,8 @@ export type NotebookCoreEvent =
       status?: NotebookParagraphSnapshot['status'];
       source?: 'local' | 'server';
     }>
+  | Readonly<{ type: 'paragraph-save-requested'; paragraphId: string }>
+  | Readonly<{ type: 'paragraph-save-cancelled'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
@@ -79,6 +81,7 @@ type NotebookCoreState = Readonly<{
 type NotebookParagraphState = Readonly<{
   snapshot: NotebookParagraphSnapshot;
   savedText: string;
+  savePending: boolean;
 }>;
 
 const freezeParagraph = (paragraph: NotebookParagraphState): NotebookParagraphState => Object.freeze({ ...paragraph });
@@ -128,7 +131,8 @@ const toParagraphState = (
     }
     paragraphsById[paragraph.id] = freezeParagraph({
       snapshot: freezeParagraphSnapshot(paragraph),
-      savedText: paragraph.text
+      savedText: paragraph.text,
+      savePending: false
     });
     paragraphOrder.push(paragraph.id);
   }
@@ -213,7 +217,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           ...state.paragraphsById,
           [event.paragraph.id]: freezeParagraph({
             snapshot: freezeParagraphSnapshot(event.paragraph),
-            savedText: event.paragraph.text
+            savedText: event.paragraph.text,
+            savePending: false
           })
         }
       });
@@ -266,12 +271,14 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           },
           serverText
         ),
-        savedText: serverText
+        savedText: serverText,
+        savePending: isServerTextUpdate ? false : current.savePending
       };
       if (
         paragraph.snapshot.text === currentSnapshot.text &&
         paragraph.savedText === current.savedText &&
-        paragraph.snapshot.status === currentSnapshot.status
+        paragraph.snapshot.status === currentSnapshot.status &&
+        paragraph.savePending === current.savePending
       ) {
         return state;
       }
@@ -279,6 +286,37 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         ...state,
         version,
         paragraphsById: { ...state.paragraphsById, [event.paragraphId]: freezeParagraph(paragraph) }
+      });
+    }
+    case 'paragraph-save-requested': {
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current || current.savePending || current.snapshot.text === current.savedText) {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({ ...current, savePending: true })
+        }
+      });
+    }
+    case 'paragraph-save-cancelled': {
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current?.savePending) {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({ ...current, savePending: false })
+        }
       });
     }
     case 'note-updated':
@@ -305,26 +343,45 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
   let state = initialState(route);
   let snapshot = toSnapshot(state);
   const listeners = new Set<NotebookCoreSnapshotListener>();
+  const apply = (event: NotebookCoreEvent): boolean => {
+    const nextState = reduceState(state, event);
+    if (nextState === state) {
+      return false;
+    }
+    state = nextState;
+    snapshot = toSnapshot(state);
+    listeners.forEach(listener => listener());
+    return true;
+  };
   const port: NotebookCorePort = Object.freeze({
     getSnapshot: () => snapshot,
     subscribe: listener => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    dispatch: command => route.dispatchCommand?.(command) ?? false
+    dispatch: command => {
+      if (command.type !== 'commit-paragraph') {
+        return route.dispatchCommand?.(command) ?? false;
+      }
+      if (!apply({ type: 'paragraph-save-requested', paragraphId: command.paragraphId })) {
+        return false;
+      }
+      let dispatched = false;
+      try {
+        dispatched = route.dispatchCommand?.(command) ?? false;
+      } catch {
+        apply({ type: 'paragraph-save-cancelled', paragraphId: command.paragraphId });
+        return false;
+      }
+      if (!dispatched) {
+        apply({ type: 'paragraph-save-cancelled', paragraphId: command.paragraphId });
+      }
+      return dispatched;
+    }
   });
 
   return Object.freeze({
     port,
-    apply: (event: NotebookCoreEvent) => {
-      const nextState = reduceState(state, event);
-      if (nextState === state) {
-        return false;
-      }
-      state = nextState;
-      snapshot = toSnapshot(state);
-      listeners.forEach(listener => listener());
-      return true;
-    }
+    apply
   });
 };
