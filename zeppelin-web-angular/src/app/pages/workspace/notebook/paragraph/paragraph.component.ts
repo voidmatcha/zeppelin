@@ -248,7 +248,7 @@ export class NotebookParagraphComponent
     if (dirtyText === undefined || dirtyText === this.originalText) {
       return;
     }
-    this.commitParagraph();
+    this.triggerSaveParagraph.emit(this.paragraph.id);
     this.originalText = dirtyText;
     this.dirtyText = undefined;
     this.cdr.markForCheck();

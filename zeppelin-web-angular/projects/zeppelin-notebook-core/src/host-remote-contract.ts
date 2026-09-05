@@ -37,10 +37,9 @@ export type NotebookCoreUnsubscribe = () => void;
 
 export type NotebookCoreSnapshotListener = () => void;
 
-export type NotebookCoreCommand = Readonly<{
-  type: 'run-paragraph';
-  paragraphId: string;
-}>;
+export type NotebookCoreCommand =
+  | Readonly<{ type: 'run-paragraph'; paragraphId: string }>
+  | Readonly<{ type: 'commit-paragraph'; paragraphId: string }>;
 
 export type NotebookCoreCommandHandler = (command: NotebookCoreCommand) => boolean;
 

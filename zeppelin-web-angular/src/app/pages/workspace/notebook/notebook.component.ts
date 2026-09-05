@@ -343,11 +343,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   saveParagraph(id: string) {
-    const paragraphFound = this.listOfNotebookParagraphComponent.toArray().find(p => p.paragraph.id === id);
-    if (!paragraphFound) {
-      throw new Error(`Paragraph ${id} not found`);
-    }
-    paragraphFound.saveParagraph();
+    this.notebookCoreRouteAdapter.port.dispatch({ type: 'commit-paragraph', paragraphId: id });
   }
 
   killSaveTimer() {

@@ -304,6 +304,28 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md local draft', isDirty: false });
   });
 
+  it('allows one commit for a dirty draft until the server confirms it', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md draft', source: 'local' });
+
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(dispatchCommand).toHaveBeenCalledTimes(1);
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md draft', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md draft', isDirty: false });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+  });
+
   it('does not apply live mutations to a loaded revision snapshot', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: 'revision-1' });
     runtime.apply({ type: 'load-started' });

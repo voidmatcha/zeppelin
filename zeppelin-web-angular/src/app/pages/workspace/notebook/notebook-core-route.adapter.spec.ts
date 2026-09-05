@@ -10,10 +10,10 @@
  * limitations under the License.
  */
 
-import type { NgZService } from '@zeppelin/services/ng-z.service';
+import type { MessageService, NgZService } from '@zeppelin/services';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@zeppelin/services/ng-z.service', () => ({ NgZService: class {} }));
+vi.mock('@zeppelin/services', () => ({ MessageService: class {}, NgZService: class {} }));
 
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 
@@ -38,7 +38,7 @@ const createNote = (status = 'READY'): LoadedNote =>
 describe('NotebookCoreRouteAdapter command boundary', () => {
   it('maps a Core run command to the existing Angular paragraph action exactly once', () => {
     const runParagraph = vi.fn();
-    const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as NgZService);
+    const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as NgZService, {} as MessageService);
     const note = createNote();
 
     adapter.enterRoute(note.id, null);
@@ -51,7 +51,7 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
 
   it('rejects run commands for revisions, missing paragraphs, and active paragraphs', () => {
     const runParagraph = vi.fn();
-    const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as NgZService);
+    const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as NgZService, {} as MessageService);
     const note = createNote('RUNNING');
 
     adapter.enterRoute(note.id, 'revision-1');
@@ -65,5 +65,31 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     adapter.acceptNote(note, null);
     expect(adapter.port.dispatch({ type: 'run-paragraph', paragraphId: 'paragraph-1' })).toBe(false);
     expect(runParagraph).not.toHaveBeenCalled();
+  });
+
+  it('maps a dirty Core draft to one existing commit message with the Core text', () => {
+    const commitParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter(
+      { runParagraph: vi.fn() } as unknown as NgZService,
+      { commitParagraph } as unknown as MessageService
+    );
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', '%python\nprint("Core draft")');
+
+    expect(adapter.port.dispatch({ type: 'commit-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
+    expect(commitParagraph).toHaveBeenCalledTimes(1);
+    expect(commitParagraph).toHaveBeenCalledWith(
+      'paragraph-1',
+      'Proof paragraph',
+      '%python\nprint("Core draft")',
+      note.paragraphs[0].config,
+      note.paragraphs[0].settings.params,
+      note.id
+    );
+    expect(adapter.port.dispatch({ type: 'commit-paragraph', paragraphId: 'paragraph-1' })).toBe(false);
+    expect(commitParagraph).toHaveBeenCalledTimes(1);
   });
 });
