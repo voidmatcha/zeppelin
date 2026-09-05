@@ -977,7 +977,8 @@ class NotebookServerTest extends AbstractTestRestApi {
     try {
       setNotePermissions(noteId, "binding-owner", "binding-owner");
       NotebookSocket socket = createWebSocket();
-      Message message = new Message(OP.GET_INTERPRETER_BINDINGS).put("noteId", noteId);
+      Message message = new Message(OP.GET_INTERPRETER_BINDINGS).withMsgId("get-bindings")
+          .put("noteId", noteId);
 
       notebookServer.getInterpreterBindings(socket, serviceContext("binding-attacker"), message);
 
@@ -990,8 +991,9 @@ class NotebookServerTest extends AbstractTestRestApi {
       notebookServer.getInterpreterBindings(socket, serviceContext("binding-reader"), message);
 
       verify(socket).send(response.capture());
-      assertEquals(OP.INTERPRETER_BINDINGS,
-          notebookServer.deserializeMessage(response.getValue()).op);
+      Message bindingsResponse = notebookServer.deserializeMessage(response.getValue());
+      assertEquals(OP.INTERPRETER_BINDINGS, bindingsResponse.op);
+      assertEquals("get-bindings", bindingsResponse.msgId);
     } finally {
       notebook.removeNote(noteId, owner);
     }
@@ -1006,6 +1008,7 @@ class NotebookServerTest extends AbstractTestRestApi {
       String initialGroup = notebook.processNote(noteId, Note::getDefaultInterpreterGroup);
       String replacementGroup = initialGroup.equals("md") ? "spark" : "md";
       Message message = new Message(OP.SAVE_INTERPRETER_BINDINGS)
+          .withMsgId("save-bindings")
           .put("noteId", noteId)
           .put("selectedSettingIds", Arrays.asList(replacementGroup));
       NotebookSocket socket = createWebSocket();
@@ -1026,8 +1029,9 @@ class NotebookServerTest extends AbstractTestRestApi {
       assertEquals(replacementGroup,
           notebook.processNote(noteId, Note::getDefaultInterpreterGroup));
       verify(socket).send(response.capture());
-      assertEquals(OP.INTERPRETER_BINDINGS,
-          notebookServer.deserializeMessage(response.getValue()).op);
+      Message bindingsResponse = notebookServer.deserializeMessage(response.getValue());
+      assertEquals(OP.INTERPRETER_BINDINGS, bindingsResponse.op);
+      assertEquals("save-bindings", bindingsResponse.msgId);
     } finally {
       notebook.removeNote(noteId, owner);
     }

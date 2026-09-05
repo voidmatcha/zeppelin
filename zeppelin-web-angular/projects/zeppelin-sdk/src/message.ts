@@ -41,6 +41,15 @@ export type SendArgumentsType<K extends keyof MessageSendDataTypeMap> = MessageS
 export type ReceiveArgumentsType<K extends keyof MessageReceiveDataTypeMap> =
   MessageReceiveDataTypeMap[K] extends undefined ? () => void : (data: MessageReceiveDataTypeMap[K]) => void;
 
+export type ReceivedMessage<K extends keyof MessageReceiveDataTypeMap> = WebSocketMessage<MessageReceiveDataTypeMap> & {
+  op: K;
+  data?: MessageReceiveDataTypeMap[K];
+};
+
+export type ReceiveMessageArgumentsType<K extends keyof MessageReceiveDataTypeMap> = (
+  message: ReceivedMessage<K>
+) => void;
+
 export class Message {
   public connectedStatus = false;
   public connectedStatus$ = new Subject<boolean>();
@@ -175,21 +184,25 @@ export class Message {
   }
 
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
-    const guard = getMessagePayloadGuard(op);
+    return this.receiveMessage(op).pipe(map(message => message.data)) as Observable<
+      Record<K, MessageReceiveDataTypeMap[K]>[K]
+    >;
+  }
 
+  receiveMessage<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<ReceivedMessage<K>> {
+    const guard = getMessagePayloadGuard(op);
     return this.received$.pipe(
-      filter(message => message.op === op),
+      filter((message): message is ReceivedMessage<K> => message.op === op),
       filter(message => {
         if (!guard || guard(message.data)) {
           return true;
         }
-
         // The payload can be large and carries note names, so log the OP alone.
         console.warn(`Dropped WebSocket OP ${String(op)}: payload failed validation`);
         return false;
-      }),
-      map(message => message.data)
-    ) as Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]>;
+      })
+    );
+  }
   }
 
   shortCircuit(message: WebSocketMessage<MessageReceiveDataTypeMap>) {

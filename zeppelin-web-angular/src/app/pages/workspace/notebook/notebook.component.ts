@@ -28,7 +28,7 @@ import { distinctUntilChanged, distinctUntilKeyChanged, startWith, takeUntil } f
 
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 
-import { MessageListener, MessageListenersManager } from '@zeppelin/core';
+import { MessageEnvelopeListener, MessageListener, MessageListenersManager } from '@zeppelin/core';
 import { Permissions } from '@zeppelin/interfaces';
 import {
   DynamicFormParams,
@@ -36,6 +36,7 @@ import {
   MessageReceiveDataTypeMap,
   Note,
   OP,
+  ReceivedMessage,
   RevisionListItem
 } from '@zeppelin/sdk';
 import {
@@ -53,6 +54,7 @@ import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
 import type { NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
+import { NotebookRequestCorrelation } from './notebook-request-correlation';
 
 type LoadedNote = Exclude<Note['note'], undefined>;
 type LoadedParagraph = LoadedNote['paragraphs'][number];
@@ -62,7 +64,7 @@ type LoadedParagraph = LoadedNote['paragraphs'][number];
   templateUrl: './notebook.component.html',
   styleUrls: ['./notebook.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [NotebookCoreRouteAdapter],
+  providers: [NotebookCoreRouteAdapter, NotebookRequestCorrelation],
   standalone: false
 })
 export class NotebookComponent extends MessageListenersManager implements OnInit, AfterViewInit, OnDestroy {
@@ -129,8 +131,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  @MessageListener(OP.INTERPRETER_BINDINGS)
-  loadInterpreterBindings(data: MessageReceiveDataTypeMap[OP.INTERPRETER_BINDINGS]) {
+  @MessageEnvelopeListener(OP.INTERPRETER_BINDINGS)
+  loadInterpreterBindings(message: ReceivedMessage<OP.INTERPRETER_BINDINGS>) {
+    if (!this.notebookRequestCorrelation.accept(message, this.activatedRoute.snapshot.params.noteId) || !message.data) {
+      return;
+    }
+    const data = message.data;
     this.interpreterBindings = data.interpreterBindings;
     if (!this.interpreterBindings.some(item => item.selected)) {
       this.activatedExtension = 'interpreter';
@@ -219,8 +225,11 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  @MessageListener(OP.SET_NOTE_REVISION)
-  setNoteRevision(_data: MessageReceiveDataTypeMap[OP.SET_NOTE_REVISION]) {
+  @MessageEnvelopeListener(OP.SET_NOTE_REVISION)
+  setNoteRevision(message: ReceivedMessage<OP.SET_NOTE_REVISION>) {
+    if (!this.notebookRequestCorrelation.accept(message, this.activatedRoute.snapshot.params.noteId)) {
+      return;
+    }
     const { noteId } = this.activatedRoute.snapshot.params;
     this.router.navigate(['/notebook', noteId]).then();
   }
@@ -291,8 +300,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.cdr.markForCheck();
   }
 
-  @MessageListener(OP.LIST_REVISION_HISTORY)
-  listRevisionHistory(data: MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY]) {
+  @MessageEnvelopeListener(OP.LIST_REVISION_HISTORY)
+  listRevisionHistory(message: ReceivedMessage<OP.LIST_REVISION_HISTORY>) {
+    if (!this.notebookRequestCorrelation.accept(message, this.activatedRoute.snapshot.params.noteId) || !message.data) {
+      return;
+    }
+    const data = message.data;
     this.noteRevisions = data.revisionList;
     if (this.noteRevisions) {
       if (this.noteRevisions.length === 0 || this.noteRevisions[0].id !== 'Head') {
@@ -484,7 +497,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private titleService: Title,
     private themeService: ThemeService,
     private reactFeature: ReactFeatureService,
-    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter
+    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter,
+    private notebookRequestCorrelation: NotebookRequestCorrelation
   ) {
     super(messageService);
     this.coreProofReactProps = {
@@ -494,6 +508,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   ngOnInit() {
+    this.messageService
+      .sent()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        this.notebookRequestCorrelation.record(message);
+      });
     this.activatedRoute.queryParamMap
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(params => {
