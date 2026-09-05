@@ -123,6 +123,8 @@
                 (selected)="onParagraphSelect($event)"
                 (paragraphTextChanged)="updateCoreParagraphText($event)"
                 (triggerSaveParagraph)="saveParagraph($event)"
+                (runParagraphRequested)="runParagraph($event)"
+                (cancelParagraphRequested)="cancelParagraph($event)"
                 (saveNoteTimer)="startSaveTimer()"
                 (openSearchMenu)="actionBar.openSearchMenu()"
               ></zeppelin-notebook-paragraph>
