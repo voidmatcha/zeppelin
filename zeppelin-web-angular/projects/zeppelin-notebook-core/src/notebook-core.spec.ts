@@ -277,7 +277,7 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot()).toBe(settled);
   });
 
-  it('does not apply live note updates to a loaded revision snapshot', () => {
+  it('does not apply live mutations to a loaded revision snapshot', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: 'revision-1' });
     runtime.apply({ type: 'load-started' });
     runtime.apply({
@@ -290,6 +290,16 @@ describe('notebook core runtime spike', () => {
     const revisionSnapshot = runtime.port.getSnapshot();
 
     expect(runtime.apply({ type: 'note-updated', title: 'Live title' })).toBe(false);
+    expect(
+      runtime.apply({
+        type: 'paragraph-added',
+        index: 1,
+        paragraph: { id: 'p-live', text: '%md live', status: 'PENDING' }
+      })
+    ).toBe(false);
+    expect(runtime.apply({ type: 'paragraph-removed', paragraphId: 'p-1' })).toBe(false);
+    expect(runtime.apply({ type: 'paragraph-moved', paragraphId: 'p-1', index: 1 })).toBe(false);
+    expect(runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md changed' })).toBe(false);
     expect(runtime.port.getSnapshot()).toBe(revisionSnapshot);
     expect(runtime.port.getSnapshot().title).toBe('Historical title');
   });
