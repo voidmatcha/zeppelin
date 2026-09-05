@@ -11,7 +11,7 @@
  */
 
 import { interval, Observable, Subject, Subscription } from 'rxjs';
-import { delay, filter, map, mergeMap, retryWhen, take } from 'rxjs/operators';
+import { filter, map } from 'rxjs/operators';
 import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 
 import { Ticket } from './interfaces/message-common.interface';
@@ -66,11 +66,16 @@ export class Message {
   // TODO: Clean up this variable with `msgId` in server-side. See ZEPPELIN-6419, ZEPPELIN-4985
   private lastMsgIdSeqSent = 0;
   private readonly normalCloseCode = 1000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
+  private manuallyClosed = false;
+  private destroyed = false;
 
   constructor() {
     this.open$.subscribe(() => {
       this.connectedStatus = true;
       this.connectedStatus$.next(this.connectedStatus);
+      this.reconnectAttempt = 0;
       this.pingIntervalSubscription.unsubscribe();
       this.pingIntervalSubscription = interval(1000 * 10).subscribe(() => this.ping());
     });
@@ -79,9 +84,8 @@ export class Message {
       this.connectedStatus$.next(this.connectedStatus);
       this.pingIntervalSubscription.unsubscribe();
 
-      if (event.code !== this.normalCloseCode) {
-        console.log('WebSocket closed unexpectedly. Reconnecting...');
-        this.connect();
+      if (event.code !== this.normalCloseCode && !this.manuallyClosed && !this.destroyed) {
+        this.scheduleReconnect();
       }
     });
   }
@@ -109,37 +113,44 @@ export class Message {
   }
 
   connect() {
+    if (this.destroyed) {
+      throw new Error('WebSocket has been destroyed. Create a new Message instance before reconnecting.');
+    }
     if (!this.wsUrl) {
       throw new Error('WebSocket URL is not set. Please call setWsUrl() before connect()');
     }
 
-    // Unsubscribe from existing subscription first
-    if (this.wsSubscription) {
-      this.wsSubscription.unsubscribe();
-      this.wsSubscription = null;
-    }
+    this.manuallyClosed = false;
+    this.clearReconnectTimer();
+    this.disconnectSocket();
 
-    // Then close existing WebSocket
-    if (this.ws) {
-      this.ws.complete();
-      this.ws = null;
-    }
-
-    this.ws = webSocket<WebSocketMessage<MessageDataTypeMap>>({
+    let socket: WebSocketSubject<WebSocketMessage<MessageDataTypeMap>>;
+    socket = webSocket<WebSocketMessage<MessageDataTypeMap>>({
       url: this.wsUrl,
-      openObserver: this.open$,
-      closeObserver: this.close$
+      openObserver: {
+        next: event => {
+          if (this.ws === socket) {
+            this.open$.next(event);
+          }
+        }
+      },
+      closeObserver: {
+        next: event => {
+          if (this.ws === socket) {
+            this.close$.next(event);
+          }
+        }
+      }
     });
+    this.ws = socket;
 
-    this.wsSubscription = this.ws
-      .pipe(
-        // reconnect
-        retryWhen(errors => errors.pipe(mergeMap(() => this.close$.pipe(take(1), delay(4000)))))
-      )
-      .subscribe(e => {
+    this.wsSubscription = socket.subscribe({
+      next: e => {
         console.log('Receive:', e.op);
         this.received$.next(this.interceptReceived(e as WebSocketMessage<MessageReceiveDataTypeMap>));
-      });
+      },
+      error: () => this.scheduleReconnect()
+    });
   }
 
   ping() {
@@ -147,6 +158,9 @@ export class Message {
   }
 
   close() {
+    this.manuallyClosed = true;
+    this.clearReconnectTimer();
+    this.disconnectSocket();
     this.close$.next(new CloseEvent('close', { code: this.normalCloseCode }));
   }
 
@@ -218,14 +232,41 @@ export class Message {
   }
 
   destroy(): void {
+    this.destroyed = true;
+    this.manuallyClosed = true;
+    this.clearReconnectTimer();
+    this.disconnectSocket();
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.wsUrl || this.reconnectTimer || this.manuallyClosed || this.destroyed) {
+      return;
+    }
+    const delayMs = Math.min(1000 * 2 ** this.reconnectAttempt, 30000);
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.manuallyClosed && !this.destroyed) {
+        this.connect();
+      }
+    }, delayMs);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private disconnectSocket(): void {
     if (this.wsSubscription) {
       this.wsSubscription.unsubscribe();
       this.wsSubscription = null;
     }
-    if (this.ws) {
-      this.ws.complete();
-      this.ws = null;
-    }
+    const socket = this.ws;
+    this.ws = null;
+    socket?.complete();
   }
 
   getHomeNote(): void {
