@@ -110,8 +110,8 @@ describe('notebook core runtime spike', () => {
       phase: 'ready',
       title: 'Runtime proof note',
       paragraphs: [
-        { id: 'p-1', text: '%md shared state', status: 'FINISHED' },
-        { id: 'p-2', text: '%spark 1 + 1', status: 'READY' }
+        { id: 'p-1', text: '%md shared state', status: 'FINISHED', isDirty: false },
+        { id: 'p-2', text: '%spark 1 + 1', status: 'READY', isDirty: false }
       ],
       error: null
     });
@@ -254,14 +254,16 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().paragraphs[0]).toEqual({
       id: 'p-1',
       text: '%python\nprint("updated")',
-      status: 'READY'
+      status: 'READY',
+      isDirty: true
     });
 
     expect(runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', status: 'RUNNING' })).toBe(true);
     expect(runtime.port.getSnapshot().paragraphs[0]).toEqual({
       id: 'p-1',
       text: '%python\nprint("updated")',
-      status: 'RUNNING'
+      status: 'RUNNING',
+      isDirty: true
     });
 
     const settled = runtime.port.getSnapshot();
@@ -275,6 +277,31 @@ describe('notebook core runtime spike', () => {
     ).toBe(false);
     expect(runtime.apply({ type: 'paragraph-updated', paragraphId: 'missing', status: 'ERROR' })).toBe(false);
     expect(runtime.port.getSnapshot()).toBe(settled);
+  });
+
+  it('keeps a local draft when a delayed server confirmation contains older text', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md local draft', source: 'local' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md saved', source: 'server' });
+
+    expect(runtime.port.getSnapshot().paragraphs[0]).toEqual({
+      id: 'p-1',
+      text: '%md local draft',
+      status: 'READY',
+      isDirty: true
+    });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md local draft', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md local draft', isDirty: false });
   });
 
   it('does not apply live mutations to a loaded revision snapshot', () => {

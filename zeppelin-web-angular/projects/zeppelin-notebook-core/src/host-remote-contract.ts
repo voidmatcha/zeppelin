@@ -16,7 +16,10 @@ export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
   status: NotebookParagraphStatus;
+  isDirty: boolean;
 }>;
+
+export type NotebookParagraphInput = Omit<NotebookParagraphSnapshot, 'isDirty'>;
 
 export type NotebookCorePhase = 'idle' | 'loading' | 'ready' | 'error';
 
