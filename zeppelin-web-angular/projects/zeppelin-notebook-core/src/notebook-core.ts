@@ -41,6 +41,8 @@ export type NotebookCoreEvent =
     }>
   | Readonly<{ type: 'paragraph-save-requested'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-save-cancelled'; paragraphId: string }>
+  | Readonly<{ type: 'paragraph-run-requested'; paragraphId: string }>
+  | Readonly<{ type: 'paragraph-run-rejected'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
@@ -82,6 +84,7 @@ type NotebookParagraphState = Readonly<{
   snapshot: NotebookParagraphSnapshot;
   savedText: string;
   savePending: boolean;
+  pendingRunStatus: NotebookParagraphSnapshot['status'] | null;
 }>;
 
 const freezeParagraph = (paragraph: NotebookParagraphState): NotebookParagraphState => Object.freeze({ ...paragraph });
@@ -132,7 +135,8 @@ const toParagraphState = (
     paragraphsById[paragraph.id] = freezeParagraph({
       snapshot: freezeParagraphSnapshot(paragraph),
       savedText: paragraph.text,
-      savePending: false
+      savePending: false,
+      pendingRunStatus: null
     });
     paragraphOrder.push(paragraph.id);
   }
@@ -218,7 +222,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           [event.paragraph.id]: freezeParagraph({
             snapshot: freezeParagraphSnapshot(event.paragraph),
             savedText: event.paragraph.text,
-            savePending: false
+            savePending: false,
+            pendingRunStatus: null
           })
         }
       });
@@ -272,13 +277,15 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           serverText
         ),
         savedText: serverText,
-        savePending: isServerTextUpdate ? false : current.savePending
+        savePending: isServerTextUpdate ? false : current.savePending,
+        pendingRunStatus: event.status !== undefined && event.status !== 'PENDING' ? null : current.pendingRunStatus
       };
       if (
         paragraph.snapshot.text === currentSnapshot.text &&
         paragraph.savedText === current.savedText &&
         paragraph.snapshot.status === currentSnapshot.status &&
-        paragraph.savePending === current.savePending
+        paragraph.savePending === current.savePending &&
+        paragraph.pendingRunStatus === current.pendingRunStatus
       ) {
         return state;
       }
@@ -316,6 +323,53 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         paragraphsById: {
           ...state.paragraphsById,
           [event.paragraphId]: freezeParagraph({ ...current, savePending: false })
+        }
+      });
+    }
+    case 'paragraph-run-requested': {
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      const current = state.paragraphsById[event.paragraphId];
+      if (
+        !current ||
+        current.snapshot.text.length === 0 ||
+        current.snapshot.status === 'PENDING' ||
+        current.snapshot.status === 'RUNNING'
+      ) {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            snapshot: freezeParagraphSnapshot({ ...current.snapshot, status: 'PENDING' }, current.savedText),
+            pendingRunStatus: current.snapshot.status
+          })
+        }
+      });
+    }
+    case 'paragraph-run-rejected': {
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current?.pendingRunStatus) {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            snapshot: freezeParagraphSnapshot(
+              { ...current.snapshot, status: current.pendingRunStatus },
+              current.savedText
+            ),
+            pendingRunStatus: null
+          })
         }
       });
     }
@@ -360,21 +414,29 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
       return () => listeners.delete(listener);
     },
     dispatch: command => {
-      if (command.type !== 'commit-paragraph') {
+      if (command.type === 'cancel-paragraph') {
         return route.dispatchCommand?.(command) ?? false;
       }
-      if (!apply({ type: 'paragraph-save-requested', paragraphId: command.paragraphId })) {
+      const requestedEvent =
+        command.type === 'commit-paragraph'
+          ? ({ type: 'paragraph-save-requested', paragraphId: command.paragraphId } as const)
+          : ({ type: 'paragraph-run-requested', paragraphId: command.paragraphId } as const);
+      const rejectedEvent =
+        command.type === 'commit-paragraph'
+          ? ({ type: 'paragraph-save-cancelled', paragraphId: command.paragraphId } as const)
+          : ({ type: 'paragraph-run-rejected', paragraphId: command.paragraphId } as const);
+      if (!apply(requestedEvent)) {
         return false;
       }
       let dispatched = false;
       try {
         dispatched = route.dispatchCommand?.(command) ?? false;
       } catch {
-        apply({ type: 'paragraph-save-cancelled', paragraphId: command.paragraphId });
+        apply(rejectedEvent);
         return false;
       }
       if (!dispatched) {
-        apply({ type: 'paragraph-save-cancelled', paragraphId: command.paragraphId });
+        apply(rejectedEvent);
       }
       return dispatched;
     }

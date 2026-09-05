@@ -27,15 +27,21 @@ describe('notebook core runtime spike', () => {
         return command.paragraphId === 'p-1';
       }
     });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Command note',
+      paragraphs: [{ id: 'p-1', text: '%md command', status: 'READY' }]
+    });
     const snapshot = runtime.port.getSnapshot();
 
     expect(runtime.port.dispatch({ type: 'run-paragraph', paragraphId: 'p-1' })).toBe(true);
     expect(runtime.port.dispatch({ type: 'run-paragraph', paragraphId: 'missing' })).toBe(false);
-    expect(dispatched).toEqual([
-      { type: 'run-paragraph', paragraphId: 'p-1' },
-      { type: 'run-paragraph', paragraphId: 'missing' }
-    ]);
-    expect(runtime.port.getSnapshot()).toBe(snapshot);
+    expect(dispatched).toEqual([{ type: 'run-paragraph', paragraphId: 'p-1' }]);
+    expect(runtime.port.getSnapshot()).not.toBe(snapshot);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ status: 'PENDING' });
   });
 
   it('keeps one cached immutable snapshot until the host applies a new event', () => {
@@ -324,6 +330,21 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md draft', source: 'server' });
     expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md draft', isDirty: false });
     expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+  });
+
+  it('restores the prior status when the host rejects a Core run request', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', dispatchCommand: () => false });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    expect(runtime.port.dispatch({ type: 'run-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ status: 'READY' });
   });
 
   it('does not apply live mutations to a loaded revision snapshot', () => {
