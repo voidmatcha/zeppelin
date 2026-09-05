@@ -139,6 +139,8 @@ export class NotebookParagraphComponent
 
   @Output() readonly saveNoteTimer = new EventEmitter();
   @Output() readonly triggerSaveParagraph = new EventEmitter<string>();
+  @Output() readonly runParagraphRequested = new EventEmitter<string>();
+  @Output() readonly cancelParagraphRequested = new EventEmitter<string>();
   @Output() readonly selected = new EventEmitter<string>();
   @Output() readonly paragraphTextChanged = new EventEmitter<{ paragraphId: string; text: string }>();
   @Output() readonly selectAtIndex = new EventEmitter<number>();
@@ -407,7 +409,7 @@ export class NotebookParagraphComponent
         this.runParagraphUsingSpell(text, magic, propagated);
         this.runParagraphAfter(text);
       } else {
-        this.runParagraphUsingBackendInterpreter(text);
+        this.runParagraphRequested.emit(this.paragraph.id);
         this.runParagraphAfter(text);
       }
     }
@@ -681,6 +683,10 @@ export class NotebookParagraphComponent
 
   handleCancel() {
     this.cancelParagraph();
+  }
+
+  override cancelParagraph() {
+    this.cancelParagraphRequested.emit(this.paragraph.id);
   }
 
   handleDelete() {

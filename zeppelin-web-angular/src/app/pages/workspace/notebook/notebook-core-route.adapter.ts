@@ -20,7 +20,7 @@ import {
   type NotebookParagraphStatus
 } from '@zeppelin/notebook-core';
 import type { Note } from '@zeppelin/sdk';
-import { MessageService, NgZService } from '@zeppelin/services';
+import { MessageService } from '@zeppelin/services';
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { Observable } from 'rxjs';
 
@@ -56,10 +56,7 @@ export class NotebookCoreRouteAdapter {
   private readonly diffMatchPatch = new DiffMatchPatch();
   private readonly paragraphViewsById = new Map<string, LoadedParagraph>();
 
-  constructor(
-    private readonly ngZService: NgZService,
-    private readonly messageService: MessageService
-  ) {
+  constructor(private readonly messageService: MessageService) {
     this.runtime = createNotebookCore({ dispatchCommand: command => this.dispatchCommand(command) });
     this.port = this.runtime.port;
     this.snapshot$ = new Observable<NotebookCoreSnapshot>(subscriber => {
@@ -191,7 +188,22 @@ export class NotebookCoreRouteAdapter {
       if (!coreParagraph.text || coreParagraph.status === 'PENDING' || coreParagraph.status === 'RUNNING') {
         return false;
       }
-      this.ngZService.runParagraph(command.paragraphId);
+      const paragraph = this.paragraphViewsById.get(command.paragraphId);
+      if (!paragraph) {
+        return false;
+      }
+      this.messageService.runParagraph(
+        paragraph.id,
+        paragraph.title,
+        coreParagraph.text,
+        paragraph.config,
+        paragraph.settings.params
+      );
+      return true;
+    }
+
+    if (command.type === 'cancel-paragraph') {
+      this.messageService.cancelParagraph(command.paragraphId);
       return true;
     }
 
