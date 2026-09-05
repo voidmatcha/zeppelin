@@ -127,12 +127,13 @@ export class NotebookCoreRouteAdapter {
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
       text: paragraph.text ?? '',
-      status: normalizeParagraphStatus(paragraph.status)
+      status: normalizeParagraphStatus(paragraph.status),
+      source: 'server'
     });
   }
 
   acceptParagraphText(paragraphId: string, text: string): void {
-    this.runtime.apply({ type: 'paragraph-updated', paragraphId, text });
+    this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'local' });
   }
 
   acceptParagraphPatch(paragraphId: string, patch: string): boolean {
@@ -149,7 +150,7 @@ export class NotebookCoreRouteAdapter {
       if (!applied.every(Boolean)) {
         return false;
       }
-      this.runtime.apply({ type: 'paragraph-updated', paragraphId, text });
+      this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'server' });
       return true;
     } catch {
       return false;

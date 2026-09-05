@@ -15,6 +15,7 @@ import type {
   NotebookCorePort,
   NotebookCoreSnapshot,
   NotebookCoreSnapshotListener,
+  NotebookParagraphInput,
   NotebookParagraphSnapshot
 } from './host-remote-contract';
 
@@ -26,9 +27,9 @@ export type NotebookCoreEvent =
       noteId: string;
       revisionId: string | null;
       title: string;
-      paragraphs: readonly NotebookParagraphSnapshot[];
+      paragraphs: readonly NotebookParagraphInput[];
     }>
-  | Readonly<{ type: 'paragraph-added'; index: number; paragraph: NotebookParagraphSnapshot }>
+  | Readonly<{ type: 'paragraph-added'; index: number; paragraph: NotebookParagraphInput }>
   | Readonly<{ type: 'paragraph-removed'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-moved'; paragraphId: string; index: number }>
   | Readonly<{
@@ -36,6 +37,7 @@ export type NotebookCoreEvent =
       paragraphId: string;
       text?: string;
       status?: NotebookParagraphSnapshot['status'];
+      source?: 'local' | 'server';
     }>
   | Readonly<{ type: 'note-updated'; title: string }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
@@ -70,12 +72,27 @@ type NotebookCoreState = Readonly<{
   phase: NotebookCoreSnapshot['phase'];
   title: string | null;
   paragraphOrder: readonly string[];
-  paragraphsById: Readonly<Record<string, NotebookParagraphSnapshot>>;
+  paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
   error: string | null;
 }>;
 
-const freezeParagraph = (paragraph: NotebookParagraphSnapshot): NotebookParagraphSnapshot =>
-  Object.freeze({ ...paragraph });
+type NotebookParagraphState = Readonly<{
+  snapshot: NotebookParagraphSnapshot;
+  savedText: string;
+}>;
+
+const freezeParagraph = (paragraph: NotebookParagraphState): NotebookParagraphState => Object.freeze({ ...paragraph });
+
+const freezeParagraphSnapshot = (
+  paragraph: NotebookParagraphInput,
+  savedText: string = paragraph.text
+): NotebookParagraphSnapshot =>
+  Object.freeze({
+    id: paragraph.id,
+    text: paragraph.text,
+    status: paragraph.status,
+    isDirty: paragraph.text !== savedText
+  });
 
 const freezeState = (state: NotebookCoreState): NotebookCoreState =>
   Object.freeze({
@@ -91,7 +108,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     revisionId: state.revisionId,
     phase: state.phase,
     title: state.title,
-    paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId])),
+    paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
 
@@ -101,15 +118,18 @@ const emptyParagraphState = (): Pick<NotebookCoreState, 'paragraphOrder' | 'para
 });
 
 const toParagraphState = (
-  paragraphs: readonly NotebookParagraphSnapshot[]
+  paragraphs: readonly NotebookParagraphInput[]
 ): Pick<NotebookCoreState, 'paragraphOrder' | 'paragraphsById'> => {
-  const paragraphsById: Record<string, NotebookParagraphSnapshot> = {};
+  const paragraphsById: Record<string, NotebookParagraphState> = {};
   const paragraphOrder: string[] = [];
   for (const paragraph of paragraphs) {
     if (paragraphsById[paragraph.id]) {
       continue;
     }
-    paragraphsById[paragraph.id] = freezeParagraph(paragraph);
+    paragraphsById[paragraph.id] = freezeParagraph({
+      snapshot: freezeParagraphSnapshot(paragraph),
+      savedText: paragraph.text
+    });
     paragraphOrder.push(paragraph.id);
   }
   return { paragraphOrder, paragraphsById };
@@ -189,7 +209,13 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         ...state,
         version,
         paragraphOrder,
-        paragraphsById: { ...state.paragraphsById, [event.paragraph.id]: freezeParagraph(event.paragraph) }
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraph.id]: freezeParagraph({
+            snapshot: freezeParagraphSnapshot(event.paragraph),
+            savedText: event.paragraph.text
+          })
+        }
       });
     }
     case 'paragraph-removed': {
@@ -224,12 +250,29 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       if (!current) {
         return state;
       }
+      const { snapshot: currentSnapshot } = current;
+      const isServerTextUpdate = event.source === 'server' && event.text !== undefined;
+      const serverText = isServerTextUpdate ? event.text : current.savedText;
       const paragraph = {
         ...current,
-        text: event.text ?? current.text,
-        status: event.status ?? current.status
+        snapshot: freezeParagraphSnapshot(
+          {
+            id: currentSnapshot.id,
+            text:
+              isServerTextUpdate && currentSnapshot.text !== current.savedText
+                ? currentSnapshot.text
+                : (event.text ?? currentSnapshot.text),
+            status: event.status ?? currentSnapshot.status
+          },
+          serverText
+        ),
+        savedText: serverText
       };
-      if (paragraph.text === current.text && paragraph.status === current.status) {
+      if (
+        paragraph.snapshot.text === currentSnapshot.text &&
+        paragraph.savedText === current.savedText &&
+        paragraph.snapshot.status === currentSnapshot.status
+      ) {
         return state;
       }
       return freezeState({
