@@ -277,6 +277,23 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot()).toBe(settled);
   });
 
+  it('does not apply live note updates to a loaded revision snapshot', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: 'revision-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: 'revision-1',
+      title: 'Historical title',
+      paragraphs: [{ id: 'p-1', text: '%md historical', status: 'FINISHED' }]
+    });
+    const revisionSnapshot = runtime.port.getSnapshot();
+
+    expect(runtime.apply({ type: 'note-updated', title: 'Live title' })).toBe(false);
+    expect(runtime.port.getSnapshot()).toBe(revisionSnapshot);
+    expect(runtime.port.getSnapshot().title).toBe('Historical title');
+  });
+
   it('projects Angular paragraph views from Core membership and order only', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
     const paragraphViews = new Map([

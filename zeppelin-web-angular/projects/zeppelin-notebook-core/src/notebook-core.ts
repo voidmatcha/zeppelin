@@ -229,7 +229,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       });
     }
     case 'note-updated':
-      if (state.phase !== 'ready' || state.title === event.title) {
+      if (state.phase !== 'ready' || state.revisionId !== null || state.title === event.title) {
         return state;
       }
       return freezeState({ ...state, version, title: event.title });

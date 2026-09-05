@@ -287,7 +287,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   @MessageListener(OP.NOTE_UPDATED)
   noteUpdated(data: MessageReceiveDataTypeMap[OP.NOTE_UPDATED]) {
-    if (!this.note) {
+    if (!this.note || this.revisionView) {
       return;
     }
     if (data.name !== this.note.name) {
