@@ -185,7 +185,7 @@ export class NotebookCoreRouteAdapter {
     }
 
     if (command.type === 'run-paragraph') {
-      if (!coreParagraph.text || coreParagraph.status === 'PENDING' || coreParagraph.status === 'RUNNING') {
+      if (!coreParagraph.text || coreParagraph.status === 'RUNNING') {
         return false;
       }
       const paragraph = this.paragraphViewsById.get(command.paragraphId);
