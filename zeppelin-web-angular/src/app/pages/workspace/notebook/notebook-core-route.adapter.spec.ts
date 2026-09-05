@@ -107,4 +107,16 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.dispatch({ type: 'cancel-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
     expect(cancelParagraph).toHaveBeenCalledWith('paragraph-1');
   });
+
+  it('maps a collaboration patch to one existing SDK message for the active note', () => {
+    const patchParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ patchParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.sendParagraphPatch('paragraph-1', '@@ -1,1 +1,1 @@\n-old\n+new\n')).toBe(true);
+    expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, '@@ -1,1 +1,1 @@\n-old\n+new\n');
+  });
 });

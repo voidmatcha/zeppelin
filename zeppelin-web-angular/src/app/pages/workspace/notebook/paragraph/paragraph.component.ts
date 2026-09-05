@@ -141,6 +141,7 @@ export class NotebookParagraphComponent
   @Output() readonly triggerSaveParagraph = new EventEmitter<string>();
   @Output() readonly runParagraphRequested = new EventEmitter<string>();
   @Output() readonly cancelParagraphRequested = new EventEmitter<string>();
+  @Output() readonly patchParagraphRequested = new EventEmitter<{ paragraphId: string; patch: string }>();
   @Output() readonly selected = new EventEmitter<string>();
   @Output() readonly paragraphTextChanged = new EventEmitter<{ paragraphId: string; text: string }>();
   @Output() readonly selectAtIndex = new EventEmitter<number>();
@@ -204,7 +205,7 @@ export class NotebookParagraphComponent
   sendPatch() {
     const { patch, originalText } = makeParagraphPatch(this.diffMatchPatch, this.originalText, this.dirtyText);
     this.originalText = originalText;
-    this.messageService.patchParagraph(this.paragraph.id, this.note.id, patch);
+    this.patchParagraphRequested.emit({ paragraphId: this.paragraph.id, patch });
   }
 
   startSaveTimer() {
