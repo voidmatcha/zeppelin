@@ -131,8 +131,18 @@ const clampIndex = (index: number, length: number): number => Math.min(Math.max(
 const hasSameParagraphOrder = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((paragraphId, index) => paragraphId === right[index]);
 
+const isLiveMutation = (event: NotebookCoreEvent): boolean =>
+  event.type === 'paragraph-added' ||
+  event.type === 'paragraph-removed' ||
+  event.type === 'paragraph-moved' ||
+  event.type === 'paragraph-updated' ||
+  event.type === 'note-updated';
+
 const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): NotebookCoreState => {
   const version = state.version + 1;
+  if (state.revisionId !== null && isLiveMutation(event)) {
+    return state;
+  }
   switch (event.type) {
     case 'route-changed':
       return freezeState({
