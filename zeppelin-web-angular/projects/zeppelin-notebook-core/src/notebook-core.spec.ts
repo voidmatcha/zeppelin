@@ -342,6 +342,29 @@ describe('notebook core runtime spike', () => {
     expect(selected[9999]).toBe(paragraphViews.get('p-9999'));
   });
 
+  it('preserves unchanged paragraph identities when one paragraph changes', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [
+        { id: 'p-1', text: '%md unchanged', status: 'READY' },
+        { id: 'p-2', text: '%md updated', status: 'READY' }
+      ]
+    });
+
+    const before = runtime.port.getSnapshot();
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-2', status: 'RUNNING' });
+    const after = runtime.port.getSnapshot();
+
+    expect(after.paragraphs[0]).toBe(before.paragraphs[0]);
+    expect(after.paragraphs[1]).not.toBe(before.paragraphs[1]);
+    expect(after.paragraphs[1]).toMatchObject({ id: 'p-2', status: 'RUNNING' });
+  });
+
   it('ignores uncorrelated incremental mutations while a new route is loading', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
     runtime.apply({ type: 'load-started' });
