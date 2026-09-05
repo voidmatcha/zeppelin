@@ -207,6 +207,11 @@ export class NotebookCoreRouteAdapter {
       return true;
     }
 
+    if (command.type === 'patch-paragraph') {
+      this.messageService.patchParagraph(command.paragraphId, snapshot.noteId, command.patch);
+      return true;
+    }
+
     if (!coreParagraph.isDirty) {
       return false;
     }
@@ -223,6 +228,10 @@ export class NotebookCoreRouteAdapter {
       snapshot.noteId
     );
     return true;
+  }
+
+  sendParagraphPatch(paragraphId: string, patch: string): boolean {
+    return this.port.dispatch({ type: 'patch-paragraph', paragraphId, patch });
   }
 
   private replaceParagraphViews(paragraphs: Iterable<LoadedParagraph>): void {
