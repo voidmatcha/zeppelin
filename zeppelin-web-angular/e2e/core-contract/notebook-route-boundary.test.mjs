@@ -117,8 +117,8 @@ test('Angular owns notebook route parsing and passes one port to the React remot
       phase: 'ready',
       title: 'Fixture note-route-updated',
       paragraphs: [
-        { id: 'paragraph-1', text: '%md shared state', status: 'FINISHED' },
-        { id: 'paragraph-2', text: '%spark 1 + 1', status: 'READY' }
+        { id: 'paragraph-1', text: '%md shared state', status: 'FINISHED', isDirty: false },
+        { id: 'paragraph-2', text: '%spark 1 + 1', status: 'READY', isDirty: false }
       ],
       error: null,
       version: undefined
