@@ -331,6 +331,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.port.dispatch({ type: 'commit-paragraph', paragraphId: id });
   }
 
+  runParagraph(id: string) {
+    this.notebookCoreRouteAdapter.port.dispatch({ type: 'run-paragraph', paragraphId: id });
+  }
+
+  cancelParagraph(id: string) {
+    this.notebookCoreRouteAdapter.port.dispatch({ type: 'cancel-paragraph', paragraphId: id });
+  }
+
   killSaveTimer() {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
