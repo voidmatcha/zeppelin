@@ -11,6 +11,7 @@
  */
 
 import type { MessageService } from '@zeppelin/services';
+import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@zeppelin/services', () => ({ MessageService: class {} }));
@@ -118,5 +119,29 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
 
     expect(adapter.sendParagraphPatch('paragraph-1', '@@ -1,1 +1,1 @@\n-old\n+new\n')).toBe(true);
     expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, '@@ -1,1 +1,1 @@\n-old\n+new\n');
+  });
+
+  it('applies an inbound collaboration patch to the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    const updatedText = '%python\nprint("from Angular collaborator")';
+    const diffMatchPatch = new DiffMatchPatch();
+    const patch = diffMatchPatch.patch_toText(diffMatchPatch.patch_make(note.paragraphs[0].text, updatedText));
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.acceptParagraphPatch('paragraph-1', patch)).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: updatedText, isDirty: false });
+  });
+
+  it('rejects an inbound collaboration patch for an unknown paragraph', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.acceptParagraphPatch('missing', '@@ -1,1 +1,1 @@\n-old\n+new\n')).toBe(false);
   });
 });
