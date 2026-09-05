@@ -38,6 +38,7 @@ interface PendingRequest {
 }
 
 export class NotebookRequestCorrelation {
+  private static readonly maxPendingRequests = 100;
   private readonly pendingByMsgId = new Map<string, PendingRequest>();
 
   record(message: WebSocketMessage<MessageSendDataTypeMap>): void {
@@ -49,6 +50,13 @@ export class NotebookRequestCorrelation {
       return;
     }
     const requestOp = message.op as RequestOp;
+    if (
+      !this.pendingByMsgId.has(message.msgId) &&
+      this.pendingByMsgId.size >= NotebookRequestCorrelation.maxPendingRequests
+    ) {
+      const oldestMsgId = this.pendingByMsgId.keys().next().value;
+      this.pendingByMsgId.delete(oldestMsgId);
+    }
     this.pendingByMsgId.set(message.msgId, {
       noteId: request.noteId,
       responseOp: responseForRequest[requestOp]

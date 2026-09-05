@@ -55,4 +55,19 @@ describe('NotebookRequestCorrelation', () => {
     expect(correlation.accept({ op: OP.LIST_REVISION_HISTORY, msgId: 'second' }, 'note-a')).toBe(true);
     expect(correlation.accept({ op: OP.LIST_REVISION_HISTORY, msgId: 'first' }, 'note-a')).toBe(true);
   });
+
+  it('bounds unresolved requests so a long-lived notebook view does not retain them indefinitely', () => {
+    const correlation = new NotebookRequestCorrelation();
+    for (let index = 0; index <= 100; index += 1) {
+      correlation.record({
+        op: OP.GET_INTERPRETER_BINDINGS,
+        msgId: `request-${index}`,
+        data: { noteId: 'note-a' }
+      });
+    }
+
+    expect(correlation.accept({ op: OP.INTERPRETER_BINDINGS, msgId: 'request-0' }, 'note-a')).toBe(false);
+    expect(correlation.accept({ op: OP.INTERPRETER_BINDINGS, msgId: 'request-1' }, 'note-a')).toBe(true);
+    expect(correlation.accept({ op: OP.INTERPRETER_BINDINGS, msgId: 'request-100' }, 'note-a')).toBe(true);
+  });
 });
