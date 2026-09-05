@@ -37,6 +37,8 @@ describe('NotebookCoreAdapter', () => {
     expect(adapter.getAttribute('data-note-id')).toBe('note-1');
     expect(adapter.getAttribute('data-title')).toBe('Shared notebook');
     expect(adapter.getAttribute('data-paragraph-count')).toBe('1');
+    expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('%python\nprint(1)');
+    expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('READY');
 
     fireEvent.click(screen.getByRole('button', { name: 'Run first paragraph from React' }));
 
@@ -48,6 +50,7 @@ describe('NotebookCoreAdapter', () => {
       runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', status: 'FINISHED' });
     });
     expect(adapter.getAttribute('data-paragraph-statuses')).toBe(JSON.stringify(['FINISHED']));
+    expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('FINISHED');
   });
 
   it('disables execution for revision snapshots', () => {

@@ -53,6 +53,16 @@ export const NotebookCoreAdapter = ({ core, expectedCore }: NotebookCoreAdapterP
     >
       <strong>{snapshot.title ?? 'Loading notebook'}</strong>
       <span>{snapshot.paragraphs.length} paragraphs</span>
+      <ol aria-label="Notebook paragraphs">
+        {snapshot.paragraphs.map((paragraph, index) => (
+          <li key={paragraph.id} data-testid={`notebook-core-paragraph-${paragraph.id}`}>
+            <article aria-label={`Paragraph ${index + 1}`}>
+              <header>{paragraph.status}</header>
+              <pre>{paragraph.text}</pre>
+            </article>
+          </li>
+        ))}
+      </ol>
       <button type="button" disabled={!canRun} onClick={runFirstParagraph}>
         Run first paragraph from React
       </button>

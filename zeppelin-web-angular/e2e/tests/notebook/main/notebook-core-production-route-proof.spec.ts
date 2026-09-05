@@ -205,6 +205,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .toBe(1);
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
       await expect(proof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));
+      await expect(reactAdapter.getByRole('article', { name: 'Paragraph 1' })).toContainText(code);
 
       await page.getByRole('button', { name: 'Run first paragraph from React', exact: true }).click();
 
@@ -218,6 +219,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect
         .poll(async () => (await getCoreParagraphValues(reactAdapter, 'data-paragraph-statuses'))[0])
         .toBe('FINISHED');
+      await expect(reactAdapter.getByRole('article', { name: 'Paragraph 1' })).toContainText('FINISHED');
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).status).toBe('FINISHED');
 
       await page.goto('/#/');
