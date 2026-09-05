@@ -55,7 +55,9 @@ export class NotebookRequestCorrelation {
       this.pendingByMsgId.size >= NotebookRequestCorrelation.maxPendingRequests
     ) {
       const oldestMsgId = this.pendingByMsgId.keys().next().value;
-      this.pendingByMsgId.delete(oldestMsgId);
+      if (oldestMsgId !== undefined) {
+        this.pendingByMsgId.delete(oldestMsgId);
+      }
     }
     this.pendingByMsgId.set(message.msgId, {
       noteId: request.noteId,
