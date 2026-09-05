@@ -63,144 +63,194 @@ export const selectNotebookParagraphViews = <T extends Readonly<{ id: string }>>
     return paragraphView;
   });
 
-const freezeParagraphs = (paragraphs: readonly NotebookParagraphSnapshot[]): readonly NotebookParagraphSnapshot[] =>
-  Object.freeze(paragraphs.map(paragraph => Object.freeze({ ...paragraph })));
+type NotebookCoreState = Readonly<{
+  version: number;
+  noteId: string;
+  revisionId: string | null;
+  phase: NotebookCoreSnapshot['phase'];
+  title: string | null;
+  paragraphOrder: readonly string[];
+  paragraphsById: Readonly<Record<string, NotebookParagraphSnapshot>>;
+  error: string | null;
+}>;
 
-const freezeSnapshot = (snapshot: NotebookCoreSnapshot): NotebookCoreSnapshot =>
+const freezeParagraph = (paragraph: NotebookParagraphSnapshot): NotebookParagraphSnapshot =>
+  Object.freeze({ ...paragraph });
+
+const freezeState = (state: NotebookCoreState): NotebookCoreState =>
   Object.freeze({
-    ...snapshot,
-    paragraphs: freezeParagraphs(snapshot.paragraphs)
+    ...state,
+    paragraphOrder: Object.freeze([...state.paragraphOrder]),
+    paragraphsById: Object.freeze({ ...state.paragraphsById })
   });
 
-const initialSnapshot = (route: NotebookCoreInitialRoute): NotebookCoreSnapshot =>
-  freezeSnapshot({
+const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
+  Object.freeze({
+    version: state.version,
+    noteId: state.noteId,
+    revisionId: state.revisionId,
+    phase: state.phase,
+    title: state.title,
+    paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId])),
+    error: state.error
+  });
+
+const emptyParagraphState = (): Pick<NotebookCoreState, 'paragraphOrder' | 'paragraphsById'> => ({
+  paragraphOrder: [],
+  paragraphsById: {}
+});
+
+const toParagraphState = (
+  paragraphs: readonly NotebookParagraphSnapshot[]
+): Pick<NotebookCoreState, 'paragraphOrder' | 'paragraphsById'> => {
+  const paragraphsById: Record<string, NotebookParagraphSnapshot> = {};
+  const paragraphOrder: string[] = [];
+  for (const paragraph of paragraphs) {
+    if (paragraphsById[paragraph.id]) {
+      continue;
+    }
+    paragraphsById[paragraph.id] = freezeParagraph(paragraph);
+    paragraphOrder.push(paragraph.id);
+  }
+  return { paragraphOrder, paragraphsById };
+};
+
+const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
+  freezeState({
     version: 0,
     noteId: route.noteId ?? '',
     revisionId: route.revisionId ?? null,
     phase: 'idle',
     title: null,
-    paragraphs: [],
+    ...emptyParagraphState(),
     error: null
   });
 
 const clampIndex = (index: number, length: number): number => Math.min(Math.max(index, 0), length);
 
-const hasSameParagraphOrder = (
-  left: readonly NotebookParagraphSnapshot[],
-  right: readonly NotebookParagraphSnapshot[]
-): boolean => left.length === right.length && left.every((paragraph, index) => paragraph.id === right[index]?.id);
+const hasSameParagraphOrder = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && left.every((paragraphId, index) => paragraphId === right[index]);
 
-const reduceSnapshot = (snapshot: NotebookCoreSnapshot, event: NotebookCoreEvent): NotebookCoreSnapshot => {
-  const version = snapshot.version + 1;
+const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): NotebookCoreState => {
+  const version = state.version + 1;
   switch (event.type) {
     case 'route-changed':
-      return freezeSnapshot({
+      return freezeState({
         version,
         noteId: event.noteId,
         revisionId: event.revisionId,
         phase: 'idle',
         title: null,
-        paragraphs: [],
+        ...emptyParagraphState(),
         error: null
       });
     case 'load-started':
-      return freezeSnapshot({
-        ...snapshot,
+      return freezeState({
+        ...state,
         version,
         phase: 'loading',
         title: null,
-        paragraphs: [],
+        ...emptyParagraphState(),
         error: null
       });
     case 'note-loaded':
-      if (event.noteId !== snapshot.noteId || event.revisionId !== snapshot.revisionId) {
-        return snapshot;
+      if (event.noteId !== state.noteId || event.revisionId !== state.revisionId) {
+        return state;
       }
-      return freezeSnapshot({
-        ...snapshot,
+      return freezeState({
+        ...state,
         version,
         phase: 'ready',
         title: event.title,
-        paragraphs: event.paragraphs,
+        ...toParagraphState(event.paragraphs),
         error: null
       });
     case 'paragraph-added': {
-      if (snapshot.phase !== 'ready' || snapshot.paragraphs.some(paragraph => paragraph.id === event.paragraph.id)) {
-        return snapshot;
+      if (state.phase !== 'ready' || state.paragraphsById[event.paragraph.id]) {
+        return state;
       }
-      const index = clampIndex(event.index, snapshot.paragraphs.length);
-      const paragraphs = [...snapshot.paragraphs.slice(0, index), event.paragraph, ...snapshot.paragraphs.slice(index)];
-      return freezeSnapshot({ ...snapshot, version, paragraphs });
+      const index = clampIndex(event.index, state.paragraphOrder.length);
+      const paragraphOrder = [
+        ...state.paragraphOrder.slice(0, index),
+        event.paragraph.id,
+        ...state.paragraphOrder.slice(index)
+      ];
+      return freezeState({
+        ...state,
+        version,
+        paragraphOrder,
+        paragraphsById: { ...state.paragraphsById, [event.paragraph.id]: freezeParagraph(event.paragraph) }
+      });
     }
     case 'paragraph-removed': {
-      if (snapshot.phase !== 'ready') {
-        return snapshot;
+      if (state.phase !== 'ready' || !state.paragraphsById[event.paragraphId]) {
+        return state;
       }
-      const paragraphs = snapshot.paragraphs.filter(paragraph => paragraph.id !== event.paragraphId);
-      if (paragraphs.length === snapshot.paragraphs.length) {
-        return snapshot;
-      }
-      return freezeSnapshot({ ...snapshot, version, paragraphs });
+      const { [event.paragraphId]: _, ...paragraphsById } = state.paragraphsById;
+      return freezeState({
+        ...state,
+        version,
+        paragraphOrder: state.paragraphOrder.filter(paragraphId => paragraphId !== event.paragraphId),
+        paragraphsById
+      });
     }
     case 'paragraph-moved': {
-      if (snapshot.phase !== 'ready') {
-        return snapshot;
+      if (state.phase !== 'ready' || !state.paragraphsById[event.paragraphId]) {
+        return state;
       }
-      const paragraph = snapshot.paragraphs.find(candidate => candidate.id === event.paragraphId);
-      if (!paragraph) {
-        return snapshot;
-      }
-      const remaining = snapshot.paragraphs.filter(candidate => candidate.id !== event.paragraphId);
+      const remaining = state.paragraphOrder.filter(paragraphId => paragraphId !== event.paragraphId);
       const index = clampIndex(event.index, remaining.length);
-      const paragraphs = [...remaining.slice(0, index), paragraph, ...remaining.slice(index)];
-      if (hasSameParagraphOrder(snapshot.paragraphs, paragraphs)) {
-        return snapshot;
+      const paragraphOrder = [...remaining.slice(0, index), event.paragraphId, ...remaining.slice(index)];
+      if (hasSameParagraphOrder(state.paragraphOrder, paragraphOrder)) {
+        return state;
       }
-      return freezeSnapshot({ ...snapshot, version, paragraphs });
+      return freezeState({ ...state, version, paragraphOrder });
     }
     case 'paragraph-updated': {
-      if (snapshot.phase !== 'ready') {
-        return snapshot;
+      if (state.phase !== 'ready') {
+        return state;
       }
-      const index = snapshot.paragraphs.findIndex(paragraph => paragraph.id === event.paragraphId);
-      if (index < 0) {
-        return snapshot;
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current) {
+        return state;
       }
-      const current = snapshot.paragraphs[index];
       const paragraph = {
         ...current,
         text: event.text ?? current.text,
         status: event.status ?? current.status
       };
       if (paragraph.text === current.text && paragraph.status === current.status) {
-        return snapshot;
+        return state;
       }
-      const paragraphs = [...snapshot.paragraphs];
-      paragraphs[index] = paragraph;
-      return freezeSnapshot({ ...snapshot, version, paragraphs });
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: { ...state.paragraphsById, [event.paragraphId]: freezeParagraph(paragraph) }
+      });
     }
     case 'note-updated':
-      if (snapshot.phase !== 'ready' || snapshot.title === event.title) {
-        return snapshot;
+      if (state.phase !== 'ready' || state.title === event.title) {
+        return state;
       }
-      return freezeSnapshot({ ...snapshot, version, title: event.title });
+      return freezeState({ ...state, version, title: event.title });
     case 'load-failed':
-      if (event.noteId !== snapshot.noteId || event.revisionId !== snapshot.revisionId) {
-        return snapshot;
+      if (event.noteId !== state.noteId || event.revisionId !== state.revisionId) {
+        return state;
       }
-      return freezeSnapshot({
-        ...snapshot,
+      return freezeState({
+        ...state,
         version,
         phase: 'error',
         title: null,
-        paragraphs: [],
+        ...emptyParagraphState(),
         error: event.error
       });
   }
 };
 
 export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): NotebookCoreRuntime => {
-  let snapshot = initialSnapshot(route);
+  let state = initialState(route);
+  let snapshot = toSnapshot(state);
   const listeners = new Set<NotebookCoreSnapshotListener>();
   const port: NotebookCorePort = Object.freeze({
     getSnapshot: () => snapshot,
@@ -214,11 +264,12 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
   return Object.freeze({
     port,
     apply: (event: NotebookCoreEvent) => {
-      const nextSnapshot = reduceSnapshot(snapshot, event);
-      if (nextSnapshot === snapshot) {
+      const nextState = reduceState(state, event);
+      if (nextState === state) {
         return false;
       }
-      snapshot = nextSnapshot;
+      state = nextState;
+      snapshot = toSnapshot(state);
       listeners.forEach(listener => listener());
       return true;
     }
