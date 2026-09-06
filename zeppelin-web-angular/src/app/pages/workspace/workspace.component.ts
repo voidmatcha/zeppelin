@@ -45,14 +45,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  /**
-   * Close the old connection manually when the network is offline
-   * and connect a new, the {@link MessageService} will auto-retry
-   */
   @HostListener('window:offline')
   onOffline() {
-    this.messageService.close();
-    this.messageService.connect();
+    this.messageService.pauseReconnect();
+  }
+
+  @HostListener('window:online')
+  onOnline() {
+    this.messageService.resumeReconnect();
   }
 
   setUpWebsocketReconnectMessage() {

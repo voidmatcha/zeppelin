@@ -261,6 +261,28 @@ describe('Message reconnect lifecycle', () => {
 
     expect(webSocket).toHaveBeenCalledTimes(2);
   });
+
+  it('pauses offline reconnects and resumes exactly once when the browser is online', () => {
+    const firstSocket = createSocket();
+    const secondSocket = createSocket();
+    webSocket.mockReturnValueOnce(firstSocket).mockReturnValueOnce(secondSocket);
+    const message = new Message();
+    message.setWsUrl('ws://example.test/ws');
+
+    message.connect();
+    const firstConfig = webSocket.mock.calls[0][0] as SocketConfig;
+    message.pauseReconnect();
+    firstConfig.closeObserver?.next(new CloseEvent('close', { code: 1006 }));
+    vi.advanceTimersByTime(30000);
+
+    expect(webSocket).toHaveBeenCalledOnce();
+    expect(firstSocket.complete).toHaveBeenCalledOnce();
+
+    message.resumeReconnect();
+    message.resumeReconnect();
+
+    expect(webSocket).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Message reconnect lifecycle', () => {

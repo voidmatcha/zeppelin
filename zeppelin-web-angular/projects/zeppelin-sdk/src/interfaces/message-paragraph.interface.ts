@@ -327,6 +327,17 @@ export interface ParagraphStatus {
   status: string;
 }
 
+export interface ParagraphAppendOutput {
+  noteId: string;
+  paragraphId: string;
+  index: number;
+  data: string;
+}
+
+export interface ParagraphUpdateOutput extends ParagraphAppendOutput {
+  type: DatasetType;
+}
+
 interface GraphConfigSetting {
   table?: VisualizationTable;
   lineChart?: VisualizationLineChart;

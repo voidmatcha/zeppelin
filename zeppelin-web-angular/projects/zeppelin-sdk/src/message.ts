@@ -70,6 +70,7 @@ export class Message {
   private reconnectAttempt = 0;
   private manuallyClosed = false;
   private destroyed = false;
+  private offline = false;
 
   constructor() {
     this.open$.subscribe(() => {
@@ -118,6 +119,9 @@ export class Message {
     }
     if (!this.wsUrl) {
       throw new Error('WebSocket URL is not set. Please call setWsUrl() before connect()');
+    }
+    if (this.offline) {
+      return;
     }
 
     this.manuallyClosed = false;
@@ -230,8 +234,33 @@ export class Message {
     this.disconnectSocket();
   }
 
+  /**
+   * Browser connectivity is an input to the transport, rather than another
+   * reconnect owner.  A later online notification is the only operation that
+   * may resume this paused connection.
+   */
+  pauseReconnect(): void {
+    if (this.destroyed || this.offline) {
+      return;
+    }
+    this.offline = true;
+    this.clearReconnectTimer();
+    this.disconnectSocket();
+    this.close$.next(new CloseEvent('close', { code: this.normalCloseCode }));
+  }
+
+  resumeReconnect(): void {
+    if (this.destroyed || !this.offline) {
+      return;
+    }
+    this.offline = false;
+    if (!this.ws && !this.reconnectTimer) {
+      this.connect();
+    }
+  }
+
   private scheduleReconnect(): void {
-    if (!this.wsUrl || this.reconnectTimer || this.manuallyClosed || this.destroyed) {
+    if (!this.wsUrl || this.reconnectTimer || this.manuallyClosed || this.destroyed || this.offline) {
       return;
     }
     const delayMs = Math.min(1000 * 2 ** this.reconnectAttempt, 30000);

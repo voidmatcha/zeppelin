@@ -143,11 +143,46 @@ export abstract class ParagraphBase extends MessageListenersManager {
     }
   }
 
+  @MessageListener(OP.PARAGRAPH_UPDATE_OUTPUT)
+  updateOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_UPDATE_OUTPUT]) {
+    if (data.paragraphId !== this.paragraph?.id) {
+      return;
+    }
+    const result = this.getOrCreateResult(data.index);
+    result.type = data.type;
+    result.data = data.data;
+    this.updateParagraphResult(data.index, this.getResultConfig(data.index), result);
+    this.cdr.markForCheck();
+  }
+
+  @MessageListener(OP.PARAGRAPH_APPEND_OUTPUT)
+  appendOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_APPEND_OUTPUT]) {
+    if (data.paragraphId !== this.paragraph?.id) {
+      return;
+    }
+    const result = this.getOrCreateResult(data.index);
+    result.data += data.data;
+    this.updateParagraphResult(data.index, this.getResultConfig(data.index), result);
+    this.cdr.markForCheck();
+  }
+
   abstract updateParagraphResult(
     resultIndex: number,
     config: ParagraphConfigResult,
     result: ParagraphIResultsMsgItem
   ): void;
+
+  private getOrCreateResult(index: number): ParagraphIResultsMsgItem {
+    const results = this.paragraph?.results ?? (this.paragraph!.results = {});
+    const messages = results.msg ?? (results.msg = []);
+    const result = messages[index] ?? new ParagraphIResultsMsgItem();
+    messages[index] = result;
+    return result;
+  }
+
+  private getResultConfig(index: number): ParagraphConfigResult {
+    return this.paragraph?.config.results?.[index] ?? { graph: new GraphConfig() };
+  }
 
   @MessageListener(OP.PATCH_PARAGRAPH)
   patchParagraph(data: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH]) {

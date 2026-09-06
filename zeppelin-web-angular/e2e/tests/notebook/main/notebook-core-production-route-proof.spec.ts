@@ -62,6 +62,26 @@ const observeSentOperations = (page: Page): string[] => {
   return operations;
 };
 
+const observeReceivedOperations = (page: Page): string[] => {
+  const operations: string[] = [];
+  page.on('websocket', webSocket => {
+    webSocket.on('framereceived', event => {
+      if (typeof event.payload !== 'string') {
+        return;
+      }
+      try {
+        const message = JSON.parse(event.payload) as { op?: unknown };
+        if (typeof message.op === 'string') {
+          operations.push(message.op);
+        }
+      } catch {
+        // Non-JSON development-server frames are unrelated to Zeppelin operations.
+      }
+    });
+  });
+  return operations;
+};
+
 const notebookWriteOperations = new Set(['PATCH_PARAGRAPH', 'COMMIT_PARAGRAPH', 'RUN_PARAGRAPH']);
 
 test.describe('Notebook Core production route feasibility proof', () => {
@@ -172,6 +192,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     page
   }) => {
     const sentOperations = observeSentOperations(page);
+    const receivedOperations = observeReceivedOperations(page);
 
     await page.goto('/#/');
     await waitForZeppelinReady(page);
@@ -179,7 +200,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     const stamp = Date.now();
     const marker = `core_vertical_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const markerFirst = `${marker}_first`;
+    const markerSecond = `${marker}_second`;
+    const code = `%python\nimport time\nprint("${markerFirst}")\ntime.sleep(0.2)\nprint("${markerSecond}")`;
     let noteId: string | undefined;
 
     try {
@@ -211,8 +234,13 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await expect(reactAdapter).toHaveAttribute('data-command-accepted', 'true');
       await expect.poll(() => sentOperations.filter(operation => operation === 'RUN_PARAGRAPH').length).toBe(1);
+      await expect(paragraphResult).toContainText(markerFirst, { timeout: 30000 });
+      await expect(paragraphResult).toContainText(markerSecond, { timeout: 30000 });
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation === 'PARAGRAPH_APPEND_OUTPUT').length)
+        .toBeGreaterThan(0);
       await expect(keyboardPage.getParagraphStatus(0)).toHaveText('FINISHED', { timeout: 60000 });
-      await expect(paragraphResult).toContainText(marker, { timeout: 30000 });
+      await expect(paragraphResult).toContainText(markerSecond, { timeout: 30000 });
       await expect
         .poll(async () => (await getCoreParagraphValues(proof, 'data-paragraph-statuses'))[0])
         .toBe('FINISHED');
@@ -231,7 +259,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect
         .poll(async () => (await getCoreParagraphValues(proof, 'data-paragraph-statuses'))[0])
         .toBe('FINISHED');
-      await expect(paragraphResult).toContainText(marker, { timeout: 30000 });
+      await expect(paragraphResult).toContainText(markerSecond, { timeout: 30000 });
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
