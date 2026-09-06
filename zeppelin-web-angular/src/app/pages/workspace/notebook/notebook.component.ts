@@ -260,6 +260,16 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.acceptParagraphStatus(data.id, data.status);
   }
 
+  updateCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_UPDATE_OUTPUT]) {
+    this.notebookCoreRouteAdapter.acceptParagraphOutputUpdate(data.paragraphId, data.index, data.type, data.data);
+    this.cdr.markForCheck();
+  }
+
+  appendCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_APPEND_OUTPUT]) {
+    this.notebookCoreRouteAdapter.acceptParagraphOutputAppend(data.paragraphId, data.index, data.data);
+    this.cdr.markForCheck();
+  }
+
   @MessageListener(OP.PATCH_PARAGRAPH)
   patchParagraph(data: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH]) {
     this.collaborativeMode = true;
@@ -325,6 +335,10 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   coreProofParagraphStatuses(snapshot: NotebookCoreSnapshot): string {
     return JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.status));
+  }
+
+  coreProofParagraphResults(snapshot: NotebookCoreSnapshot): string {
+    return JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.results ?? []));
   }
 
   saveParagraph(id: string) {
@@ -501,6 +515,20 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   ngOnInit() {
     this.subscribeNotebookScopedReplies();
+    this.messageService
+      .sent()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        this.notebookRequestCorrelation.record(message);
+      });
+    this.messageService
+      .receive(OP.PARAGRAPH_UPDATE_OUTPUT)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => this.updateCoreParagraphOutput(data));
+    this.messageService
+      .receive(OP.PARAGRAPH_APPEND_OUTPUT)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => this.appendCoreParagraphOutput(data));
     this.activatedRoute.queryParamMap
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(params => {

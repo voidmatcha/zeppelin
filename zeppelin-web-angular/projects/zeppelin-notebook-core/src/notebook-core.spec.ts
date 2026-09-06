@@ -67,6 +67,33 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot()).toMatchObject({ version: 1, phase: 'loading' });
   });
 
+  it('owns streamed output updates and appends without exposing the transport', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Output note',
+      paragraphs: [{ id: 'p-1', text: '%python', status: 'RUNNING' }]
+    });
+
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-updated',
+        paragraphId: 'p-1',
+        index: 0,
+        result: { type: 'TEXT', data: 'first' }
+      })
+    ).toBe(true);
+    expect(runtime.apply({ type: 'paragraph-output-appended', paragraphId: 'p-1', index: 0, data: ' second' })).toBe(
+      true
+    );
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', status: 'FINISHED' });
+
+    expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first second' }]);
+  });
+
   it('reports whether an event was accepted without publishing ignored events', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
     const listener = vi.fn();

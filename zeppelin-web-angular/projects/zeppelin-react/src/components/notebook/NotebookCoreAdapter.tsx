@@ -59,6 +59,15 @@ export const NotebookCoreAdapter = ({ core, expectedCore }: NotebookCoreAdapterP
             <article aria-label={`Paragraph ${index + 1}`}>
               <header>{paragraph.status}</header>
               <pre>{paragraph.text}</pre>
+              {paragraph.results && paragraph.results.length > 0 ? (
+                <div data-testid="react-notebook-core-results">
+                  {paragraph.results.map((result, resultIndex) => (
+                    <pre key={resultIndex} data-testid="react-notebook-core-result">
+                      {result.data}
+                    </pre>
+                  ))}
+                </div>
+              ) : null}
             </article>
           </li>
         ))}
