@@ -28,7 +28,8 @@ export const NotebookCoreAdapter = ({
   onParagraphTextChange,
   onParagraphInsert,
   onParagraphRemove,
-  onParagraphMove
+  onParagraphMove,
+  onNotebookTitleChange
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
@@ -58,7 +59,12 @@ export const NotebookCoreAdapter = ({
       data-command-accepted={commandAccepted === null ? 'not-dispatched' : String(commandAccepted)}
     >
       <header>
-        <h1>{snapshot.title ?? 'Loading notebook'}</h1>
+        <input
+          aria-label="Notebook title"
+          disabled={snapshot.revisionId !== null}
+          defaultValue={snapshot.title ?? ''}
+          onBlur={event => onNotebookTitleChange?.(event.target.value)}
+        />
         <span>{snapshot.paragraphs.length} paragraphs</span>
       </header>
       <ol aria-label="Notebook paragraphs">

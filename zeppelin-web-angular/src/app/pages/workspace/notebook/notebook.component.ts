@@ -303,6 +303,13 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
+  renameCoreNotebook(title: string): void {
+    const snapshot = this.notebookCoreRouteAdapter.port.getSnapshot();
+    if (!this.revisionView && title && title !== snapshot.title) {
+      this.messageService.noteRename(snapshot.noteId, title, true);
+    }
+  }
+
   @MessageListener(OP.NOTE_UPDATED)
   noteUpdated(data: MessageReceiveDataTypeMap[OP.NOTE_UPDATED]) {
     // NOTE_UPDATED carries the live note, so applying it while a revision is open would
@@ -534,6 +541,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onParagraphInsert: index => this.insertCoreParagraph(index),
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
+      onNotebookTitleChange: title => this.renameCoreNotebook(title),
       onError: () => {
         this.reactNotebookFailed = true;
         this.cdr.markForCheck();
