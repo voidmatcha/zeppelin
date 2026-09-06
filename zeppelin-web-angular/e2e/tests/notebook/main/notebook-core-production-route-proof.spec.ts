@@ -275,6 +275,40 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('recovers the active Core route after the browser returns online', async ({ context, page }) => {
+    const receivedOperations = observeReceivedOperations(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/CoreReconnect_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?coreProof=true`);
+      const proof = page.getByTestId('notebook-core-production-route-proof');
+      await expect(proof).toHaveAttribute('data-note-id', noteId);
+      await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
+      await context.setOffline(true);
+      await page.waitForTimeout(250);
+      await context.setOffline(false);
+
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation.op === 'NOTE').length, { timeout: 30000 })
+        .toBeGreaterThan(noteEventsBeforeOffline);
+      await expect(proof).toHaveAttribute('data-note-id', noteId);
+      await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+    } finally {
+      await context.setOffline(false);
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('converges two browser-local cores through server-authoritative notebook events', async ({ context, page }) => {
     const peerPage = await context.newPage();
     const sentOperations = observeSentOperations(page);
