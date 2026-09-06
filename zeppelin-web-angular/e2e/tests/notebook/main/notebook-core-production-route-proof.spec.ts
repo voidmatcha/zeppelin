@@ -337,6 +337,13 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
 
+      await page.getByRole('button', { name: 'Add below', exact: true }).click();
+      await expect(reactNotebook.getByRole('article')).toHaveCount(2);
+      await page.getByRole('button', { name: 'Move down', exact: true }).first().click();
+      await expect(reactNotebook.getByRole('article')).toHaveCount(2);
+      await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+      await expect(reactNotebook.getByRole('article')).toHaveCount(1);
+
       await editor.fill(code);
       await expect(editor).toHaveValue(code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
