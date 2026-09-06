@@ -285,6 +285,24 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.acceptParagraphText(paragraphId, text);
   }
 
+  insertCoreParagraph(index: number): void {
+    if (!this.revisionView) {
+      this.messageService.insertParagraph(index);
+    }
+  }
+
+  removeCoreParagraph(paragraphId: string): void {
+    if (!this.revisionView) {
+      this.messageService.paragraphRemove(paragraphId);
+    }
+  }
+
+  moveCoreParagraph(paragraphId: string, index: number): void {
+    if (!this.revisionView) {
+      this.messageService.moveParagraph(paragraphId, index);
+    }
+  }
+
   @MessageListener(OP.NOTE_UPDATED)
   noteUpdated(data: MessageReceiveDataTypeMap[OP.NOTE_UPDATED]) {
     // NOTE_UPDATED carries the live note, so applying it while a revision is open would
@@ -513,6 +531,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       core: notebookCoreRouteAdapter.port,
       expectedCore: notebookCoreRouteAdapter.port,
       onParagraphTextChange: (paragraphId, text) => this.updateCoreParagraphText({ paragraphId, text }),
+      onParagraphInsert: index => this.insertCoreParagraph(index),
+      onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
+      onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
       onError: () => {
         this.reactNotebookFailed = true;
         this.cdr.markForCheck();
