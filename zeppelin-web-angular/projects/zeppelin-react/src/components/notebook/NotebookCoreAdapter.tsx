@@ -67,10 +67,19 @@ export const NotebookCoreAdapter = ({
         />
         <span>{snapshot.paragraphs.length} paragraphs</span>
       </header>
+      <nav aria-label="Notebook outline">
+        <ol>
+          {snapshot.paragraphs.map((paragraph, index) => (
+            <li key={paragraph.id}>
+              <a href={`#react-notebook-paragraph-${paragraph.id}`}>Paragraph {index + 1}</a>
+            </li>
+          ))}
+        </ol>
+      </nav>
       <ol aria-label="Notebook paragraphs">
         {snapshot.paragraphs.map((paragraph, index) => (
           <li key={paragraph.id} data-testid={`notebook-core-paragraph-${paragraph.id}`}>
-            <article aria-label={`Paragraph ${index + 1}`}>
+            <article id={`react-notebook-paragraph-${paragraph.id}`} aria-label={`Paragraph ${index + 1}`}>
               <header>
                 <strong>Paragraph {index + 1}</strong>
                 <span>{paragraph.status}</span>

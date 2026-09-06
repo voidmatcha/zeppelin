@@ -336,6 +336,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await page.getByRole('button', { name: 'Add below', exact: true }).click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(2);
+      await expect(reactNotebook.getByRole('navigation', { name: 'Notebook outline' }).getByRole('link')).toHaveCount(
+        2
+      );
       await page.getByRole('button', { name: 'Move down', exact: true }).first().click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(2);
       await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
