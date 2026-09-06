@@ -68,6 +68,8 @@ type LoadedParagraph = LoadedNote['paragraphs'][number];
 export class NotebookComponent extends MessageListenersManager implements OnInit, AfterViewInit, OnDestroy {
   @ViewChildren(NotebookParagraphComponent) listOfNotebookParagraphComponent!: QueryList<NotebookParagraphComponent>;
   coreProofEnabled = false;
+  useReactNotebook = false;
+  reactNotebookFailed = false;
   readonly coreProofSnapshot$ = this.notebookCoreRouteAdapter.snapshot$;
   readonly coreProofReactProps: NotebookCoreRemoteProps & Readonly<Record<string, unknown>>;
   note?: LoadedNote;
@@ -509,7 +511,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     super(messageService);
     this.coreProofReactProps = {
       core: notebookCoreRouteAdapter.port,
-      expectedCore: notebookCoreRouteAdapter.port
+      expectedCore: notebookCoreRouteAdapter.port,
+      onParagraphTextChange: (paragraphId, text) => this.updateCoreParagraphText({ paragraphId, text }),
+      onError: () => {
+        this.reactNotebookFailed = true;
+        this.cdr.markForCheck();
+      }
     };
   }
 
@@ -541,6 +548,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(data => {
         this.useReactFooter = this.reactFeature.isEnabled('paragraphFooter', data);
+        this.useReactNotebook = this.reactFeature.isEnabled('notebook', data);
+        this.reactNotebookFailed = false;
         this.coreProofEnabled = data.get('coreProof') === 'true';
         this.cdr.markForCheck();
       });
