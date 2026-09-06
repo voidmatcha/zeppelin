@@ -62,17 +62,19 @@ const observeSentOperations = (page: Page): string[] => {
   return operations;
 };
 
-const observeReceivedOperations = (page: Page): string[] => {
-  const operations: string[] = [];
+type ReceivedOperation = Readonly<{ op: string; data: unknown }>;
+
+const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
+  const operations: ReceivedOperation[] = [];
   page.on('websocket', webSocket => {
     webSocket.on('framereceived', event => {
       if (typeof event.payload !== 'string') {
         return;
       }
       try {
-        const message = JSON.parse(event.payload) as { op?: unknown };
+        const message = JSON.parse(event.payload) as { op?: unknown; data?: unknown };
         if (typeof message.op === 'string') {
-          operations.push(message.op);
+          operations.push({ op: message.op, data: message.data });
         }
       } catch {
         // Non-JSON development-server frames are unrelated to Zeppelin operations.
@@ -237,8 +239,23 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(paragraphResult).toContainText(markerFirst, { timeout: 30000 });
       await expect(paragraphResult).toContainText(markerSecond, { timeout: 30000 });
       await expect
-        .poll(() => receivedOperations.filter(operation => operation === 'PARAGRAPH_APPEND_OUTPUT').length)
+        .poll(() => receivedOperations.filter(operation => operation.op === 'PARAGRAPH_APPEND_OUTPUT').length)
         .toBeGreaterThan(0);
+      const appendOutput = receivedOperations.find(operation => operation.op === 'PARAGRAPH_APPEND_OUTPUT');
+      expect(appendOutput).toMatchObject({
+        data: {
+          paragraphId: (await getParagraphHostIds(page))[0],
+          index: expect.any(Number),
+          data: expect.any(String)
+        }
+      });
+      await expect(proof).toHaveAttribute('data-paragraph-results', new RegExp(markerFirst), { timeout: 30000 });
+      await expect(reactAdapter.getByTestId('react-notebook-core-results')).toContainText(markerFirst, {
+        timeout: 30000
+      });
+      await expect(reactAdapter.getByTestId('react-notebook-core-results')).toContainText(markerSecond, {
+        timeout: 30000
+      });
       await expect(keyboardPage.getParagraphStatus(0)).toHaveText('FINISHED', { timeout: 60000 });
       await expect(paragraphResult).toContainText(markerSecond, { timeout: 30000 });
       await expect
