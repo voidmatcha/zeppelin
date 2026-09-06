@@ -59,4 +59,5 @@ export type NotebookCorePort = Readonly<{
 
 export type NotebookCoreRemoteProps = Readonly<{
   core: NotebookCorePort;
+  onParagraphTextChange?: (paragraphId: string, text: string) => void;
 }>;

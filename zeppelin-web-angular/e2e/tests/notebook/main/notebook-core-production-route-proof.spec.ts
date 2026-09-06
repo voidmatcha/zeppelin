@@ -309,6 +309,42 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('renders and operates the editable notebook body in React', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const marker = `react_notebook_${stamp}`;
+    const code = `%python\nprint("${marker}")`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactNotebook_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
+      await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
+
+      await editor.fill(code);
+      await expect(editor).toHaveValue(code);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
+
+      await page.getByRole('button', { name: 'Run', exact: true }).click();
+      await expect(reactNotebook.getByTestId('react-notebook-core-results')).toContainText(marker, { timeout: 30000 });
+      await expect(reactNotebook.getByRole('article', { name: 'Paragraph 1' })).toContainText('FINISHED', {
+        timeout: 60000
+      });
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('converges two browser-local cores through server-authoritative notebook events', async ({ context, page }) => {
     const peerPage = await context.newPage();
     const sentOperations = observeSentOperations(page);

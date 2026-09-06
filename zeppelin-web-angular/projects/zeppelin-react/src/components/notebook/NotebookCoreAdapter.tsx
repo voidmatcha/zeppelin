@@ -22,25 +22,24 @@ export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
     onError?: (error: unknown) => void;
   }>;
 
-export const NotebookCoreAdapter = ({ core, expectedCore }: NotebookCoreAdapterProps) => {
+export const NotebookCoreAdapter = ({ core, expectedCore, onParagraphTextChange }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
-  const firstParagraph = snapshot.paragraphs[0];
-  const canRun =
+  const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
     snapshot.phase === 'ready' &&
     snapshot.revisionId === null &&
-    Boolean(firstParagraph?.text) &&
-    firstParagraph?.status !== 'PENDING' &&
-    firstParagraph?.status !== 'RUNNING';
+    Boolean(paragraph.text) &&
+    paragraph.status !== 'PENDING' &&
+    paragraph.status !== 'RUNNING';
 
-  const runFirstParagraph = (): void => {
-    const accepted = firstParagraph ? core.dispatch({ type: 'run-paragraph', paragraphId: firstParagraph.id }) : false;
+  const dispatch = (type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph', paragraphId: string): void => {
+    const accepted = core.dispatch({ type, paragraphId });
     setCommandAccepted(accepted);
   };
 
   return (
     <section
-      aria-label="React Notebook Core proof"
+      aria-label="React Notebook"
       data-testid="notebook-core-react-adapter"
       data-port-shared={expectedCore ? String(core === expectedCore) : 'unknown'}
       data-version={snapshot.version}
@@ -51,14 +50,43 @@ export const NotebookCoreAdapter = ({ core, expectedCore }: NotebookCoreAdapterP
       data-paragraph-statuses={JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.status))}
       data-command-accepted={commandAccepted === null ? 'not-dispatched' : String(commandAccepted)}
     >
-      <strong>{snapshot.title ?? 'Loading notebook'}</strong>
-      <span>{snapshot.paragraphs.length} paragraphs</span>
+      <header>
+        <h1>{snapshot.title ?? 'Loading notebook'}</h1>
+        <span>{snapshot.paragraphs.length} paragraphs</span>
+      </header>
       <ol aria-label="Notebook paragraphs">
         {snapshot.paragraphs.map((paragraph, index) => (
           <li key={paragraph.id} data-testid={`notebook-core-paragraph-${paragraph.id}`}>
             <article aria-label={`Paragraph ${index + 1}`}>
-              <header>{paragraph.status}</header>
-              <pre>{paragraph.text}</pre>
+              <header>
+                <strong>Paragraph {index + 1}</strong>
+                <span>{paragraph.status}</span>
+              </header>
+              <textarea
+                aria-label={`Paragraph ${index + 1} editor`}
+                disabled={snapshot.revisionId !== null || paragraph.status === 'RUNNING'}
+                value={paragraph.text}
+                onChange={event => onParagraphTextChange?.(paragraph.id, event.target.value)}
+              />
+              <div>
+                <button
+                  type="button"
+                  disabled={snapshot.revisionId !== null || !paragraph.isDirty}
+                  onClick={() => dispatch('commit-paragraph', paragraph.id)}
+                >
+                  Save
+                </button>
+                <button type="button" disabled={!canRun(paragraph)} onClick={() => dispatch('run-paragraph', paragraph.id)}>
+                  Run
+                </button>
+                <button
+                  type="button"
+                  disabled={paragraph.status !== 'PENDING' && paragraph.status !== 'RUNNING'}
+                  onClick={() => dispatch('cancel-paragraph', paragraph.id)}
+                >
+                  Cancel
+                </button>
+              </div>
               {paragraph.results && paragraph.results.length > 0 ? (
                 <div data-testid="react-notebook-core-results">
                   {paragraph.results.map((result, resultIndex) => (
@@ -72,9 +100,6 @@ export const NotebookCoreAdapter = ({ core, expectedCore }: NotebookCoreAdapterP
           </li>
         ))}
       </ol>
-      <button type="button" disabled={!canRun} onClick={runFirstParagraph}>
-        Run first paragraph from React
-      </button>
     </section>
   );
 };
