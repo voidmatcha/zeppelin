@@ -12,11 +12,17 @@
 
 export type NotebookParagraphStatus = 'UNKNOWN' | 'READY' | 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'ABORT';
 
+export type NotebookParagraphResult = Readonly<{
+  type: string;
+  data: string;
+}>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
   status: NotebookParagraphStatus;
   isDirty: boolean;
+  results?: readonly NotebookParagraphResult[];
 }>;
 
 export type NotebookParagraphInput = Omit<NotebookParagraphSnapshot, 'isDirty'>;

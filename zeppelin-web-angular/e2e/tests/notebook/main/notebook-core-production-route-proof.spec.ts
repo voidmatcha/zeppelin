@@ -62,6 +62,28 @@ const observeSentOperations = (page: Page): string[] => {
   return operations;
 };
 
+type ReceivedOperation = Readonly<{ op: string; data: unknown }>;
+
+const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
+  const operations: ReceivedOperation[] = [];
+  page.on('websocket', webSocket => {
+    webSocket.on('framereceived', event => {
+      if (typeof event.payload !== 'string') {
+        return;
+      }
+      try {
+        const message = JSON.parse(event.payload) as { op?: unknown; data?: unknown };
+        if (typeof message.op === 'string') {
+          operations.push({ op: message.op, data: message.data });
+        }
+      } catch {
+        // Non-JSON development-server frames are unrelated to Zeppelin operations.
+      }
+    });
+  });
+  return operations;
+};
+
 const notebookWriteOperations = new Set(['PATCH_PARAGRAPH', 'COMMIT_PARAGRAPH', 'RUN_PARAGRAPH']);
 
 test.describe('Notebook Core production route feasibility proof', () => {
@@ -172,6 +194,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     page
   }) => {
     const sentOperations = observeSentOperations(page);
+    const receivedOperations = observeReceivedOperations(page);
 
     await page.goto('/#/');
     await waitForZeppelinReady(page);
@@ -211,8 +234,21 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await expect(reactAdapter).toHaveAttribute('data-command-accepted', 'true');
       await expect.poll(() => sentOperations.filter(operation => operation === 'RUN_PARAGRAPH').length).toBe(1);
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation.op === 'PARAGRAPH_APPEND_OUTPUT').length)
+        .toBeGreaterThan(0);
+      const appendOutput = receivedOperations.find(operation => operation.op === 'PARAGRAPH_APPEND_OUTPUT');
+      expect(appendOutput).toMatchObject({
+        data: {
+          paragraphId: (await getParagraphHostIds(page))[0],
+          index: expect.any(Number),
+          data: expect.any(String)
+        }
+      });
       await expect(keyboardPage.getParagraphStatus(0)).toHaveText('FINISHED', { timeout: 60000 });
       await expect(paragraphResult).toContainText(marker, { timeout: 30000 });
+      await expect(proof).toHaveAttribute('data-paragraph-results', new RegExp(marker), { timeout: 30000 });
+      await expect(reactAdapter.getByTestId('react-notebook-core-results')).toContainText(marker, { timeout: 30000 });
       await expect
         .poll(async () => (await getCoreParagraphValues(proof, 'data-paragraph-statuses'))[0])
         .toBe('FINISHED');

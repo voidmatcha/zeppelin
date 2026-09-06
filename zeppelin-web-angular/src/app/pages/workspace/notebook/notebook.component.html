@@ -23,6 +23,7 @@
     [attr.data-paragraph-ids]="coreProofParagraphIds(coreSnapshot)"
     [attr.data-paragraph-texts]="coreProofParagraphTexts(coreSnapshot)"
     [attr.data-paragraph-statuses]="coreProofParagraphStatuses(coreSnapshot)"
+    [attr.data-paragraph-results]="coreProofParagraphResults(coreSnapshot)"
   ></output>
   <div [zeppelin-react-mount]="'./NotebookCoreAdapter'" [reactProps]="coreProofReactProps"></div>
 }

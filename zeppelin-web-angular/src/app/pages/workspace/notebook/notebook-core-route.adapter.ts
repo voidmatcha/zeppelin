@@ -45,7 +45,8 @@ const normalizeParagraphStatus = (status: string): NotebookParagraphStatus => {
 const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
   text: paragraph.text ?? '',
-  status: normalizeParagraphStatus(paragraph.status)
+  status: normalizeParagraphStatus(paragraph.status),
+  results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data }))
 });
 
 @Injectable()
@@ -163,6 +164,14 @@ export class NotebookCoreRouteAdapter {
       paragraphId,
       status: normalizeParagraphStatus(status)
     });
+  }
+
+  acceptParagraphOutputUpdate(paragraphId: string, index: number, type: string, data: string): void {
+    this.runtime.apply({ type: 'paragraph-output-updated', paragraphId, index, result: { type, data } });
+  }
+
+  acceptParagraphOutputAppend(paragraphId: string, index: number, data: string): void {
+    this.runtime.apply({ type: 'paragraph-output-appended', paragraphId, index, data });
   }
 
   acceptNoteUpdated(title: string): void {
