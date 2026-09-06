@@ -63,4 +63,5 @@ export type NotebookCoreRemoteProps = Readonly<{
   onParagraphInsert?: (index: number) => void;
   onParagraphRemove?: (paragraphId: string) => void;
   onParagraphMove?: (paragraphId: string, index: number) => void;
+  onNotebookTitleChange?: (title: string) => void;
 }>;

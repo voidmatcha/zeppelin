@@ -326,6 +326,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const stamp = Date.now();
     const marker = `react_notebook_${stamp}`;
     const code = `%python\nprint("${marker}")`;
+    const renamedTitle = `ReactNotebookRenamed_${stamp}`;
     let noteId: string | undefined;
 
     try {
@@ -336,6 +337,11 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
+
+      const title = page.getByRole('textbox', { name: 'Notebook title' });
+      await title.fill(renamedTitle);
+      await title.press('Tab');
+      await expect(reactNotebook).toHaveAttribute('data-title', renamedTitle, { timeout: 30000 });
 
       await page.getByRole('button', { name: 'Add below', exact: true }).click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(2);
