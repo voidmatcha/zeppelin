@@ -60,4 +60,7 @@ export type NotebookCorePort = Readonly<{
 export type NotebookCoreRemoteProps = Readonly<{
   core: NotebookCorePort;
   onParagraphTextChange?: (paragraphId: string, text: string) => void;
+  onParagraphInsert?: (index: number) => void;
+  onParagraphRemove?: (paragraphId: string) => void;
+  onParagraphMove?: (paragraphId: string, index: number) => void;
 }>;

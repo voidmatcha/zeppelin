@@ -22,7 +22,14 @@ export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
     onError?: (error: unknown) => void;
   }>;
 
-export const NotebookCoreAdapter = ({ core, expectedCore, onParagraphTextChange }: NotebookCoreAdapterProps) => {
+export const NotebookCoreAdapter = ({
+  core,
+  expectedCore,
+  onParagraphTextChange,
+  onParagraphInsert,
+  onParagraphRemove,
+  onParagraphMove
+}: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
@@ -69,6 +76,41 @@ export const NotebookCoreAdapter = ({ core, expectedCore, onParagraphTextChange 
                 onChange={event => onParagraphTextChange?.(paragraph.id, event.target.value)}
               />
               <div>
+                <button
+                  type="button"
+                  disabled={snapshot.revisionId !== null}
+                  onClick={() => onParagraphInsert?.(index)}
+                >
+                  Add above
+                </button>
+                <button
+                  type="button"
+                  disabled={snapshot.revisionId !== null}
+                  onClick={() => onParagraphInsert?.(index + 1)}
+                >
+                  Add below
+                </button>
+                <button
+                  type="button"
+                  disabled={snapshot.revisionId !== null || index === 0}
+                  onClick={() => onParagraphMove?.(paragraph.id, index - 1)}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  disabled={snapshot.revisionId !== null || index === snapshot.paragraphs.length - 1}
+                  onClick={() => onParagraphMove?.(paragraph.id, index + 1)}
+                >
+                  Move down
+                </button>
+                <button
+                  type="button"
+                  disabled={snapshot.revisionId !== null}
+                  onClick={() => onParagraphRemove?.(paragraph.id)}
+                >
+                  Delete
+                </button>
                 <button
                   type="button"
                   disabled={snapshot.revisionId !== null || !paragraph.isDirty}
