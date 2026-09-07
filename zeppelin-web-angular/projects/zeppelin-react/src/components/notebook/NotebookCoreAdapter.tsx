@@ -66,7 +66,9 @@ export const NotebookCoreAdapter = ({
     const accepted = core.dispatch({ type, paragraphId });
     setCommandAccepted(accepted);
   };
-  const dispatchNotebook = (type: 'run-all-paragraphs' | 'cancel-all-paragraphs'): void => {
+  const dispatchNotebook = (
+    type: 'run-all-paragraphs' | 'cancel-all-paragraphs' | 'clear-all-paragraph-output'
+  ): void => {
     const accepted = core.dispatch({ type });
     setCommandAccepted(accepted);
   };
@@ -111,6 +113,9 @@ export const NotebookCoreAdapter = ({
           onClick={() => dispatchNotebook('cancel-all-paragraphs')}
         >
           Cancel all
+        </button>
+        <button type="button" disabled={!canEdit} onClick={() => dispatchNotebook('clear-all-paragraph-output')}>
+          Clear all output
         </button>
       </header>
       <nav aria-label="Notebook outline">
