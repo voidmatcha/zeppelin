@@ -11,14 +11,18 @@
  */
 
 import { Alert } from 'antd';
-import { HTMLRenderer, TextRenderer, ImageRenderer, TableVisualization } from '@/components';
+import { HTMLRenderer } from '@/components/renderers/HTMLRenderer';
+import { ImageRenderer } from '@/components/renderers/ImageRenderer';
+import { TextRenderer } from '@/components/renderers/TextRenderer';
+import { TableVisualization } from '@/components/visualizations/TableVisualization';
 import { checkAndReplaceCarriageReturn } from '@/utils';
-import { DatasetType, ParagraphConfigResult, ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import type { NotebookParagraphResult, NotebookParagraphResultConfigs } from '@zeppelin/notebook-core';
+import { DatasetType, ParagraphConfigResult, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 
 interface SingleResultRendererProps {
-  result: ParagraphIResultsMsgItem;
+  result: NotebookParagraphResult;
   index: number;
-  config?: ParagraphConfigResults;
+  config?: NotebookParagraphResultConfigs;
   modeChangeDisabled?: boolean;
   onConfigChange?: (config: ParagraphConfigResult) => void;
 }
@@ -30,13 +34,14 @@ export const SingleResultRenderer = ({
   modeChangeDisabled,
   onConfigChange
 }: SingleResultRendererProps) => {
-  const resultConfig: ParagraphConfigResult | undefined = config?.[index];
+  const resultConfig = config?.[index] as ParagraphConfigResult | undefined;
+  const visualizationResult: ParagraphIResultsMsgItem = { type: result.type as DatasetType, data: result.data };
 
   switch (result.type) {
     case DatasetType.TABLE:
       return (
         <TableVisualization
-          result={result}
+          result={visualizationResult}
           config={resultConfig}
           modeChangeDisabled={modeChangeDisabled}
           onConfigChange={onConfigChange}

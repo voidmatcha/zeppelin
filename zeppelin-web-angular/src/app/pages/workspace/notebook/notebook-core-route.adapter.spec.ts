@@ -56,6 +56,36 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     );
   });
 
+  it('maps Core notebook-wide execution and cancellation to existing SDK messages', () => {
+    const runAllParagraphs = vi.fn();
+    const cancelAllParagraphs = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({
+      runAllParagraphs,
+      cancelAllParagraphs
+    } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.port.dispatch({ type: 'run-all-paragraphs' })).toBe(true);
+    expect(runAllParagraphs).toHaveBeenCalledWith(note.id, [
+      {
+        id: 'paragraph-1',
+        title: 'Proof paragraph',
+        paragraph: '%python\nprint("from React")',
+        config: note.paragraphs[0].config,
+        params: note.paragraphs[0].settings.params
+      }
+    ]);
+    expect(adapter.port.dispatch({ type: 'cancel-all-paragraphs' })).toBe(false);
+
+    adapter.acceptParagraphStatus('paragraph-1', 'RUNNING');
+    expect(adapter.port.dispatch({ type: 'run-all-paragraphs' })).toBe(false);
+    expect(adapter.port.dispatch({ type: 'cancel-all-paragraphs' })).toBe(true);
+    expect(cancelAllParagraphs).toHaveBeenCalledWith(note.id);
+  });
+
   it('maps saved paragraph result configuration into the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();

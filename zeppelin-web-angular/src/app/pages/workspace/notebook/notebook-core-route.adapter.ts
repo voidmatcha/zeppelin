@@ -248,6 +248,38 @@ export class NotebookCoreRouteAdapter {
       return false;
     }
 
+    if (command.type === 'run-all-paragraphs') {
+      if (snapshot.paragraphs.some(paragraph => paragraph.status === 'PENDING' || paragraph.status === 'RUNNING')) {
+        return false;
+      }
+      const paragraphs = this.selectParagraphViews();
+      if (paragraphs.length !== snapshot.paragraphs.length) {
+        return false;
+      }
+      this.messageService.runAllParagraphs(
+        snapshot.noteId,
+        paragraphs.map(paragraph => {
+          const coreParagraph = snapshot.paragraphs.find(candidate => candidate.id === paragraph.id)!;
+          return {
+            id: paragraph.id,
+            title: paragraph.title,
+            paragraph: coreParagraph.text,
+            config: paragraph.config,
+            params: paragraph.settings.params
+          };
+        })
+      );
+      return true;
+    }
+
+    if (command.type === 'cancel-all-paragraphs') {
+      if (!snapshot.paragraphs.some(paragraph => paragraph.status === 'PENDING' || paragraph.status === 'RUNNING')) {
+        return false;
+      }
+      this.messageService.cancelAllParagraphs(snapshot.noteId);
+      return true;
+    }
+
     const coreParagraph = snapshot.paragraphs.find(paragraph => paragraph.id === command.paragraphId);
     if (!coreParagraph) {
       return false;
