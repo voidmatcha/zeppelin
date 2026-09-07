@@ -249,6 +249,32 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByRole('button', { name: /Line Chart$/ }).className).toContain('ant-btn-primary');
   });
 
+  it('sends a changed result mode through the host callback', () => {
+    const onParagraphResultConfigChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Configured result notebook',
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          text: '%python',
+          status: 'FINISHED',
+          results: [{ type: 'TABLE', data: 'name\tvalue\nZeppelin\t1' }],
+          resultConfigs: { '0': { graph: { mode: 'table' } } }
+        }
+      ]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onParagraphResultConfigChange={onParagraphResultConfigChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /Line Chart$/ }));
+
+    expect(onParagraphResultConfigChange).toHaveBeenCalledWith('paragraph-1', 0, { graph: { mode: 'lineChart' } });
+  });
+
   it('renders Core-owned progress for a running paragraph', () => {
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });

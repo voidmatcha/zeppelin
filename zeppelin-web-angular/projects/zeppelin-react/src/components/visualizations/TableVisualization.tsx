@@ -21,9 +21,10 @@ import type { Chart, ChartConfiguration } from 'chart.js';
 interface TableVisualizationProps {
   result: ParagraphIResultsMsgItem;
   config?: ParagraphConfigResult;
+  onConfigChange?: (config: ParagraphConfigResult) => void;
 }
 
-export const TableVisualization = ({ result, config }: TableVisualizationProps) => {
+export const TableVisualization = ({ result, config, onConfigChange }: TableVisualizationProps) => {
   const [currentMode, setCurrentMode] = useState<VisualizationMode>(config?.graph.mode || 'table');
   const chartRef = useRef<HTMLDivElement>(null);
   const themeMode = useHostThemeMode();
@@ -34,6 +35,11 @@ export const TableVisualization = ({ result, config }: TableVisualizationProps) 
     if (tableData) {
       exportFile(tableData, type);
     }
+  };
+
+  const changeMode = (mode: VisualizationMode): void => {
+    setCurrentMode(mode);
+    onConfigChange?.({ graph: { ...(config?.graph as object), mode } });
   };
 
   const renderVisualization = () => {
@@ -232,7 +238,7 @@ export const TableVisualization = ({ result, config }: TableVisualizationProps) 
 
   return (
     <div>
-      <VisualizationControls currentMode={currentMode} onModeChange={setCurrentMode} onExport={handleExport} />
+      <VisualizationControls currentMode={currentMode} onModeChange={changeMode} onExport={handleExport} />
       {renderVisualization()}
     </div>
   );

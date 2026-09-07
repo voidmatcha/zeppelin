@@ -21,7 +21,7 @@ import {
   type NotebookFormParams,
   type NotebookParagraphStatus
 } from '@zeppelin/notebook-core';
-import type { Note } from '@zeppelin/sdk';
+import type { Note, ParagraphConfigResult } from '@zeppelin/sdk';
 import { MessageService } from '@zeppelin/services';
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { Observable } from 'rxjs';
@@ -215,6 +215,27 @@ export class NotebookCoreRouteAdapter {
 
   acceptNoteForms(noteForms: NotebookDynamicForms, noteParams: NotebookFormParams): void {
     this.runtime.apply({ type: 'note-forms-updated', noteForms, noteParams });
+  }
+
+  updateParagraphResultConfig(paragraphId: string, resultIndex: number, resultConfig: ParagraphConfigResult): boolean {
+    const paragraph = this.paragraphViewsById.get(paragraphId);
+    const coreParagraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
+    if (!paragraph || !coreParagraph || this.port.getSnapshot().revisionId !== null) {
+      return false;
+    }
+    const config = { ...paragraph.config, results: { ...paragraph.config.results, [resultIndex]: resultConfig } };
+    const updatedParagraph = { ...paragraph, config };
+    this.paragraphViewsById.set(paragraphId, updatedParagraph);
+    this.acceptParagraphUpdated(updatedParagraph);
+    this.messageService.commitParagraph(
+      paragraph.id,
+      paragraph.title,
+      coreParagraph.text,
+      config,
+      paragraph.settings.params,
+      this.port.getSnapshot().noteId
+    );
+    return true;
   }
 
   private selectParagraphViews(): readonly LoadedParagraph[] {

@@ -367,7 +367,9 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         paragraph.savedText === current.savedText &&
         paragraph.snapshot.status === currentSnapshot.status &&
         paragraph.savePending === current.savePending &&
-        paragraph.pendingRunStatus === current.pendingRunStatus
+        paragraph.pendingRunStatus === current.pendingRunStatus &&
+        event.language === undefined &&
+        event.resultConfigs === undefined
       ) {
         return state;
       }
