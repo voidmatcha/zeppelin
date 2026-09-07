@@ -429,7 +429,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
-      await editor.press('Shift+Enter');
+      await reactNotebook.getByRole('button', { name: 'Run', exact: true }).click();
       await expect(reactNotebook.getByTestId('react-notebook-core-results')).toContainText(marker, {
         timeout: coldInterpreterExecutionTimeout
       });
