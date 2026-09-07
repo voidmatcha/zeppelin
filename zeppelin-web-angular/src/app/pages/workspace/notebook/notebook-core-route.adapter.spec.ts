@@ -56,6 +56,17 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     );
   });
 
+  it('maps saved paragraph result configuration into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.paragraphs[0].config.results = { '0': { graph: { mode: 'lineChart' } } };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].resultConfigs).toEqual({ '0': { graph: { mode: 'lineChart' } } });
+  });
+
   it('rejects run commands for revisions, missing paragraphs, and active paragraphs', () => {
     const runParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as MessageService);
@@ -131,7 +142,14 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
 
     expect(adapter.updateParagraphText('paragraph-1', 'updated from React')).toBe(true);
     expect(adapter.port.getSnapshot().paragraphs[0].text).toBe('updated from React');
-    expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, expect.stringContaining('+updated from React'));
+    expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, expect.any(String));
+    const patch = patchParagraph.mock.calls[0][2];
+    const [updatedText, applied] = new DiffMatchPatch().patch_apply(
+      new DiffMatchPatch().patch_fromText(patch),
+      note.paragraphs[0].text
+    );
+    expect(applied.every(Boolean)).toBe(true);
+    expect(updatedText).toBe('updated from React');
   });
 
   it('applies an inbound collaboration patch to the Core snapshot', () => {

@@ -96,6 +96,25 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first second' }]);
   });
 
+  it('preserves server result configuration without sharing mutable graph state', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a' });
+    const graph = { mode: 'lineChart', setting: { lineChart: { smooth: true } } };
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Configured output',
+      paragraphs: [{ id: 'p-1', text: '%python', status: 'FINISHED', resultConfigs: { '0': { graph } } }]
+    });
+
+    graph.mode = 'table';
+    expect(runtime.port.getSnapshot().paragraphs[0].resultConfigs).toEqual({
+      '0': { graph: { mode: 'lineChart', setting: { lineChart: { smooth: true } } } }
+    });
+    expect(Object.isFrozen(runtime.port.getSnapshot().paragraphs[0].resultConfigs)).toBe(true);
+  });
+
   it('owns immutable note form definitions and values through the stable port', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
     runtime.apply({ type: 'load-started' });

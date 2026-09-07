@@ -17,6 +17,8 @@ export type NotebookParagraphResult = Readonly<{
   data: string;
 }>;
 
+export type NotebookParagraphResultConfigs = Readonly<Record<string, Readonly<{ graph: unknown }>>>;
+
 export type NotebookFormValue = string | readonly string[];
 
 export type NotebookDynamicForm = Readonly<{
@@ -39,6 +41,7 @@ export type NotebookParagraphSnapshot = Readonly<{
   status: NotebookParagraphStatus;
   isDirty: boolean;
   results?: readonly NotebookParagraphResult[];
+  resultConfigs?: NotebookParagraphResultConfigs;
 }>;
 
 export type NotebookParagraphInput = Omit<NotebookParagraphSnapshot, 'isDirty'>;

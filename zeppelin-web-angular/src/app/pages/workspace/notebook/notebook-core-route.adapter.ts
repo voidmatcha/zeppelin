@@ -48,7 +48,8 @@ const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
   text: paragraph.text ?? '',
   status: normalizeParagraphStatus(paragraph.status),
-  results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data }))
+  results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
+  resultConfigs: paragraph.config?.results
 });
 
 @Injectable()
@@ -133,6 +134,7 @@ export class NotebookCoreRouteAdapter {
       paragraphId: paragraph.id,
       text: paragraph.text ?? '',
       status: normalizeParagraphStatus(paragraph.status),
+      resultConfigs: paragraph.config?.results,
       source: 'server'
     });
   }
