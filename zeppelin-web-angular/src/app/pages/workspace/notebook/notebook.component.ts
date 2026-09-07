@@ -290,12 +290,28 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   updateCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_UPDATE_OUTPUT]) {
-    this.notebookCoreRouteAdapter.acceptParagraphOutputUpdate(data.paragraphId, data.index, data.type, data.data);
+    this.notebookCoreRouteAdapter.acceptParagraphOutputUpdate(
+      data.paragraphId,
+      data.index,
+      data.type,
+      data.data,
+      data.outputSequence
+    );
     this.cdr.markForCheck();
   }
 
   appendCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_APPEND_OUTPUT]) {
-    this.notebookCoreRouteAdapter.acceptParagraphOutputAppend(data.paragraphId, data.index, data.data);
+    this.notebookCoreRouteAdapter.acceptParagraphOutputAppend(
+      data.paragraphId,
+      data.index,
+      data.data,
+      data.outputSequence
+    );
+    this.cdr.markForCheck();
+  }
+
+  updateCoreParagraphOutputSnapshot(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_OUTPUT_SNAPSHOT]) {
+    this.notebookCoreRouteAdapter.acceptParagraphOutputSnapshot(data.paragraphId, data.results, data.outputSequence);
     this.cdr.markForCheck();
   }
 
@@ -844,6 +860,10 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       .receive(OP.PARAGRAPH_APPEND_OUTPUT)
       .pipe(takeUntil(this.destroy$))
       .subscribe(data => this.appendCoreParagraphOutput(data));
+    this.messageService
+      .receive(OP.PARAGRAPH_OUTPUT_SNAPSHOT)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => this.updateCoreParagraphOutputSnapshot(data));
     this.activatedRoute.queryParamMap
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(params => {

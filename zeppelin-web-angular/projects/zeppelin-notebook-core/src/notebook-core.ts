@@ -55,8 +55,26 @@ export type NotebookCoreEvent =
       source?: 'local' | 'server';
     }>
   | Readonly<{ type: 'paragraph-progressed'; paragraphId: string; progress: number }>
-  | Readonly<{ type: 'paragraph-output-updated'; paragraphId: string; index: number; result: NotebookParagraphResult }>
-  | Readonly<{ type: 'paragraph-output-appended'; paragraphId: string; index: number; data: string }>
+  | Readonly<{
+      type: 'paragraph-output-updated';
+      paragraphId: string;
+      index: number;
+      result: NotebookParagraphResult;
+      outputSequence?: number;
+    }>
+  | Readonly<{
+      type: 'paragraph-output-appended';
+      paragraphId: string;
+      index: number;
+      data: string;
+      outputSequence?: number;
+    }>
+  | Readonly<{
+      type: 'paragraph-output-snapshotted';
+      paragraphId: string;
+      results: readonly NotebookParagraphResult[];
+      outputSequence: number;
+    }>
   | Readonly<{ type: 'paragraph-save-requested'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-save-cancelled'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-run-requested'; paragraphId: string }>
@@ -118,6 +136,7 @@ type NotebookParagraphState = Readonly<{
   savedText: string;
   savePending: boolean;
   pendingRunStatus: NotebookParagraphSnapshot['status'] | null;
+  outputSequence: number | null;
 }>;
 
 const freezeParagraph = (paragraph: NotebookParagraphState): NotebookParagraphState => Object.freeze({ ...paragraph });
@@ -246,7 +265,8 @@ const toParagraphState = (
       snapshot: freezeParagraphSnapshot(paragraph),
       savedText: paragraph.text,
       savePending: false,
-      pendingRunStatus: null
+      pendingRunStatus: null,
+      outputSequence: null
     });
     paragraphOrder.push(paragraph.id);
   }
@@ -364,7 +384,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
             snapshot: freezeParagraphSnapshot(event.paragraph),
             savedText: event.paragraph.text,
             savePending: false,
-            pendingRunStatus: null
+            pendingRunStatus: null,
+            outputSequence: null
           })
         }
       });
@@ -423,7 +444,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         ),
         savedText: serverText,
         savePending: isServerTextUpdate ? false : current.savePending,
-        pendingRunStatus: event.status !== undefined && event.status !== 'PENDING' ? null : current.pendingRunStatus
+        pendingRunStatus: event.status !== undefined && event.status !== 'PENDING' ? null : current.pendingRunStatus,
+        outputSequence: event.status === 'PENDING' ? null : current.outputSequence
       };
       if (
         paragraph.snapshot.text === currentSnapshot.text &&
@@ -474,6 +496,13 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       if (!current) {
         return state;
       }
+      if (
+        event.outputSequence !== undefined &&
+        (!Number.isSafeInteger(event.outputSequence) ||
+          (current.outputSequence !== null && event.outputSequence <= current.outputSequence))
+      ) {
+        return state;
+      }
       const results = [...(current.snapshot.results ?? [])];
       results[event.index] = Object.freeze({ ...event.result });
       return freezeState({
@@ -483,6 +512,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           ...state.paragraphsById,
           [event.paragraphId]: freezeParagraph({
             ...current,
+            outputSequence: event.outputSequence ?? current.outputSequence,
             snapshot: freezeParagraphSnapshot({ ...current.snapshot, results })
           })
         }
@@ -496,6 +526,13 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       if (!current) {
         return state;
       }
+      if (
+        event.outputSequence !== undefined &&
+        (!Number.isSafeInteger(event.outputSequence) ||
+          (current.outputSequence !== null && event.outputSequence <= current.outputSequence))
+      ) {
+        return state;
+      }
       const results = [...(current.snapshot.results ?? [])];
       const existing = results[event.index] ?? { type: 'TEXT', data: '' };
       results[event.index] = Object.freeze({ ...existing, data: existing.data + event.data });
@@ -506,7 +543,35 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           ...state.paragraphsById,
           [event.paragraphId]: freezeParagraph({
             ...current,
+            outputSequence: event.outputSequence ?? current.outputSequence,
             snapshot: freezeParagraphSnapshot({ ...current.snapshot, results })
+          })
+        }
+      });
+    }
+    case 'paragraph-output-snapshotted': {
+      if (state.phase !== 'ready' || !Number.isSafeInteger(event.outputSequence) || event.outputSequence < 0) {
+        return state;
+      }
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current) {
+        return state;
+      }
+      if (current.outputSequence !== null && event.outputSequence < current.outputSequence) {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            outputSequence: event.outputSequence,
+            snapshot: freezeParagraphSnapshot({
+              ...current.snapshot,
+              results: event.results.map(result => Object.freeze({ ...result }))
+            })
           })
         }
       });

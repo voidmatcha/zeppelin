@@ -398,6 +398,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
         case GET_NOTE:
           getNote(conn, context, receivedMessage);
           break;
+        case GET_PARAGRAPH_OUTPUT:
+          getParagraphOutput(conn, context, receivedMessage);
+          break;
         case RELOAD_NOTE:
           reloadNote(conn, context, receivedMessage);
           break;
@@ -872,6 +875,29 @@ public class NotebookServer implements AngularObjectRegistryListener,
             updateAngularObjectRegistry(conn, note);
             sendAllAngularObjects(note, context.getAutheInfo().getUser(),
                 conn);
+          }
+        }, null);
+  }
+
+  private void getParagraphOutput(NotebookSocket conn, ServiceContext context, Message fromMessage) throws IOException {
+    String noteId = (String) fromMessage.get("noteId");
+    String paragraphId = (String) fromMessage.get("paragraphId");
+    if (noteId == null || paragraphId == null) {
+      return;
+    }
+    getNotebookService().getNote(noteId, context,
+        new WebSocketServiceCallback<Note>(conn) {
+          @Override
+          public void onSuccess(Note note, ServiceContext context) throws IOException {
+            Paragraph paragraph = note.getParagraph(paragraphId);
+            if (paragraph == null) {
+              return;
+            }
+            conn.send(serializeMessage(new Message(OP.PARAGRAPH_OUTPUT_SNAPSHOT)
+                .put("noteId", noteId)
+                .put("paragraphId", paragraphId)
+                .put("outputSequence", paragraph.getOutputSequence())
+                .put("results", paragraph.getOutputSnapshot())));
           }
         }, null);
   }
@@ -1773,12 +1799,31 @@ public class NotebookServer implements AngularObjectRegistryListener,
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
-    Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
-        .put("noteId", noteId)
-        .put("paragraphId", paragraphId)
-        .put("index", index)
-        .put("data", output);
-    connectionManager.broadcast(noteId, msg);
+    try {
+      getNotebook().processNote(noteId,
+        note -> {
+          if (note == null) {
+            LOGGER.warn("Note {} not found", noteId);
+            return null;
+          }
+          Paragraph paragraph = note.getParagraph(paragraphId);
+          if (paragraph == null) {
+            LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
+            return null;
+          }
+          paragraph.appendOutputBuffer(index, output);
+          Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
+              .put("noteId", noteId)
+              .put("paragraphId", paragraphId)
+              .put("index", index)
+              .put("data", output)
+              .put("outputSequence", paragraph.nextOutputSequence());
+          connectionManager.broadcast(noteId, msg);
+          return null;
+        });
+    } catch (IOException e) {
+      LOGGER.warn("Fail to call onOutputAppend", e);
+    }
   }
 
   /**
@@ -1792,12 +1837,6 @@ public class NotebookServer implements AngularObjectRegistryListener,
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
-    Message msg = new Message(OP.PARAGRAPH_UPDATE_OUTPUT)
-        .put("noteId", noteId)
-        .put("paragraphId", paragraphId)
-        .put("index", index)
-        .put("type", type)
-        .put("data", output);
     try {
       getNotebook().processNote(noteId,
         note -> {
@@ -1807,6 +1846,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
           }
           Paragraph paragraph = note.getParagraph(paragraphId);
           paragraph.updateOutputBuffer(index, type, output);
+          Message msg = new Message(OP.PARAGRAPH_UPDATE_OUTPUT)
+              .put("noteId", noteId)
+              .put("paragraphId", paragraphId)
+              .put("index", index)
+              .put("type", type)
+              .put("data", output)
+              .put("outputSequence", paragraph.nextOutputSequence());
           if (note.isPersonalizedMode()) {
             String user = note.getParagraph(paragraphId).getUser();
             if (null != user) {

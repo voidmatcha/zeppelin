@@ -69,6 +69,25 @@ import static org.mockito.Mockito.when;
 class ParagraphTest extends AbstractInterpreterTest {
 
   @Test
+  void outputSnapshotTracksAppendsAndResetsItsSequenceForANewRun() {
+    Paragraph paragraph = new Paragraph(createNote(), null);
+
+    paragraph.appendOutputBuffer(0, "first");
+    assertEquals(1, paragraph.nextOutputSequence());
+    paragraph.appendOutputBuffer(0, " second");
+    assertEquals(2, paragraph.nextOutputSequence());
+
+    List<InterpreterResultMessage> snapshot = paragraph.getOutputSnapshot();
+    assertEquals(1, snapshot.size());
+    assertEquals(Type.TEXT, snapshot.get(0).getType());
+    assertEquals("first second", snapshot.get(0).getData());
+
+    paragraph.cleanOutputBuffer();
+    assertEquals(0, paragraph.getOutputSequence());
+    assertEquals(0, paragraph.getOutputSnapshot().size());
+  }
+
+  @Test
   void scriptBodyWithReplName() {
     Note note = createNote();
     Paragraph paragraph = new Paragraph(note, null);

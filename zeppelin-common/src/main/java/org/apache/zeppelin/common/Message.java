@@ -140,6 +140,8 @@ public class Message implements JsonSerializable {
     PARAGRAPH_CLEAR_ALL_OUTPUT,   // [c-s] clear output of all paragraphs
     PARAGRAPH_APPEND_OUTPUT,      // [s-c] append output
     PARAGRAPH_UPDATE_OUTPUT,      // [s-c] update (replace) output
+    GET_PARAGRAPH_OUTPUT,         // [c-s] get the current transient output snapshot
+    PARAGRAPH_OUTPUT_SNAPSHOT,    // [s-c] current output snapshot and stream sequence
     PING,
     AUTH_INFO,
 
