@@ -186,6 +186,34 @@ describe('NotebookCoreAdapter', () => {
     expect(onExtensionChange).toHaveBeenNthCalledWith(3, 'revisions');
   });
 
+  it('exposes the personalized-mode switch only when the host grants that capability', () => {
+    const onTogglePersonalizedMode = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+
+    const view = render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(view.queryByRole('button', { name: 'Switch to personal mode' })).toBeNull();
+    view.unmount();
+
+    render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        canTogglePersonalizedMode
+        personalizedMode
+        onTogglePersonalizedMode={onTogglePersonalizedMode}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to collaboration mode' }));
+    expect(onTogglePersonalizedMode).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
