@@ -161,6 +161,7 @@ export type NotebookCoreRemoteProps = Readonly<{
   interpreterBindings?: readonly NotebookInterpreterBinding[];
   onInterpreterBindingsChange?: (bindingIds: readonly string[]) => void;
   scheduler?: NotebookSchedule;
+  canSchedule?: boolean;
   onScheduleChange?: (schedule: NotebookSchedule) => void;
   collaborativeUsers?: readonly string[];
   canManagePermissions?: boolean;
