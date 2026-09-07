@@ -71,7 +71,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   useReactNotebook = false;
   reactNotebookFailed = false;
   readonly coreProofSnapshot$ = this.notebookCoreRouteAdapter.snapshot$;
-  readonly coreProofReactProps: NotebookCoreRemoteProps & Readonly<Record<string, unknown>>;
+  coreProofReactProps: NotebookCoreRemoteProps & Readonly<Record<string, unknown>>;
   note?: LoadedNote;
   permissions?: Permissions;
   selectId: string | null = null;
@@ -106,6 +106,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       }
       this.removeParagraphFromNgZ();
       this.note = { ...note, paragraphs: [...paragraphs] };
+      this.refreshCoreProofReactProps();
       const { paragraphId } = this.activatedRoute.snapshot.params;
       if (paragraphId) {
         this.note = this.cleanParagraphExcept(this.note, paragraphId);
@@ -438,6 +439,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       this.isOwner = !(
         this.permissions.owners.length && this.permissions.owners.indexOf(this.ticketService.ticket.principal) < 0
       );
+      this.refreshCoreProofReactProps();
       this.cdr.markForCheck();
     });
   }
@@ -536,9 +538,18 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private notebookCoreRouteAdapter: NotebookCoreRouteAdapter
   ) {
     super(messageService);
-    this.coreProofReactProps = {
-      core: notebookCoreRouteAdapter.port,
-      expectedCore: notebookCoreRouteAdapter.port,
+    this.coreProofReactProps = this.createCoreProofReactProps();
+  }
+
+  private refreshCoreProofReactProps(): void {
+    this.coreProofReactProps = this.createCoreProofReactProps();
+  }
+
+  private createCoreProofReactProps(): NotebookCoreRemoteProps & Readonly<Record<string, unknown>> {
+    return {
+      core: this.notebookCoreRouteAdapter.port,
+      expectedCore: this.notebookCoreRouteAdapter.port,
+      readOnly: this.viewOnly,
       onParagraphTextChange: (paragraphId, text) => this.updateCoreParagraphText({ paragraphId, text }),
       onParagraphInsert: index => this.insertCoreParagraph(index),
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
