@@ -208,6 +208,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     const definedNote = this.note;
     definedNote.noteForms = data.formsData.forms;
     definedNote.noteParams = data.formsData.params;
+    this.notebookCoreRouteAdapter.acceptNoteForms(definedNote.noteForms, definedNote.noteParams);
     this.setNoteFormsStatus();
   }
 
@@ -494,6 +495,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (!this.note) {
       throw new Error(`"note" is not defined. Please check if note data is loaded before calling this method.`);
     }
+    this.notebookCoreRouteAdapter.acceptNoteForms(this.note.noteForms, noteParams);
     this.messageService.saveNoteForms({
       noteParams,
       id: this.note.id
@@ -558,6 +560,13 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
       onNotebookTitleChange: title => this.renameCoreNotebook(title),
+      onNoteFormsChange: noteParams =>
+        this.onNoteFormChange(
+          Object.entries(noteParams).reduce<DynamicFormParams>((params, [name, value]) => {
+            params[name] = Array.isArray(value) ? [...value] : value;
+            return params;
+          }, {})
+        ),
       onError: () => {
         this.reactNotebookFailed = true;
         this.cdr.markForCheck();

@@ -52,6 +52,8 @@ describe('notebook core host and remote contract', () => {
       revisionId: null,
       phase: 'idle',
       title: null,
+      noteForms: {},
+      noteParams: {},
       paragraphs: [],
       error: null
     });
@@ -67,6 +69,8 @@ describe('notebook core host and remote contract', () => {
       revisionId: 'rev-1',
       phase: 'loading',
       title: null,
+      noteForms: {},
+      noteParams: {},
       paragraphs: [],
       error: null
     });
@@ -77,6 +81,8 @@ describe('notebook core host and remote contract', () => {
       revisionId: 'rev-2',
       phase: 'ready',
       title: 'Notebook',
+      noteForms: {},
+      noteParams: {},
       paragraphs: [],
       error: null
     });
@@ -88,6 +94,8 @@ describe('notebook core host and remote contract', () => {
         revisionId: 'rev-1',
         phase: 'loading',
         title: null,
+        noteForms: {},
+        noteParams: {},
         paragraphs: [],
         error: null
       }
@@ -98,6 +106,8 @@ describe('notebook core host and remote contract', () => {
       revisionId: 'rev-2',
       phase: 'ready',
       title: 'Notebook',
+      noteForms: {},
+      noteParams: {},
       paragraphs: [],
       error: null
     });

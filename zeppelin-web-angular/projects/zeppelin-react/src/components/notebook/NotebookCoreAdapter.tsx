@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import type { NotebookCorePort, NotebookCoreRemoteProps } from '@zeppelin/notebook-core';
+import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookFormValue } from '@zeppelin/notebook-core';
 import { useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
@@ -29,7 +29,8 @@ export const NotebookCoreAdapter = ({
   onParagraphInsert,
   onParagraphRemove,
   onParagraphMove,
-  onNotebookTitleChange
+  onNotebookTitleChange,
+  onNoteFormsChange
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
@@ -43,6 +44,9 @@ export const NotebookCoreAdapter = ({
   const dispatch = (type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph', paragraphId: string): void => {
     const accepted = core.dispatch({ type, paragraphId });
     setCommandAccepted(accepted);
+  };
+  const updateNoteForm = (name: string, value: NotebookFormValue): void => {
+    onNoteFormsChange?.({ ...snapshot.noteParams, [name]: value });
   };
 
   return (
@@ -76,6 +80,72 @@ export const NotebookCoreAdapter = ({
           ))}
         </ol>
       </nav>
+      {Object.values(snapshot.noteForms).some(form => !form.hidden) ? (
+        <fieldset aria-label="Notebook forms">
+          <legend>Notebook forms</legend>
+          {Object.entries(snapshot.noteForms).map(([name, form]) => {
+            if (form.hidden) {
+              return null;
+            }
+            const value = snapshot.noteParams[name] ?? form.defaultValue;
+            const label = form.displayName ?? form.name;
+            if (form.type === 'Select') {
+              return (
+                <label key={name}>
+                  {label}
+                  <select
+                    aria-label={label}
+                    value={Array.isArray(value) ? value[0] ?? '' : value}
+                    onChange={event => updateNoteForm(name, event.target.value)}
+                  >
+                    {(form.options ?? []).map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.displayName ?? option.value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+            }
+            if (form.type === 'CheckBox') {
+              const selected = Array.isArray(value) ? value : value ? [value] : [];
+              return (
+                <fieldset key={name}>
+                  <legend>{label}</legend>
+                  {(form.options ?? []).map(option => (
+                    <label key={option.value}>
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(option.value)}
+                        onChange={event =>
+                          updateNoteForm(
+                            name,
+                            event.target.checked
+                              ? [...selected, option.value]
+                              : selected.filter(candidate => candidate !== option.value)
+                          )
+                        }
+                      />
+                      {option.displayName ?? option.value}
+                    </label>
+                  ))}
+                </fieldset>
+              );
+            }
+            return (
+              <label key={name}>
+                {label}
+                <input
+                  aria-label={label}
+                  type={form.type === 'Password' ? 'password' : 'text'}
+                  value={Array.isArray(value) ? value.join(',') : value}
+                  onChange={event => updateNoteForm(name, event.target.value)}
+                />
+              </label>
+            );
+          })}
+        </fieldset>
+      ) : null}
       <ol aria-label="Notebook paragraphs">
         {snapshot.paragraphs.map((paragraph, index) => (
           <li key={paragraph.id} data-testid={`notebook-core-paragraph-${paragraph.id}`}>
