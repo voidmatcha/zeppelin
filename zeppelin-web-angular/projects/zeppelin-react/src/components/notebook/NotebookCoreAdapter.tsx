@@ -61,6 +61,9 @@ export const NotebookCoreAdapter = ({
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const coreScheduler = snapshot.scheduler ?? scheduler;
+  const coreRevisions = snapshot.revisions ?? revisions;
+  const coreCurrentRevision = snapshot.revisionId ?? currentRevision ?? 'Head';
+  const coreRevisionView = snapshot.revisionId !== null || revisionView;
   const hostTheme = useHostThemeMode();
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
@@ -194,23 +197,23 @@ export const NotebookCoreAdapter = ({
             <option value="report">report</option>
           </select>
         </label>
-        {revisions.length > 0 ? (
+        {coreRevisions.length > 0 ? (
           <>
             <label>
               Revision
               <select
                 aria-label="Notebook revision"
-                value={currentRevision ?? ''}
+                value={coreCurrentRevision}
                 onChange={event => onRevisionSelect?.(event.target.value)}
               >
-                {revisions.map(revision => (
+                {coreRevisions.map(revision => (
                   <option key={revision.id ?? revision.message} value={revision.id ?? ''}>
                     {revision.message}
                   </option>
                 ))}
               </select>
             </label>
-            {!readOnly && !revisionView ? (
+            {!readOnly && !coreRevisionView ? (
               <label>
                 Checkpoint message
                 <input
@@ -227,7 +230,7 @@ export const NotebookCoreAdapter = ({
                 </button>
               </label>
             ) : null}
-            {!readOnly && revisionView ? (
+            {!readOnly && coreRevisionView ? (
               <button type="button" onClick={onSetNotebookRevision}>
                 Set revision as head
               </button>

@@ -155,6 +155,23 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().scheduler).toBeUndefined();
   });
 
+  it('maps the existing revision list into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptRevisions([
+      { id: 'Head', message: 'Head' },
+      { id: 'revision-1', message: 'First checkpoint', time: 1 }
+    ]);
+
+    expect(adapter.port.getSnapshot().revisions).toEqual([
+      { id: 'Head', message: 'Head' },
+      { id: 'revision-1', message: 'First checkpoint', time: 1 }
+    ]);
+  });
+
   it('commits an updated result configuration through the existing paragraph contract', () => {
     const commitParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);
