@@ -63,6 +63,7 @@ export const NotebookCoreAdapter = ({
   interpreterBindings = EMPTY_INTERPRETER_BINDINGS,
   onInterpreterBindingsChange,
   scheduler,
+  canSchedule = false,
   onScheduleChange,
   collaborativeUsers,
   canManagePermissions = false,
@@ -319,7 +320,7 @@ export const NotebookCoreAdapter = ({
             ) : null}
           </>
         ) : null}
-        {coreScheduler ? (
+  {coreScheduler || canSchedule ? (
           <label>
             Scheduler
             <input
