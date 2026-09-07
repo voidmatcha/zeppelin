@@ -265,7 +265,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(proof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));
       await expect(reactAdapter.getByRole('article', { name: 'Paragraph 1' })).toContainText(code);
 
-      await page.getByRole('button', { name: 'Run first paragraph from React', exact: true }).click();
+      await reactAdapter.getByRole('button', { name: 'Run', exact: true }).click();
 
       await expect(reactAdapter).toHaveAttribute('data-command-accepted', 'true');
       await expect.poll(() => sentOperations.filter(operation => operation === 'RUN_PARAGRAPH').length).toBe(1);
