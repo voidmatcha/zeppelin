@@ -46,6 +46,7 @@ export const NotebookCoreAdapter = ({
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
+  const [searchTerm, setSearchTerm] = useState('');
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
@@ -110,6 +111,11 @@ export const NotebookCoreAdapter = ({
           onBlur={() => onNotebookTitleChange?.(titleDraft)}
         />
         <span>{snapshot.paragraphs.length} paragraphs</span>
+        <input
+          aria-label="Search notebook"
+          value={searchTerm}
+          onChange={event => setSearchTerm(event.target.value)}
+        />
         <button
           type="button"
           disabled={!canEdit || hasRunningParagraph}
@@ -251,6 +257,7 @@ export const NotebookCoreAdapter = ({
                   ariaLabel={`Paragraph ${index + 1} editor`}
                   disabled={!canEdit || paragraph.status === 'RUNNING'}
                   language={paragraph.language}
+                  searchTerm={searchTerm}
                   value={paragraphDrafts[paragraph.id] ?? paragraph.text}
                   onChange={text => {
                     setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));

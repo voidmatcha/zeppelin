@@ -19,6 +19,7 @@ export type NotebookMonacoEditorProps = Readonly<{
   ariaLabel: string;
   disabled: boolean;
   language?: string;
+  searchTerm?: string;
   value: string;
   onChange: (value: string) => void;
   onRun?: () => void;
@@ -39,13 +40,22 @@ const toMonacoLanguage = (language?: string): string => {
   }
 };
 
-export const NotebookMonacoEditor = ({ ariaLabel, disabled, language = 'plaintext', value, onChange, onRun }: NotebookMonacoEditorProps) => {
+export const NotebookMonacoEditor = ({
+  ariaLabel,
+  disabled,
+  language = 'plaintext',
+  searchTerm = '',
+  value,
+  onChange,
+  onRun
+}: NotebookMonacoEditorProps) => {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<editor.IStandaloneCodeEditor | null>(null);
   const initialOptions = useRef({ ariaLabel, disabled, language: toMonacoLanguage(language), value });
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
   const disabledRef = useRef(disabled);
+  const searchDecorations = useRef<string[]>([]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -98,6 +108,37 @@ export const NotebookMonacoEditor = ({ ariaLabel, disabled, language = 'plaintex
   useEffect(() => {
     instance.current?.updateOptions({ ariaLabel, readOnly: disabled });
   }, [ariaLabel, disabled]);
+
+  useEffect(() => {
+    const nextInstance = instance.current;
+    const model = nextInstance?.getModel();
+    if (!nextInstance || !model || !searchTerm) {
+      searchDecorations.current = nextInstance?.deltaDecorations(searchDecorations.current, []) ?? [];
+      return;
+    }
+    const decorations: editor.IModelDeltaDecoration[] = [];
+    const text = model.getValue();
+    let startIndex = 0;
+    while (startIndex < text.length) {
+      const index = text.indexOf(searchTerm, startIndex);
+      if (index === -1) {
+        break;
+      }
+      const start = model.getPositionAt(index);
+      const end = model.getPositionAt(index + searchTerm.length);
+      decorations.push({
+        range: {
+          startLineNumber: start.lineNumber,
+          startColumn: start.column,
+          endLineNumber: end.lineNumber,
+          endColumn: end.column
+        },
+        options: { inlineClassName: 'editor-search-highlight' }
+      });
+      startIndex = index + searchTerm.length;
+    }
+    searchDecorations.current = nextInstance.deltaDecorations(searchDecorations.current, decorations);
+  }, [searchTerm, value]);
 
   useEffect(() => {
     const nextInstance = instance.current;
