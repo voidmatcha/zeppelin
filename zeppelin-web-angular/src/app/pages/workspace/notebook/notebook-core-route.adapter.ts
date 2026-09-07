@@ -21,6 +21,7 @@ import {
   type NotebookFormParams,
   type NotebookParagraphStatus,
   type NotebookPermissions,
+  type NotebookRevision,
   type NotebookSchedule
 } from '@zeppelin/notebook-core';
 import type { Note, ParagraphConfigResult } from '@zeppelin/sdk';
@@ -238,6 +239,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptSchedule(schedule: NotebookSchedule | null): void {
     this.runtime.apply({ type: 'schedule-updated', scheduler: schedule });
+  }
+
+  acceptRevisions(revisions: readonly NotebookRevision[]): void {
+    this.runtime.apply({ type: 'revisions-updated', revisions });
   }
 
   updateParagraphResultConfig(paragraphId: string, resultIndex: number, resultConfig: ParagraphConfigResult): boolean {

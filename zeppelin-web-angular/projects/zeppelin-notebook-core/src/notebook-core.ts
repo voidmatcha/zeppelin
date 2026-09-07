@@ -22,6 +22,7 @@ import type {
   NotebookParagraphResultConfigs,
   NotebookParagraphSnapshot,
   NotebookPermissions,
+  NotebookRevision,
   NotebookSchedule
 } from './host-remote-contract';
 
@@ -62,6 +63,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'permissions-updated'; permissions: NotebookPermissions }>
   | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
   | Readonly<{ type: 'schedule-updated'; scheduler: NotebookSchedule | null }>
+  | Readonly<{ type: 'revisions-updated'; revisions: readonly NotebookRevision[] }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
 export type NotebookCoreRuntime = Readonly<{
@@ -98,6 +100,7 @@ type NotebookCoreState = Readonly<{
   permissions: NotebookPermissions | null;
   collaborativeUsers: readonly string[] | null;
   scheduler: NotebookSchedule | null;
+  revisions: readonly NotebookRevision[];
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
   error: string | null;
@@ -148,6 +151,9 @@ const freezeSchedule = (scheduler: NotebookSchedule): NotebookSchedule =>
     ...(scheduler.cron ? { cron: scheduler.cron } : {}),
     releaseResource: scheduler.releaseResource
   });
+
+const freezeRevisions = (revisions: readonly NotebookRevision[]): readonly NotebookRevision[] =>
+  Object.freeze(revisions.map(revision => Object.freeze({ ...revision })));
 
 const freezeResultConfigValue = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -208,6 +214,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     ...(state.permissions ? { permissions: state.permissions } : {}),
     ...(state.collaborativeUsers ? { collaborativeUsers: state.collaborativeUsers } : {}),
     ...(state.scheduler ? { scheduler: state.scheduler } : {}),
+    ...(state.revisions.length > 0 ? { revisions: state.revisions } : {}),
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
@@ -249,6 +256,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     permissions: null,
     collaborativeUsers: null,
     scheduler: null,
+    revisions: Object.freeze([]),
     ...emptyParagraphState(),
     error: null
   });
@@ -285,6 +293,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         permissions: null,
         collaborativeUsers: null,
         scheduler: null,
+        revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: null
       });
@@ -299,6 +308,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         permissions: null,
         collaborativeUsers: null,
         scheduler: null,
+        revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: null
       });
@@ -596,6 +606,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       return freezeState({ ...state, version, scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null });
+    case 'revisions-updated':
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      return freezeState({ ...state, version, revisions: freezeRevisions(event.revisions) });
     case 'load-failed':
       if (event.noteId !== state.noteId || event.revisionId !== state.revisionId) {
         return state;
@@ -610,6 +625,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         permissions: null,
         collaborativeUsers: null,
         scheduler: null,
+        revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: event.error
       });

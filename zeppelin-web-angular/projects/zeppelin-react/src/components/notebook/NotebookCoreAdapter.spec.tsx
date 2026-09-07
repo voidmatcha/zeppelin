@@ -338,15 +338,17 @@ describe('NotebookCoreAdapter', () => {
       title: 'Notebook',
       paragraphs: []
     });
+    runtime.apply({
+      type: 'revisions-updated',
+      revisions: [
+        { id: 'Head', message: 'Head' },
+        { id: 'revision-1', message: 'before rename', time: 1 }
+      ]
+    });
 
     const { rerender } = render(
       <NotebookCoreAdapter
         core={runtime.port}
-        revisions={[
-          { id: 'Head', message: 'Head' },
-          { id: 'revision-1', message: 'before rename', time: 1 }
-        ]}
-        currentRevision="Head"
         onRevisionSelect={onRevisionSelect}
         onCheckpointNotebook={onCheckpointNotebook}
         onSetNotebookRevision={onSetNotebookRevision}
@@ -363,15 +365,27 @@ describe('NotebookCoreAdapter', () => {
     expect(onRevisionSelect).toHaveBeenCalledWith('revision-1');
     expect(onCheckpointNotebook).toHaveBeenCalledWith('before release');
 
+    act(() => {
+      runtime.apply({ type: 'route-changed', noteId: 'note-1', revisionId: 'revision-1' });
+      runtime.apply({ type: 'load-started' });
+      runtime.apply({
+        type: 'note-loaded',
+        noteId: 'note-1',
+        revisionId: 'revision-1',
+        title: 'Notebook',
+        paragraphs: []
+      });
+      runtime.apply({
+        type: 'revisions-updated',
+        revisions: [
+          { id: 'Head', message: 'Head' },
+          { id: 'revision-1', message: 'before rename', time: 1 }
+        ]
+      });
+    });
     rerender(
       <NotebookCoreAdapter
         core={runtime.port}
-        revisions={[
-          { id: 'Head', message: 'Head' },
-          { id: 'revision-1', message: 'before rename', time: 1 }
-        ]}
-        currentRevision="revision-1"
-        revisionView
         onSetNotebookRevision={onSetNotebookRevision}
       />
     );
