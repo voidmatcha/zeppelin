@@ -12,6 +12,7 @@
 
 import { expect, Locator, Page, test } from '@playwright/test';
 
+import { LoginPage } from '../../../models/login-page';
 import { NotebookKeyboardPage } from '../../../models/notebook-keyboard-page';
 import { addPageAnnotationBeforeEach, performLoginIfRequired, PAGES, waitForZeppelinReady } from '../../../utils';
 
@@ -21,6 +22,26 @@ const createNote = async (page: Page, notePath: string): Promise<string> => {
   });
   expect(response.ok(), `Create note failed: ${response.status()} ${await response.text()}`).toBeTruthy();
   return (await response.json()).body as string;
+};
+
+const loginAs = async (page: Page, username: string, password: string): Promise<void> => {
+  await page.goto('/#/login');
+  const loginPage = new LoginPage(page);
+  await loginPage.login(username, password);
+  await expect(page.locator('zeppelin-login')).toBeHidden({ timeout: 30000 });
+  await waitForZeppelinReady(page);
+};
+
+const grantNotebookAccess = async (page: Page, noteId: string, user: string): Promise<void> => {
+  const response = await page.request.put(`/api/notebook/${noteId}/permissions`, {
+    data: {
+      owners: ['user1'],
+      readers: ['user1', user],
+      writers: ['user1', user],
+      runners: ['user1', user]
+    }
+  });
+  expect(response.ok(), `Set note permissions failed: ${response.status()} ${await response.text()}`).toBeTruthy();
 };
 
 const getParagraphHostIds = async (page: Page): Promise<string[]> =>
@@ -600,6 +621,45 @@ test.describe('Notebook Core production route feasibility proof', () => {
       expect(peerSentOperations.filter(operation => operation === 'PATCH_PARAGRAPH')).toEqual([]);
     } finally {
       await peerPage.close();
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
+  test('converges React paragraph edits between distinct authenticated users', async ({ browser, page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+    const ticket = await page.request.get('/api/security/ticket');
+    const principal = ((await ticket.json()) as { body?: { principal?: string } }).body?.principal;
+    test.skip(principal !== 'user1', 'Requires the local user1/user2 Shiro fixture.');
+
+    const user2Context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const user2Page = await user2Context.newPage();
+    const stamp = Date.now();
+    const code = `%python\nprint("cross_principal_${stamp}")`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/CrossPrincipal_${stamp}`);
+      await grantNotebookAccess(page, noteId, 'user2');
+      await loginAs(user2Page, 'user2', 'password3');
+
+      await Promise.all([
+        page.goto(`/#/notebook/${noteId}?reactNotebook=true`),
+        user2Page.goto(`/#/notebook/${noteId}?reactNotebook=true`)
+      ]);
+
+      const user1Editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const user2Editor = user2Page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      await expect(user1Editor).toBeVisible({ timeout: 30000 });
+      await expect(user2Editor).toBeVisible({ timeout: 30000 });
+
+      await user2Editor.fill(code);
+      await expect(user1Editor).toHaveValue(code, { timeout: 30000 });
+    } finally {
+      await user2Context.close();
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
