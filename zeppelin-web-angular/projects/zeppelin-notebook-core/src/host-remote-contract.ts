@@ -68,6 +68,12 @@ export type NotebookRevisionComparison = Readonly<{
   secondParagraphs: readonly NotebookRevisionParagraph[];
 }>;
 
+export type NotebookInterpreterBinding = Readonly<{
+  id: string;
+  name: string;
+  selected: boolean;
+}>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
@@ -152,6 +158,8 @@ export type NotebookCoreRemoteProps = Readonly<{
   onCheckpointNotebook?: (message: string) => void;
   onSetNotebookRevision?: () => void;
   onRevisionCompare?: (firstRevisionId: string, secondRevisionId: string) => Promise<NotebookRevisionComparison>;
+  interpreterBindings?: readonly NotebookInterpreterBinding[];
+  onInterpreterBindingsChange?: (bindingIds: readonly string[]) => void;
   scheduler?: NotebookSchedule;
   onScheduleChange?: (schedule: NotebookSchedule) => void;
   collaborativeUsers?: readonly string[];

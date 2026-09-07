@@ -24,6 +24,8 @@ import { SingleResultRenderer } from '../../templates/SingleResultRenderer';
 import { useHostThemeMode, ZeppelinThemeProvider } from '../../theme/ZeppelinThemeProvider';
 import { NotebookMonacoEditor } from './NotebookMonacoEditor';
 
+const EMPTY_INTERPRETER_BINDINGS = Object.freeze([]);
+
 export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
   Readonly<{
     expectedCore?: NotebookCorePort;
@@ -58,6 +60,8 @@ export const NotebookCoreAdapter = ({
   onCheckpointNotebook,
   onSetNotebookRevision,
   onRevisionCompare,
+  interpreterBindings = EMPTY_INTERPRETER_BINDINGS,
+  onInterpreterBindingsChange,
   scheduler,
   onScheduleChange,
   collaborativeUsers,
@@ -87,6 +91,8 @@ export const NotebookCoreAdapter = ({
   const [outputHidden, setOutputHidden] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [interpreterBindingsOpen, setInterpreterBindingsOpen] = useState(false);
+  const [interpreterBindingDraft, setInterpreterBindingDraft] = useState(interpreterBindings);
   const [firstRevisionId, setFirstRevisionId] = useState('');
   const [secondRevisionId, setSecondRevisionId] = useState('');
   const [revisionComparison, setRevisionComparison] = useState<Awaited<ReturnType<NonNullable<typeof onRevisionCompare>>> | null>(null);
@@ -108,6 +114,7 @@ export const NotebookCoreAdapter = ({
   useEffect(() => {
     setPermissionDraft(snapshot.permissions ?? null);
   }, [snapshot.noteId, snapshot.permissions]);
+  useEffect(() => setInterpreterBindingDraft(interpreterBindings), [interpreterBindings]);
   useEffect(() => {
     setCronDraft(coreScheduler?.cron ?? '');
     setReleaseResourceDraft(coreScheduler?.releaseResource ?? false);
@@ -354,6 +361,7 @@ export const NotebookCoreAdapter = ({
           onClick={() => {
             setPermissionsOpen(false);
             setRevisionsOpen(false);
+            setInterpreterBindingsOpen(open => !open);
             onExtensionChange?.('interpreter');
           }}
         >
@@ -365,6 +373,7 @@ export const NotebookCoreAdapter = ({
           disabled={!snapshot.permissions || !canManagePermissions}
           onClick={() => {
             setPermissionsOpen(open => !open);
+            setInterpreterBindingsOpen(false);
             setPermissionSaveError(null);
             onExtensionChange?.('permissions');
           }}
@@ -375,6 +384,7 @@ export const NotebookCoreAdapter = ({
           type="button"
           onClick={() => {
             setPermissionsOpen(false);
+            setInterpreterBindingsOpen(false);
             setRevisionsOpen(open => !open);
             setRevisionComparison(null);
             setRevisionComparisonError(null);
@@ -414,6 +424,27 @@ export const NotebookCoreAdapter = ({
             }}
           >
             Cancel permissions
+          </button>
+        </section>
+      ) : null}
+      {interpreterBindingsOpen ? (
+        <section aria-label="Notebook interpreter bindings">
+          <h2>Interpreter binding</h2>
+          {interpreterBindingDraft.map(binding => (
+            <label key={binding.id}>
+              <input
+                type="checkbox"
+                checked={binding.selected}
+                onChange={() => setInterpreterBindingDraft(bindings => bindings.map(candidate => candidate.id === binding.id ? { ...candidate, selected: !candidate.selected } : candidate))}
+              />
+              {binding.name}
+            </label>
+          ))}
+          <button type="button" onClick={() => { onInterpreterBindingsChange?.(interpreterBindingDraft.filter(binding => binding.selected).map(binding => binding.id)); setInterpreterBindingsOpen(false); onExtensionChange?.('hide'); }}>
+            Save interpreter bindings
+          </button>
+          <button type="button" onClick={() => { setInterpreterBindingDraft(interpreterBindings); setInterpreterBindingsOpen(false); onExtensionChange?.('hide'); }}>
+            Cancel interpreter bindings
           </button>
         </section>
       ) : null}

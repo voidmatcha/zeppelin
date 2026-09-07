@@ -610,7 +610,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.keyboard.press('Escape');
 
       await reactNotebook.getByRole('button', { name: 'Interpreter settings' }).click();
-      await expect(page.locator('zeppelin-notebook-interpreter-binding')).toBeVisible();
+      await expect(reactNotebook.getByRole('region', { name: 'Notebook interpreter bindings' })).toBeVisible();
+      await expect(page.locator('zeppelin-notebook-interpreter-binding')).toHaveCount(0);
 
       await reactNotebook.getByRole('button', { name: 'Permissions' }).click();
       await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toBeVisible();

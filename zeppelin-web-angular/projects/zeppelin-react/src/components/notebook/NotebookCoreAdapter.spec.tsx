@@ -252,6 +252,30 @@ describe('NotebookCoreAdapter', () => {
     expect(onExtensionChange).toHaveBeenNthCalledWith(3, 'revisions');
   });
 
+  it('saves selected interpreter bindings through the host', () => {
+    const onInterpreterBindingsChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'note-loaded', noteId: 'note-1', revisionId: null, title: 'Notebook', paragraphs: [] });
+
+    render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        interpreterBindings={[
+          { id: 'python', name: 'python', selected: true },
+          { id: 'spark', name: 'spark', selected: false }
+        ]}
+        onInterpreterBindingsChange={onInterpreterBindingsChange}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Interpreter settings' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'spark' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save interpreter bindings' }));
+
+    expect(onInterpreterBindingsChange).toHaveBeenCalledWith(['python', 'spark']);
+    expect(screen.queryByRole('region', { name: 'Notebook interpreter bindings' })).toBeNull();
+  });
+
   it('edits and saves permissions through the host without a React REST client', async () => {
     const onPermissionsChange = vi.fn(async () => undefined);
     const runtime = createNotebookCore({ noteId: 'note-1' });
