@@ -121,6 +121,19 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, '@@ -1,1 +1,1 @@\n-old\n+new\n');
   });
 
+  it('updates the Core and sends a collaboration patch for a React text edit', () => {
+    const patchParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ patchParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.updateParagraphText('paragraph-1', 'updated from React')).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0].text).toBe('updated from React');
+    expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, expect.stringContaining('+updated from React'));
+  });
+
   it('applies an inbound collaboration patch to the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
