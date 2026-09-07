@@ -102,6 +102,10 @@ export class NotebookCoreRouteAdapter {
     this.runtime.apply({ type: 'load-started' });
   }
 
+  reloadCurrentRoute(): void {
+    this.runtime.apply({ type: 'load-started' });
+  }
+
   acceptNote(note: LoadedNote, revisionId: string | null): readonly LoadedParagraph[] | null {
     const previousParagraphViews = [...this.paragraphViewsById.values()];
     this.replaceParagraphViews(note.paragraphs);
