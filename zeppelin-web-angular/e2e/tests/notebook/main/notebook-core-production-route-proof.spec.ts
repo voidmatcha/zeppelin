@@ -454,6 +454,36 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('opens existing notebook extensions from React controls', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactExtensions_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      await reactNotebook.getByRole('button', { name: 'Interpreter settings' }).click();
+      await expect(page.locator('zeppelin-notebook-interpreter-binding')).toBeVisible();
+
+      await reactNotebook.getByRole('button', { name: 'Permissions' }).click();
+      await expect(page.locator('zeppelin-notebook-permissions')).toBeVisible();
+
+      await reactNotebook.getByRole('button', { name: 'Revisions' }).click();
+      await expect(page.locator('zeppelin-notebook-revisions-comparator')).toBeVisible();
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('persists a React table visualization mode through the existing paragraph contract', async ({ page }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);

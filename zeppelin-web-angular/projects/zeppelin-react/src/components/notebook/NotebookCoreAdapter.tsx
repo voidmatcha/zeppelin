@@ -33,6 +33,8 @@ export const NotebookCoreAdapter = ({
   onParagraphMove,
   onParagraphResultConfigChange,
   onNotebookTitleChange,
+  onReloadNotebook,
+  onExtensionChange,
   onNoteFormsChange,
   readOnly = false
 }: NotebookCoreAdapterProps) => {
@@ -124,6 +126,18 @@ export const NotebookCoreAdapter = ({
         </button>
         <button type="button" onClick={() => setOutputHidden(hidden => !hidden)}>
           {outputHidden ? 'Show output' : 'Hide output'}
+        </button>
+        <button type="button" onClick={onReloadNotebook}>
+          Reload notebook
+        </button>
+        <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
+          Interpreter settings
+        </button>
+        <button type="button" onClick={() => onExtensionChange?.('permissions')}>
+          Permissions
+        </button>
+        <button type="button" onClick={() => onExtensionChange?.('revisions')}>
+          Revisions
         </button>
       </header>
       <nav aria-label="Notebook outline">

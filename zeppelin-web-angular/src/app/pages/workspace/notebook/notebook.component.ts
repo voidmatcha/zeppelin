@@ -578,6 +578,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
       onNotebookTitleChange: title => this.renameCoreNotebook(title),
+      onReloadNotebook: () => this.note && this.messageService.reloadNote(this.note.id),
+      onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
           Object.entries(noteParams).reduce<DynamicFormParams>((params, [name, value]) => {
@@ -596,6 +598,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         this.cdr.markForCheck();
       }
     };
+  }
+
+  private setReactExtension(extension: 'interpreter' | 'permissions' | 'revisions' | 'hide'): void {
+    this.activatedExtension = this.activatedExtension === extension ? 'hide' : extension;
+    if (this.activatedExtension === 'interpreter' && this.note) {
+      this.messageService.getInterpreterBindings(this.note.id);
+    }
+    this.cdr.markForCheck();
   }
 
   ngOnInit() {

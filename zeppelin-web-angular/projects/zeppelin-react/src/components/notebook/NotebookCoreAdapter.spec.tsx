@@ -147,6 +147,37 @@ describe('NotebookCoreAdapter', () => {
     expect(title.value).toBe('Remote title');
   });
 
+  it('delegates notebook reload and extension selection to the host', () => {
+    const onReloadNotebook = vi.fn();
+    const onExtensionChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+
+    render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        onReloadNotebook={onReloadNotebook}
+        onExtensionChange={onExtensionChange}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reload notebook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Interpreter settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revisions' }));
+
+    expect(onReloadNotebook).toHaveBeenCalledTimes(1);
+    expect(onExtensionChange).toHaveBeenNthCalledWith(1, 'interpreter');
+    expect(onExtensionChange).toHaveBeenNthCalledWith(2, 'permissions');
+    expect(onExtensionChange).toHaveBeenNthCalledWith(3, 'revisions');
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
