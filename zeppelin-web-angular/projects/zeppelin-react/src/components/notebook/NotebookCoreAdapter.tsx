@@ -39,6 +39,8 @@ export const NotebookCoreAdapter = ({
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
+  const [codeHidden, setCodeHidden] = useState(false);
+  const [outputHidden, setOutputHidden] = useState(false);
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text]))
   );
@@ -116,6 +118,12 @@ export const NotebookCoreAdapter = ({
         </button>
         <button type="button" disabled={!canEdit} onClick={() => dispatchNotebook('clear-all-paragraph-output')}>
           Clear all output
+        </button>
+        <button type="button" onClick={() => setCodeHidden(hidden => !hidden)}>
+          {codeHidden ? 'Show code' : 'Hide code'}
+        </button>
+        <button type="button" onClick={() => setOutputHidden(hidden => !hidden)}>
+          {outputHidden ? 'Show output' : 'Hide output'}
         </button>
       </header>
       <nav aria-label="Notebook outline">
@@ -207,17 +215,19 @@ export const NotebookCoreAdapter = ({
               {paragraph.status === 'RUNNING' ? (
                 <progress aria-label={`Paragraph ${index + 1} progress`} max={100} value={paragraph.progress} />
               ) : null}
-              <NotebookMonacoEditor
-                ariaLabel={`Paragraph ${index + 1} editor`}
-                disabled={!canEdit || paragraph.status === 'RUNNING'}
-                language={paragraph.language}
-                value={paragraphDrafts[paragraph.id] ?? paragraph.text}
-                onChange={text => {
-                  setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
-                  onParagraphTextChange?.(paragraph.id, text);
-                }}
-                onRun={() => dispatch('run-paragraph', paragraph.id)}
-              />
+              {codeHidden ? null : (
+                <NotebookMonacoEditor
+                  ariaLabel={`Paragraph ${index + 1} editor`}
+                  disabled={!canEdit || paragraph.status === 'RUNNING'}
+                  language={paragraph.language}
+                  value={paragraphDrafts[paragraph.id] ?? paragraph.text}
+                  onChange={text => {
+                    setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
+                    onParagraphTextChange?.(paragraph.id, text);
+                  }}
+                  onRun={() => dispatch('run-paragraph', paragraph.id)}
+                />
+              )}
               <div>
                 <button type="button" disabled={!canEdit} onClick={() => onParagraphInsert?.(index)}>
                   Add above
@@ -264,7 +274,7 @@ export const NotebookCoreAdapter = ({
                   Cancel
                 </button>
               </div>
-              {paragraph.results && paragraph.results.length > 0 ? (
+              {!outputHidden && paragraph.results && paragraph.results.length > 0 ? (
                 <div data-testid="react-notebook-core-results">
                   {paragraph.results.map((result, resultIndex) => (
                     <div key={resultIndex} data-testid="react-notebook-core-result">

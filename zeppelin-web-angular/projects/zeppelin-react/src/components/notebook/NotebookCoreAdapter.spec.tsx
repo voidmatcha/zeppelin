@@ -261,6 +261,40 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByTestId('react-notebook-core-result').querySelector('pre')).not.toBeNull();
   });
 
+  it('toggles React code and output visibility without changing the shared notebook state', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Display notebook',
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          text: '%python\nprint(1)',
+          status: 'FINISHED',
+          results: [{ type: 'TEXT', data: 'answer' }]
+        }
+      ]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(screen.getByRole('textbox', { name: 'Paragraph 1 editor' })).toBeTruthy();
+    expect(screen.getByTestId('react-notebook-core-results')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide output' }));
+    expect(screen.queryByRole('textbox', { name: 'Paragraph 1 editor' })).toBeNull();
+    expect(screen.queryByTestId('react-notebook-core-results')).toBeNull();
+    expect(runtime.port.getSnapshot().paragraphs[0].text).toBe('%python\nprint(1)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show output' }));
+    expect(screen.getByRole('textbox', { name: 'Paragraph 1 editor' })).toBeTruthy();
+    expect(screen.getByTestId('react-notebook-core-results')).toBeTruthy();
+  });
+
   it('uses the Core result configuration when selecting a React visualization mode', () => {
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
