@@ -22,13 +22,12 @@ USER root
 ARG HADOOP_VERSION=3.3.6
 ARG TARGETARCH
 ENV HADOOP_VERSION=${HADOOP_VERSION} \
-    HADOOP_PREFIX=/usr/local/hadoop \
+    HADOOP_HOME=/usr/local/hadoop \
     HADOOP_COMMON_HOME=/usr/local/hadoop \
     HADOOP_HDFS_HOME=/usr/local/hadoop \
     HADOOP_MAPRED_HOME=/usr/local/hadoop \
     HADOOP_YARN_HOME=/usr/local/hadoop \
     HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop \
-    YARN_CONF_DIR=/usr/local/hadoop/etc/hadoop \
     PATH=${PATH}:${SPARK_HOME}/bin:/usr/local/hadoop/bin
 
 RUN apt-get update \
@@ -68,23 +67,23 @@ RUN BUILD_ARCH="$TARGETARCH" \
     && echo "$HADOOP_SHA512  /tmp/$HADOOP_ARCHIVE" | sha512sum -c - \
     && tar -xzf "/tmp/$HADOOP_ARCHIVE" -C /usr/local/ \
     && rm "/tmp/$HADOOP_ARCHIVE" "/tmp/$HADOOP_ARCHIVE.sha512" \
-    && ln -s /usr/local/hadoop-$HADOOP_VERSION $HADOOP_PREFIX
+    && ln -s /usr/local/hadoop-$HADOOP_VERSION $HADOOP_HOME
 
-RUN printf '\nexport JAVA_HOME=%s\nexport HADOOP_PREFIX=/usr/local/hadoop\nexport HADOOP_HOME=/usr/local/hadoop\nexport HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop\nexport HDFS_NAMENODE_USER=root\nexport HDFS_DATANODE_USER=root\nexport HDFS_SECONDARYNAMENODE_USER=root\nexport YARN_RESOURCEMANAGER_USER=root\nexport YARN_NODEMANAGER_USER=root\n' "$JAVA_HOME" \
-    >> $HADOOP_PREFIX/etc/hadoop/hadoop-env.sh
+RUN printf '\nexport JAVA_HOME=%s\nexport HADOOP_HOME=/usr/local/hadoop\nexport HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop\nexport HDFS_NAMENODE_USER=root\nexport HDFS_DATANODE_USER=root\nexport HDFS_SECONDARYNAMENODE_USER=root\nexport YARN_RESOURCEMANAGER_USER=root\nexport YARN_NODEMANAGER_USER=root\n' "$JAVA_HOME" \
+    >> $HADOOP_HOME/etc/hadoop/hadoop-env.sh
 
-RUN mkdir $HADOOP_PREFIX/input
-RUN cp $HADOOP_PREFIX/etc/hadoop/*.xml $HADOOP_PREFIX/input
+RUN mkdir $HADOOP_HOME/input
+RUN cp $HADOOP_HOME/etc/hadoop/*.xml $HADOOP_HOME/input
 
 # hadoop configurations
-COPY hdfs_conf/core-site.xml $HADOOP_PREFIX/etc/hadoop/core-site.xml
-COPY hdfs_conf/hdfs-site.xml $HADOOP_PREFIX/etc/hadoop/hdfs-site.xml
-COPY hdfs_conf/mapred-site.xml $HADOOP_PREFIX/etc/hadoop/mapred-site.xml
-COPY hdfs_conf/yarn-site.xml $HADOOP_PREFIX/etc/hadoop/yarn-site.xml
+COPY hdfs_conf/core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
+COPY hdfs_conf/hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
+COPY hdfs_conf/mapred-site.xml $HADOOP_HOME/etc/hadoop/mapred-site.xml
+COPY hdfs_conf/yarn-site.xml $HADOOP_HOME/etc/hadoop/yarn-site.xml
 
 RUN mkdir /data/
 RUN chmod 777 /data/
-RUN $HADOOP_PREFIX/bin/hdfs namenode -format
+RUN $HADOOP_HOME/bin/hdfs namenode -format
 
 # passwordless ssh (keys are generated at runtime by entrypoint.sh)
 COPY ssh_config /root/.ssh/config

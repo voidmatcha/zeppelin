@@ -16,14 +16,14 @@
 
 set -euo pipefail
 
-: "${HADOOP_PREFIX:=/usr/local/hadoop}"
+: "${HADOOP_HOME:=/usr/local/hadoop}"
 
-. "$HADOOP_PREFIX/etc/hadoop/hadoop-env.sh"
+. "$HADOOP_HOME/etc/hadoop/hadoop-env.sh"
 
 rm -f /tmp/*.pid
 
 # installing libraries if any - (resource urls added comma separated to the ACP system variable)
-cd "$HADOOP_PREFIX/share/hadoop/common"
+cd "$HADOOP_HOME/share/hadoop/common"
 ACP_URLS="${ACP:-}"
 for cp in ${ACP_URLS//,/ }; do
   echo "== $cp"
@@ -31,53 +31,52 @@ for cp in ${ACP_URLS//,/ }; do
 done
 cd - > /dev/null
 
-# generate ssh keys at runtime so the image does not ship a shared private key
-if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
-  ssh-keygen -A
-fi
+# generate ssh keys at runtime so the image does not ship a shared private key.
+# "ssh-keygen -A" only creates the host key types that are missing.
+ssh-keygen -A
+mkdir -p /root/.ssh
 if [ ! -f /root/.ssh/id_rsa ]; then
   ssh-keygen -q -N "" -t rsa -f /root/.ssh/id_rsa
 fi
-if [ ! -f /root/.ssh/authorized_keys ]; then
-  cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+# authorize the current key even when authorized_keys survived from an earlier run
+touch /root/.ssh/authorized_keys
+if ! grep -qxF "$(cat /root/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys; then
+  cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
 fi
 chmod 700 /root/.ssh
 chmod 600 /root/.ssh/authorized_keys
 
 # start hadoop
 service ssh start
-"$HADOOP_PREFIX/sbin/start-dfs.sh"
-"$HADOOP_PREFIX/sbin/start-yarn.sh"
+"$HADOOP_HOME/sbin/start-dfs.sh"
+"$HADOOP_HOME/sbin/start-yarn.sh"
 
-"$HADOOP_PREFIX/bin/hdfs" dfsadmin -safemode leave
-"$HADOOP_PREFIX/bin/hdfs" dfs -mkdir -p /spark
-if ! "$HADOOP_PREFIX/bin/hdfs" dfs -test -e /spark/.jars-upload-complete; then
-  "$HADOOP_PREFIX/bin/hdfs" dfs -rm -r -f /spark/jars
-  "$HADOOP_PREFIX/bin/hdfs" dfs -put "$SPARK_HOME/jars" /spark
-  "$HADOOP_PREFIX/bin/hdfs" dfs -touchz /spark/.jars-upload-complete
+"$HADOOP_HOME/bin/hdfs" dfsadmin -safemode leave
+"$HADOOP_HOME/bin/hdfs" dfs -mkdir -p /spark
+if ! "$HADOOP_HOME/bin/hdfs" dfs -test -e /spark/.jars-upload-complete; then
+  "$HADOOP_HOME/bin/hdfs" dfs -rm -r -f /spark/jars
+  "$HADOOP_HOME/bin/hdfs" dfs -put "$SPARK_HOME/jars" /spark
+  "$HADOOP_HOME/bin/hdfs" dfs -touchz /spark/.jars-upload-complete
 fi
 
 # start spark
-export SPARK_MASTER_OPTS="-Dspark.driver.port=7001 -Dspark.fileserver.port=7002
-  -Dspark.broadcast.port=7003 -Dspark.replClassServer.port=7004
-  -Dspark.blockManager.port=7005 -Dspark.executor.port=7006
-  -Dspark.ui.port=4040 -Dspark.broadcast.factory=org.apache.spark.broadcast.HttpBroadcastFactory"
-export SPARK_WORKER_OPTS="-Dspark.driver.port=7001 -Dspark.fileserver.port=7002
-  -Dspark.broadcast.port=7003 -Dspark.replClassServer.port=7004
-  -Dspark.blockManager.port=7005 -Dspark.executor.port=7006
-  -Dspark.ui.port=4040 -Dspark.broadcast.factory=org.apache.spark.broadcast.HttpBroadcastFactory"
-
 export SPARK_MASTER_PORT=7077
 
 cd "$SPARK_HOME/sbin"
 ./start-master.sh
 ./start-worker.sh "spark://$(hostname):$SPARK_MASTER_PORT"
 
-CMD=${1:-"exit 0"}
-if [[ "$CMD" == "-d" ]];
-then
-	service ssh stop
-	/usr/sbin/sshd -D -d
+if [ "${1:-}" = "-d" ]; then
+  # sshd is already listening from the start above; just keep the container in
+  # the foreground. Rebinding port 22 here raced with the running daemon, and
+  # "sshd -d" exits after serving a single connection.
+  # Stay in bash rather than exec'ing: as pid 1 it still runs the trap on
+  # "docker stop", and it reaps the daemons started above.
+  trap 'exit 0' TERM INT
+  tail -f /dev/null &
+  wait $!
+elif [ "$#" -eq 0 ]; then
+  exit 0
 else
-	/bin/bash -c "$*"
+  exec "$@"
 fi
