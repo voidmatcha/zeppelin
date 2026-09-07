@@ -35,7 +35,7 @@ const SURFACES: Record<ReactSurface, ReactSurfaceConfig> = {
   },
   notebook: {
     queryParam: 'reactNotebook',
-    defaultEnabled: false
+    defaultEnabled: true
   }
 };
 

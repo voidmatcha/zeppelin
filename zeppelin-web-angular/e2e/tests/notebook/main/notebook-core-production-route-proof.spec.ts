@@ -164,7 +164,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     try {
       noteIdA = await createNote(page, `E2E_TEST_FOLDER/${noteTitleA}`);
       noteIdB = await createNote(page, `E2E_TEST_FOLDER/${noteTitleB}`);
-      await page.goto(`/#/notebook/${noteIdA}?coreProof=true`);
+      await page.goto(`/#/notebook/${noteIdA}?coreProof=true&reactNotebook=false`);
       const proof = page.getByTestId('notebook-core-production-route-proof');
       const reactAdapter = page.getByTestId('notebook-core-react-adapter');
       const paragraphHosts = page.locator('zeppelin-notebook-paragraph');
@@ -226,7 +226,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await page.evaluate(
         ({ noteId }) => {
-          window.location.hash = `#/notebook/${noteId}?coreProof=true`;
+          window.location.hash = `#/notebook/${noteId}?coreProof=true&reactNotebook=false`;
         },
         { noteId: noteIdB }
       );
@@ -266,7 +266,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/CoreVertical_${stamp}`);
-      await page.goto(`/#/notebook/${noteId}?coreProof=true`);
+      await page.goto(`/#/notebook/${noteId}?coreProof=true&reactNotebook=false`);
 
       const proof = page.getByTestId('notebook-core-production-route-proof');
       const reactAdapter = page.getByTestId('notebook-core-react-adapter');
@@ -326,7 +326,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).status).toBe('FINISHED');
 
       await page.goto('/#/');
-      await page.goto(`/#/notebook/${noteId}?coreProof=true`);
+      await page.goto(`/#/notebook/${noteId}?coreProof=true&reactNotebook=false`);
       await expect(proof).toHaveAttribute('data-note-id', noteId);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(reactAdapter).toHaveAttribute('data-note-id', noteId);
@@ -353,7 +353,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/CoreReconnect_${stamp}`);
-      await page.goto(`/#/notebook/${noteId}?coreProof=true`);
+      await page.goto(`/#/notebook/${noteId}?coreProof=true&reactNotebook=false`);
       const proof = page.getByTestId('notebook-core-production-route-proof');
       await expect(proof).toHaveAttribute('data-note-id', noteId);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
@@ -490,7 +490,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/ReactNotebook_${stamp}`);
-      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      await page.goto(`/#/notebook/${noteId}`);
 
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
@@ -863,8 +863,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       noteId = await createNote(page, `E2E_TEST_FOLDER/CorePeer_${stamp}`);
       await Promise.all([
-        page.goto(`/#/notebook/${noteId}?coreProof=true`),
-        peerPage.goto(`/#/notebook/${noteId}?coreProof=true`)
+        page.goto(`/#/notebook/${noteId}?coreProof=true&reactNotebook=false`),
+        peerPage.goto(`/#/notebook/${noteId}?coreProof=true&reactNotebook=false`)
       ]);
 
       const proof = page.getByTestId('notebook-core-production-route-proof');
@@ -926,7 +926,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/CoreCancel_${stamp}`);
-      await page.goto(`/#/notebook/${noteId}?coreProof=true&reactFooter=true`);
+      await page.goto(`/#/notebook/${noteId}?coreProof=true&reactFooter=true&reactNotebook=false`);
 
       const proof = page.getByTestId('notebook-core-production-route-proof');
       const keyboardPage = new NotebookKeyboardPage(page);

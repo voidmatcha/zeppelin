@@ -32,14 +32,14 @@ import { NzModalService } from 'ng-zorro-antd/modal';
 import { MessageEnvelopeListener, MessageListener, MessageListenersManager } from '@zeppelin/core';
 import { Permissions } from '@zeppelin/interfaces';
 import {
-  DynamicFormParams,
-  InterpreterBindingItem,
-  MessageReceiveDataTypeMap,
-  Note,
   OP,
-  ParagraphConfigResult,
-  ReceivedMessage,
-  RevisionListItem
+  type DynamicFormParams,
+  type InterpreterBindingItem,
+  type MessageReceiveDataTypeMap,
+  type Note,
+  type ParagraphConfigResult,
+  type ReceivedMessage,
+  type RevisionListItem
 } from '@zeppelin/sdk';
 import {
   MessageService,
