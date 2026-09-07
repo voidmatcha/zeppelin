@@ -18,15 +18,31 @@ import { useEffect, useRef } from 'react';
 export type NotebookMonacoEditorProps = Readonly<{
   ariaLabel: string;
   disabled: boolean;
+  language?: string;
   value: string;
   onChange: (value: string) => void;
   onRun?: () => void;
 }>;
 
-export const NotebookMonacoEditor = ({ ariaLabel, disabled, value, onChange, onRun }: NotebookMonacoEditorProps) => {
+const toMonacoLanguage = (language?: string): string => {
+  switch (language) {
+    case 'markdown':
+    case 'python':
+    case 'scala':
+    case 'shell':
+    case 'sql':
+      return language;
+    case 'sh':
+      return 'shell';
+    default:
+      return 'plaintext';
+  }
+};
+
+export const NotebookMonacoEditor = ({ ariaLabel, disabled, language = 'plaintext', value, onChange, onRun }: NotebookMonacoEditorProps) => {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const initialOptions = useRef({ ariaLabel, disabled, value });
+  const initialOptions = useRef({ ariaLabel, disabled, language: toMonacoLanguage(language), value });
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
   const disabledRef = useRef(disabled);
@@ -44,7 +60,7 @@ export const NotebookMonacoEditor = ({ ariaLabel, disabled, value, onChange, onR
     if (!host.current) {
       return;
     }
-    const model = editor.createModel(initialOptions.current.value, 'python');
+    const model = editor.createModel(initialOptions.current.value, initialOptions.current.language);
     const nextInstance = editor.create(host.current, {
       ariaLabel: initialOptions.current.ariaLabel,
       automaticLayout: true,
@@ -70,6 +86,14 @@ export const NotebookMonacoEditor = ({ ariaLabel, disabled, value, onChange, onR
       model.setValue(value);
     }
   }, [value]);
+
+  useEffect(() => {
+    const model = instance.current?.getModel();
+    const monacoLanguage = toMonacoLanguage(language);
+    if (model && model.getLanguageId() !== monacoLanguage) {
+      editor.setModelLanguage(model, monacoLanguage);
+    }
+  }, [language]);
 
   useEffect(() => {
     instance.current?.updateOptions({ ariaLabel, readOnly: disabled });

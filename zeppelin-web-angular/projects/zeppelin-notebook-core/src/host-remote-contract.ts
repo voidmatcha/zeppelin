@@ -39,6 +39,7 @@ export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
   status: NotebookParagraphStatus;
+  language?: string;
   progress: number;
   isDirty: boolean;
   results?: readonly NotebookParagraphResult[];

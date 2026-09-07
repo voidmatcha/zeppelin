@@ -43,6 +43,7 @@ export type NotebookCoreEvent =
       paragraphId: string;
       text?: string;
       status?: NotebookParagraphSnapshot['status'];
+      language?: string;
       resultConfigs?: NotebookParagraphResultConfigs;
       source?: 'local' | 'server';
     }>
@@ -156,6 +157,7 @@ const freezeParagraphSnapshot = (
     id: paragraph.id,
     text: paragraph.text,
     status: paragraph.status,
+    ...(paragraph.language ? { language: paragraph.language } : {}),
     progress: paragraph.progress ?? 0,
     isDirty: paragraph.text !== savedText,
     ...(paragraph.results
@@ -349,6 +351,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
                 ? currentSnapshot.text
                 : (event.text ?? currentSnapshot.text),
             status: event.status ?? currentSnapshot.status,
+            language: event.language ?? currentSnapshot.language,
             progress: currentSnapshot.progress,
             results: currentSnapshot.results,
             resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs

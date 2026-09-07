@@ -44,10 +44,20 @@ const normalizeParagraphStatus = (status: string): NotebookParagraphStatus => {
   return paragraphStatuses.has(candidate) ? candidate : 'UNKNOWN';
 };
 
+const editorLanguage = (paragraph: LoadedParagraph): string | undefined => {
+  const configuredLanguage = paragraph.config?.editorSetting?.language;
+  if (configuredLanguage) {
+    return configuredLanguage;
+  }
+  const directive = paragraph.text?.replace(/^\s+/, '').match(/^%(\w+)/)?.[1];
+  return directive === 'md' ? 'markdown' : directive;
+};
+
 const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
   text: paragraph.text ?? '',
   status: normalizeParagraphStatus(paragraph.status),
+  language: editorLanguage(paragraph),
   progress: 0,
   results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
   resultConfigs: paragraph.config?.results
@@ -135,6 +145,7 @@ export class NotebookCoreRouteAdapter {
       paragraphId: paragraph.id,
       text: paragraph.text ?? '',
       status: normalizeParagraphStatus(paragraph.status),
+      language: editorLanguage(paragraph),
       resultConfigs: paragraph.config?.results,
       source: 'server'
     });
