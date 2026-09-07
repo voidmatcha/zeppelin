@@ -23,115 +23,123 @@
     </div>
   }
   <div class="control">
-    <nz-space-compact nzSize="small">
-      <button
-        nz-button
-        nz-popconfirm
-        nzPopconfirmTitle="Run all paragraphs?"
-        nz-tooltip
-        nzTooltipTitle="Run all paragraphs"
-        (nzOnConfirm)="runAllParagraphs()"
-        [disabled]="revisionView || isNoteParagraphRunning"
-      >
-        <i nz-icon nzType="play-circle" nzTheme="outline"></i>
-      </button>
-      <button
-        nz-button
-        nz-popconfirm
-        nzPopconfirmTitle="Cancel all paragraphs?"
-        nz-tooltip
-        nzTooltipTitle="Cancel all paragraphs"
-        (nzOnConfirm)="cancelAllParagraphs()"
-        [disabled]="revisionView || !isNoteParagraphRunning"
-      >
-        <i nz-icon nzType="pause-circle" nzTheme="outline"></i>
-      </button>
-      @if (!viewOnly) {
-        <button
-          nz-button
-          nz-tooltip
-          nzTooltipTitle="Show/hide the code"
-          (click)="toggleAllEditor()"
-          [disabled]="revisionView"
-        >
-          <i nz-icon [nzType]="editorHide ? 'fullscreen' : 'fullscreen-exit'" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
-        <button
-          nz-button
-          nz-tooltip
-          nzTooltipTitle="Show/hide the output"
-          (click)="toggleAllTable()"
-          [disabled]="revisionView"
-        >
-          <i nz-icon [nzType]="tableHide ? 'book' : 'read'" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
+    @if (!reactNotebook) {
+      <nz-space-compact nzSize="small">
         <button
           nz-button
           nz-popconfirm
-          nzPopconfirmTitle="Do you want to clear all output?"
+          nzPopconfirmTitle="Run all paragraphs?"
           nz-tooltip
-          nzTooltipTitle="Clear all output"
-          [disabled]="revisionView"
-          (nzOnConfirm)="clearAllParagraphOutput()"
+          nzTooltipTitle="Run all paragraphs"
+          (nzOnConfirm)="runAllParagraphs()"
+          [disabled]="revisionView || isNoteParagraphRunning"
         >
-          <i nz-icon nzType="fire" nzTheme="outline"></i>
+          <i nz-icon nzType="play-circle" nzTheme="outline"></i>
         </button>
-      }
-      @if (!viewOnly) {
-        <button nz-button nz-tooltip nzTooltipTitle="Clone this note" (click)="cloneNote()" [disabled]="revisionView">
-          <i nz-icon nzType="copy" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
-        <button nz-button nz-tooltip nzTooltipTitle="Export this note" (click)="exportNote()" [disabled]="revisionView">
-          <i nz-icon nzType="download" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
         <button
           nz-button
+          nz-popconfirm
+          nzPopconfirmTitle="Cancel all paragraphs?"
           nz-tooltip
-          nzTooltipTitle="Reload from note file"
-          (click)="reloadNote()"
-          [disabled]="revisionView"
+          nzTooltipTitle="Cancel all paragraphs"
+          (nzOnConfirm)="cancelAllParagraphs()"
+          [disabled]="revisionView || !isNoteParagraphRunning"
         >
-          <i nz-icon nzType="reload" nzTheme="outline"></i>
+          <i nz-icon nzType="pause-circle" nzTheme="outline"></i>
         </button>
-      }
-      @if (principal && principal !== 'anonymous' && !viewOnly) {
-        @switch (note.config.personalizedMode) {
-          @case ('true') {
-            <button
-              nz-tooltip
-              nzTooltipTitle="Switch to collaboration mode"
-              aria-label="Switch to collaboration mode"
-              [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
-              nz-button
-              nzType="primary"
-              (click)="toggleNotePersonalizedMode()"
-            >
-              <i nz-icon nzType="user" nzTheme="outline"></i>
-            </button>
-          }
-          @default {
-            <button
-              nz-tooltip
-              nzTooltipTitle="Switch to personal mode"
-              aria-label="Switch to personal mode"
-              nz-button
-              [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
-              (click)="toggleNotePersonalizedMode()"
-            >
-              <i nz-icon nzType="team" nzTheme="outline"></i>
-            </button>
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Show/hide the code"
+            (click)="toggleAllEditor()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon [nzType]="editorHide ? 'fullscreen' : 'fullscreen-exit'" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Show/hide the output"
+            (click)="toggleAllTable()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon [nzType]="tableHide ? 'book' : 'read'" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-popconfirm
+            nzPopconfirmTitle="Do you want to clear all output?"
+            nz-tooltip
+            nzTooltipTitle="Clear all output"
+            [disabled]="revisionView"
+            (nzOnConfirm)="clearAllParagraphOutput()"
+          >
+            <i nz-icon nzType="fire" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button nz-button nz-tooltip nzTooltipTitle="Clone this note" (click)="cloneNote()" [disabled]="revisionView">
+            <i nz-icon nzType="copy" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Export this note"
+            (click)="exportNote()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon nzType="download" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Reload from note file"
+            (click)="reloadNote()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon nzType="reload" nzTheme="outline"></i>
+          </button>
+        }
+        @if (principal && principal !== 'anonymous' && !viewOnly) {
+          @switch (note.config.personalizedMode) {
+            @case ('true') {
+              <button
+                nz-tooltip
+                nzTooltipTitle="Switch to collaboration mode"
+                aria-label="Switch to collaboration mode"
+                [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
+                nz-button
+                nzType="primary"
+                (click)="toggleNotePersonalizedMode()"
+              >
+                <i nz-icon nzType="user" nzTheme="outline"></i>
+              </button>
+            }
+            @default {
+              <button
+                nz-tooltip
+                nzTooltipTitle="Switch to personal mode"
+                aria-label="Switch to personal mode"
+                nz-button
+                [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
+                (click)="toggleNotePersonalizedMode()"
+              >
+                <i nz-icon nzType="team" nzTheme="outline"></i>
+              </button>
+            }
           }
         }
-      }
-    </nz-space-compact>
+      </nz-space-compact>
+    }
     @if (isRevisionSupported) {
       <nz-space-compact nzSize="small">
         @if (!viewOnly) {

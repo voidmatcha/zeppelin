@@ -573,6 +573,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onCloneNotebook: () => this.cloneReactNotebook(),
       onExportNotebook: () => this.exportReactNotebook(),
       onReloadNotebook: () => this.note && this.messageService.reloadNote(this.note.id),
+      canTogglePersonalizedMode: Boolean(
+        this.ticketService.ticket.principal &&
+        this.ticketService.ticket.principal !== 'anonymous' &&
+        !this.viewOnly &&
+        this.isOwner
+      ),
+      personalizedMode: this.note?.config.personalizedMode === 'true',
+      onTogglePersonalizedMode: () => this.toggleReactPersonalizedMode(),
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
@@ -629,6 +637,24 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       return;
     }
     this.saveAsService.saveAs(jsonContent, this.note.name, 'zpln');
+  }
+
+  private toggleReactPersonalizedMode(): void {
+    if (!this.note || !this.isOwner) {
+      return;
+    }
+    const modeText = this.note.config.personalizedMode === 'true' ? 'collaborate' : 'personalize';
+    this.nzModalService.confirm({
+      nzTitle: 'Setting the result display',
+      nzContent: `Do you want to ${modeText} your analysis?`,
+      nzOnOk: () => {
+        this.note!.config.personalizedMode =
+          this.note!.config.personalizedMode === undefined || this.note!.config.personalizedMode === 'true'
+            ? 'false'
+            : 'true';
+        this.messageService.updatePersonalizedMode(this.note!.id, this.note!.config.personalizedMode);
+      }
+    });
   }
 
   ngOnInit() {
