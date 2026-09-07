@@ -375,6 +375,44 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('converges paragraph edits between two React notebook adapters', async ({ context, page }) => {
+    const peerPage = await context.newPage();
+    const sentOperations = observeSentOperations(page);
+    const peerSentOperations = observeSentOperations(peerPage);
+    const stamp = Date.now();
+    const code = `%python\nprint("react_peer_${stamp}")`;
+    let noteId: string | undefined;
+
+    try {
+      await Promise.all([page.goto('/#/'), peerPage.goto('/#/')]);
+      await Promise.all([waitForZeppelinReady(page), waitForZeppelinReady(peerPage)]);
+      await Promise.all([performLoginIfRequired(page), performLoginIfRequired(peerPage)]);
+
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactPeer_${stamp}`);
+      await Promise.all([
+        page.goto(`/#/notebook/${noteId}?reactNotebook=true`),
+        peerPage.goto(`/#/notebook/${noteId}?reactNotebook=true`)
+      ]);
+
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const peerEditor = peerPage.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      await expect(editor).toBeVisible({ timeout: 30000 });
+      await expect(peerEditor).toBeVisible({ timeout: 30000 });
+
+      await editor.fill(code);
+      await expect
+        .poll(() => sentOperations.filter(operation => operation === 'PATCH_PARAGRAPH').length)
+        .toBeGreaterThan(0);
+      await expect(peerEditor).toHaveValue(code, { timeout: 30000 });
+      expect(peerSentOperations.filter(operation => operation === 'PATCH_PARAGRAPH')).toEqual([]);
+    } finally {
+      await peerPage.close();
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('converges two browser-local cores through server-authoritative notebook events', async ({ context, page }) => {
     const peerPage = await context.newPage();
     const sentOperations = observeSentOperations(page);

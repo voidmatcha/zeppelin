@@ -141,6 +141,19 @@ export class NotebookCoreRouteAdapter {
     this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'local' });
   }
 
+  updateParagraphText(paragraphId: string, text: string): boolean {
+    const paragraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
+    if (!paragraph) {
+      return false;
+    }
+    if (paragraph.text === text) {
+      return true;
+    }
+    const patch = this.diffMatchPatch.patch_toText(this.diffMatchPatch.patch_make(paragraph.text, text));
+    this.acceptParagraphText(paragraphId, text);
+    return this.sendParagraphPatch(paragraphId, patch);
+  }
+
   acceptParagraphPatch(paragraphId: string, patch: string): boolean {
     const paragraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
     if (!paragraph) {
