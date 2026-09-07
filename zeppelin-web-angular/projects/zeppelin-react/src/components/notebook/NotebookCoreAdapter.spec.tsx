@@ -69,6 +69,38 @@ describe('NotebookCoreAdapter', () => {
     expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('honors the host read-only capability for notebook mutations', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Read-only notebook',
+      noteForms: {
+        region: {
+          name: 'region',
+          displayName: 'Region',
+          type: 'Select',
+          defaultValue: 'us-east-1',
+          hidden: false,
+          options: [{ value: 'us-east-1' }]
+        }
+      },
+      noteParams: { region: 'us-east-1' },
+      paragraphs: [{ id: 'paragraph-1', text: '%python\nprint(1)', status: 'READY' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} readOnly />);
+
+    expect((screen.getByRole('textbox', { name: 'Notebook title' }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('combobox', { name: 'Region' }) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Add below' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('renders note forms and sends changed values through the host callback', () => {
     const onNoteFormsChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
@@ -107,7 +139,9 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Result notebook',
-      paragraphs: [{ id: 'paragraph-1', text: '%python', status: 'FINISHED', results: [{ type: 'TEXT', data: 'answer' }] }]
+      paragraphs: [
+        { id: 'paragraph-1', text: '%python', status: 'FINISHED', results: [{ type: 'TEXT', data: 'answer' }] }
+      ]
     });
 
     render(<NotebookCoreAdapter core={runtime.port} />);
@@ -124,7 +158,9 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Unknown result notebook',
-      paragraphs: [{ id: 'paragraph-1', text: '%python', status: 'FINISHED', results: [{ type: 'NETWORK', data: 'graph' }] }]
+      paragraphs: [
+        { id: 'paragraph-1', text: '%python', status: 'FINISHED', results: [{ type: 'NETWORK', data: 'graph' }] }
+      ]
     });
 
     render(<NotebookCoreAdapter core={runtime.port} />);
