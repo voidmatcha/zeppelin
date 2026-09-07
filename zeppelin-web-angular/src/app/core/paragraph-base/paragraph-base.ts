@@ -12,18 +12,19 @@
 
 import { ChangeDetectorRef } from '@angular/core';
 import {
-  AngularObjectUpdate,
   GraphConfig,
   getAngularObjectRemoveName,
   Message,
-  MessageReceiveDataTypeMap,
   OP,
-  ParagraphConfig,
-  ParagraphConfigResult,
-  ParagraphConfigResults,
-  ParagraphEditorSetting,
-  ParagraphItem,
-  ParagraphIResultsMsgItem
+  ParagraphIResultsMsgItem,
+  type AngularObjectRemove,
+  type AngularObjectUpdate,
+  type MessageReceiveDataTypeMap,
+  type ParagraphConfig,
+  type ParagraphConfigResult,
+  type ParagraphConfigResults,
+  type ParagraphEditorSetting,
+  type ParagraphItem
 } from '@zeppelin/sdk';
 
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
