@@ -12,7 +12,7 @@
 
 import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookFormValue } from '@zeppelin/notebook-core';
 import { DatasetType, type ParagraphIResultsMsgItem } from '@zeppelin/sdk';
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
 import { ReactErrorBoundary } from '../paragraph/ReactErrorBoundary';
@@ -37,7 +37,11 @@ export const NotebookCoreAdapter = ({
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
+  const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
   const canEdit = !readOnly && snapshot.revisionId === null;
+  useEffect(() => {
+    setTitleDraft(snapshot.title ?? '');
+  }, [snapshot.noteId, snapshot.title]);
   const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
     canEdit &&
     snapshot.phase === 'ready' &&
@@ -80,8 +84,9 @@ export const NotebookCoreAdapter = ({
         <input
           aria-label="Notebook title"
           disabled={!canEdit}
-          defaultValue={snapshot.title ?? ''}
-          onBlur={event => onNotebookTitleChange?.(event.target.value)}
+          value={titleDraft}
+          onChange={event => setTitleDraft(event.target.value)}
+          onBlur={() => onNotebookTitleChange?.(titleDraft)}
         />
         <span>{snapshot.paragraphs.length} paragraphs</span>
       </header>
