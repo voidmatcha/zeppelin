@@ -713,6 +713,64 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('allows an authenticated runner to execute without edit capability', async ({ browser, page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+    const ticket = await page.request.get('/api/security/ticket');
+    const principal = ((await ticket.json()) as { body?: { principal?: string } }).body?.principal;
+    test.skip(principal !== 'user1', 'Requires the local user1/user2 Shiro fixture.');
+
+    const user2Context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const user2Page = await user2Context.newPage();
+    const stamp = Date.now();
+    const marker = `runner_${stamp}`;
+    const code = `%python\nprint("${marker}")`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/Runner_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      const ownerNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(ownerNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill(code);
+      await ownerNotebook.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
+
+      const response = await page.request.put(`/api/notebook/${noteId}/permissions`, {
+        data: {
+          owners: ['user1'],
+          readers: ['user1', 'user2'],
+          writers: ['user1'],
+          runners: ['user1', 'user2']
+        }
+      });
+      expect(
+        response.ok(),
+        `Set runner permissions failed: ${response.status()} ${await response.text()}`
+      ).toBeTruthy();
+      await loginAs(user2Page, 'user2', 'password3');
+      await user2Page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const runnerNotebook = user2Page.getByTestId('notebook-core-react-adapter');
+      await expect(runnerNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(runnerNotebook.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+      await expect(runnerNotebook.getByRole('button', { name: 'Add below', exact: true })).toBeDisabled();
+      await expect(runnerNotebook.getByRole('button', { name: 'Run', exact: true })).toBeEnabled();
+
+      await runnerNotebook.getByRole('button', { name: 'Run', exact: true }).click();
+      await expect(runnerNotebook.getByRole('article', { name: 'Paragraph 1' })).toContainText('FINISHED', {
+        timeout: 60000
+      });
+      await expect(runnerNotebook.getByTestId('react-notebook-core-results')).toContainText(marker, { timeout: 30000 });
+    } finally {
+      await user2Context.close();
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('converges two browser-local cores through server-authoritative notebook events', async ({ context, page }) => {
     const peerPage = await context.newPage();
     const sentOperations = observeSentOperations(page);
