@@ -319,6 +319,41 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('recovers the active React notebook after the browser returns online', async ({ context, page }) => {
+    const receivedOperations = observeReceivedOperations(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactReconnect_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
+      await context.setOffline(true);
+      await page.waitForTimeout(250);
+      await context.setOffline(false);
+
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation.op === 'NOTE').length, { timeout: 30000 })
+        .toBeGreaterThan(noteEventsBeforeOffline);
+      await expect(reactNotebook).toHaveAttribute('data-note-id', noteId);
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' })).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('renders and operates the editable notebook body in React', async ({ page }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
