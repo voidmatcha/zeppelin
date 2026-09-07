@@ -10,7 +10,12 @@
  * limitations under the License.
  */
 
-import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookFormValue } from '@zeppelin/notebook-core';
+import type {
+  NotebookCorePort,
+  NotebookCoreRemoteProps,
+  NotebookFormValue,
+  NotebookPermissions
+} from '@zeppelin/notebook-core';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
@@ -55,6 +60,8 @@ export const NotebookCoreAdapter = ({
   scheduler,
   onScheduleChange,
   collaborativeUsers,
+  canManagePermissions = false,
+  onPermissionsChange,
   onExtensionChange,
   onNoteFormsChange,
   readOnly = false,
@@ -77,6 +84,10 @@ export const NotebookCoreAdapter = ({
   const [releaseResourceDraft, setReleaseResourceDraft] = useState(coreScheduler?.releaseResource ?? false);
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [permissionDraft, setPermissionDraft] = useState<NotebookPermissions | null>(snapshot.permissions ?? null);
+  const [permissionSaveError, setPermissionSaveError] = useState<string | null>(null);
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text]))
   );
@@ -87,6 +98,9 @@ export const NotebookCoreAdapter = ({
   useEffect(() => {
     setParagraphDrafts(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text])));
   }, [snapshot.noteId, snapshot.paragraphs]);
+  useEffect(() => {
+    setPermissionDraft(snapshot.permissions ?? null);
+  }, [snapshot.noteId, snapshot.permissions]);
   useEffect(() => {
     setCronDraft(coreScheduler?.cron ?? '');
     setReleaseResourceDraft(coreScheduler?.releaseResource ?? false);
@@ -119,6 +133,38 @@ export const NotebookCoreAdapter = ({
   };
   const canRenderResult = (type: string): boolean =>
     type === 'TABLE' || type === 'HTML' || type === 'TEXT' || type === 'IMG' || type === 'ANGULAR';
+  const updatePermissionDraft = (role: keyof NotebookPermissions, value: string): void => {
+    if (!permissionDraft) {
+      return;
+    }
+    setPermissionDraft({
+      ...permissionDraft,
+      [role]: value
+        .split(',')
+        .map(entry => entry.trim())
+        .filter(Boolean)
+    });
+  };
+  const savePermissions = async (): Promise<void> => {
+    if (!permissionDraft || !onPermissionsChange) {
+      return;
+    }
+    if (permissionDraft.owners.length === 0) {
+      setPermissionSaveError('At least one owner is required.');
+      return;
+    }
+    setSavingPermissions(true);
+    setPermissionSaveError(null);
+    try {
+      await onPermissionsChange(permissionDraft);
+      setPermissionsOpen(false);
+      onExtensionChange?.('hide');
+    } catch {
+      setPermissionSaveError('Unable to save permissions. Please try again.');
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
 
   return (
     <section
@@ -282,16 +328,70 @@ export const NotebookCoreAdapter = ({
             Collaborators: {(snapshot.collaborativeUsers ?? collaborativeUsers ?? []).length}
           </span>
         ) : null}
-        <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
+        <button
+          type="button"
+          onClick={() => {
+            setPermissionsOpen(false);
+            onExtensionChange?.('interpreter');
+          }}
+        >
           Interpreter settings
         </button>
-        <button type="button" onClick={() => onExtensionChange?.('permissions')}>
+        <button
+          type="button"
+          aria-expanded={permissionsOpen}
+          disabled={!snapshot.permissions || !canManagePermissions}
+          onClick={() => {
+            setPermissionsOpen(open => !open);
+            setPermissionSaveError(null);
+            onExtensionChange?.('permissions');
+          }}
+        >
           Permissions
         </button>
-        <button type="button" onClick={() => onExtensionChange?.('revisions')}>
+        <button
+          type="button"
+          onClick={() => {
+            setPermissionsOpen(false);
+            onExtensionChange?.('revisions');
+          }}
+        >
           Revisions
         </button>
       </header>
+      {permissionsOpen && permissionDraft ? (
+        <section aria-label="Notebook permissions">
+          <h2>Note Permissions</h2>
+          <p>Enter comma-separated users and groups. An empty field allows anyone to perform that operation.</p>
+          {(['owners', 'writers', 'runners', 'readers'] as const).map(role => (
+            <label key={role}>
+              {role.slice(0, 1).toUpperCase() + role.slice(1)}
+              <input
+                aria-label={`${role.slice(0, 1).toUpperCase() + role.slice(1)} permissions`}
+                disabled={!canManagePermissions || savingPermissions}
+                value={permissionDraft[role].join(', ')}
+                onChange={event => updatePermissionDraft(role, event.target.value)}
+              />
+            </label>
+          ))}
+          {permissionSaveError ? <p role="alert">{permissionSaveError}</p> : null}
+          <button type="button" disabled={!canManagePermissions || savingPermissions} onClick={() => void savePermissions()}>
+            Save permissions
+          </button>
+          <button
+            type="button"
+            disabled={savingPermissions}
+            onClick={() => {
+              setPermissionDraft(snapshot.permissions ?? null);
+              setPermissionsOpen(false);
+              setPermissionSaveError(null);
+              onExtensionChange?.('hide');
+            }}
+          >
+            Cancel permissions
+          </button>
+        </section>
+      ) : null}
       <nav aria-label="Notebook outline">
         <ol>
           {snapshot.paragraphs.map((paragraph, index) => (

@@ -223,12 +223,17 @@ describe('NotebookCoreAdapter', () => {
       title: 'Notebook',
       paragraphs: []
     });
+    runtime.apply({
+      type: 'permissions-updated',
+      permissions: { readers: [], owners: ['owner'], writers: [], runners: [] }
+    });
     render(
       <NotebookCoreAdapter
         core={runtime.port}
         onCloneNotebook={onCloneNotebook}
         onExportNotebook={onExportNotebook}
         onReloadNotebook={onReloadNotebook}
+        canManagePermissions
         onExtensionChange={onExtensionChange}
       />
     );
@@ -245,6 +250,41 @@ describe('NotebookCoreAdapter', () => {
     expect(onExtensionChange).toHaveBeenNthCalledWith(1, 'interpreter');
     expect(onExtensionChange).toHaveBeenNthCalledWith(2, 'permissions');
     expect(onExtensionChange).toHaveBeenNthCalledWith(3, 'revisions');
+  });
+
+  it('edits and saves permissions through the host without a React REST client', async () => {
+    const onPermissionsChange = vi.fn(async () => undefined);
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+    runtime.apply({
+      type: 'permissions-updated',
+      permissions: { readers: [], owners: ['owner'], writers: ['writer'], runners: [] }
+    });
+
+    render(
+      <NotebookCoreAdapter core={runtime.port} canManagePermissions onPermissionsChange={onPermissionsChange} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Writers permissions' }), {
+      target: { value: 'writer, analyst' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save permissions' }));
+
+    await act(async () => undefined);
+    expect(onPermissionsChange).toHaveBeenCalledWith({
+      readers: [],
+      owners: ['owner'],
+      writers: ['writer', 'analyst'],
+      runners: []
+    });
+    expect(screen.queryByRole('region', { name: 'Notebook permissions' })).toBeNull();
   });
 
   it('exposes the personalized-mode switch only when the host grants that capability', () => {

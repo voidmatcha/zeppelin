@@ -141,6 +141,8 @@ export type NotebookCoreRemoteProps = Readonly<{
   scheduler?: NotebookSchedule;
   onScheduleChange?: (schedule: NotebookSchedule) => void;
   collaborativeUsers?: readonly string[];
+  canManagePermissions?: boolean;
+  onPermissionsChange?: (permissions: NotebookPermissions) => Promise<void> | void;
   onExtensionChange?: (extension: 'interpreter' | 'permissions' | 'revisions' | 'hide') => void;
   onNoteFormsChange?: (params: NotebookFormParams) => void;
   onParagraphResultConfigChange?: (
