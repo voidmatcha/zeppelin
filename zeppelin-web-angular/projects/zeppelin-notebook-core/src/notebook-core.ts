@@ -19,6 +19,7 @@ import type {
   NotebookFormParams,
   NotebookParagraphInput,
   NotebookParagraphResult,
+  NotebookParagraphResultConfigs,
   NotebookParagraphSnapshot
 } from './host-remote-contract';
 
@@ -42,6 +43,7 @@ export type NotebookCoreEvent =
       paragraphId: string;
       text?: string;
       status?: NotebookParagraphSnapshot['status'];
+      resultConfigs?: NotebookParagraphResultConfigs;
       source?: 'local' | 'server';
     }>
   | Readonly<{ type: 'paragraph-output-updated'; paragraphId: string; index: number; result: NotebookParagraphResult }>
@@ -122,6 +124,29 @@ const freezeNoteParams = (params: NotebookFormParams = {}): NotebookFormParams =
     }, {})
   );
 
+const freezeResultConfigValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(freezeResultConfigValue));
+  }
+  if (value && typeof value === 'object') {
+    return Object.freeze(
+      Object.entries(value).reduce<Record<string, unknown>>((result, [key, nestedValue]) => {
+        result[key] = freezeResultConfigValue(nestedValue);
+        return result;
+      }, {})
+    );
+  }
+  return value;
+};
+
+const freezeResultConfigs = (configs: NotebookParagraphResultConfigs): NotebookParagraphResultConfigs =>
+  Object.freeze(
+    Object.entries(configs).reduce<Record<string, Readonly<{ graph: unknown }>>>((result, [index, config]) => {
+      result[index] = Object.freeze({ graph: freezeResultConfigValue(config.graph) });
+      return result;
+    }, {})
+  );
+
 const freezeParagraphSnapshot = (
   paragraph: NotebookParagraphInput,
   savedText: string = paragraph.text
@@ -133,7 +158,8 @@ const freezeParagraphSnapshot = (
     isDirty: paragraph.text !== savedText,
     ...(paragraph.results
       ? { results: Object.freeze(paragraph.results.map(result => Object.freeze({ ...result }))) }
-      : {})
+      : {}),
+    ...(paragraph.resultConfigs ? { resultConfigs: freezeResultConfigs(paragraph.resultConfigs) } : {})
   });
 
 const freezeState = (state: NotebookCoreState): NotebookCoreState =>
@@ -321,7 +347,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
                 ? currentSnapshot.text
                 : (event.text ?? currentSnapshot.text),
             status: event.status ?? currentSnapshot.status,
-            results: currentSnapshot.results
+            results: currentSnapshot.results,
+            resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs
           },
           serverText
         ),

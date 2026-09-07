@@ -11,7 +11,7 @@
  */
 
 import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookFormValue } from '@zeppelin/notebook-core';
-import { DatasetType, type ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import { DatasetType, type ParagraphConfigResults, type ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
@@ -244,7 +244,11 @@ export const NotebookCoreAdapter = ({
                   {paragraph.results.map((result, resultIndex) => (
                     <div key={resultIndex} data-testid="react-notebook-core-result">
                       {canRenderResult(result.type) ? (
-                        <SingleResultRenderer index={resultIndex} result={toRenderedResult(result.type, result.data)} />
+                        <SingleResultRenderer
+                          config={paragraph.resultConfigs as ParagraphConfigResults | undefined}
+                          index={resultIndex}
+                          result={toRenderedResult(result.type, result.data)}
+                        />
                       ) : (
                         <pre>{result.data}</pre>
                       )}
