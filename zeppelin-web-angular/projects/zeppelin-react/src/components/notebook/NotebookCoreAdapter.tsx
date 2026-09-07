@@ -38,10 +38,16 @@ export const NotebookCoreAdapter = ({
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
+  const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text]))
+  );
   const canEdit = !readOnly && snapshot.revisionId === null;
   useEffect(() => {
     setTitleDraft(snapshot.title ?? '');
   }, [snapshot.noteId, snapshot.title]);
+  useEffect(() => {
+    setParagraphDrafts(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text])));
+  }, [snapshot.noteId, snapshot.paragraphs]);
   const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
     canEdit &&
     snapshot.phase === 'ready' &&
@@ -179,8 +185,12 @@ export const NotebookCoreAdapter = ({
               <textarea
                 aria-label={`Paragraph ${index + 1} editor`}
                 disabled={!canEdit || paragraph.status === 'RUNNING'}
-                value={paragraph.text}
-                onChange={event => onParagraphTextChange?.(paragraph.id, event.target.value)}
+                value={paragraphDrafts[paragraph.id] ?? paragraph.text}
+                onChange={event => {
+                  const text = event.target.value;
+                  setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
+                  onParagraphTextChange?.(paragraph.id, text);
+                }}
               />
               <div>
                 <button type="button" disabled={!canEdit} onClick={() => onParagraphInsert?.(index)}>
