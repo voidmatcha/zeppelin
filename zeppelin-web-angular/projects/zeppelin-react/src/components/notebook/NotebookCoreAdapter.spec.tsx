@@ -98,4 +98,21 @@ describe('NotebookCoreAdapter', () => {
 
     expect(onNoteFormsChange).toHaveBeenCalledWith({ region: 'ap-northeast-2' });
   });
+
+  it('uses the React result renderer for Core-owned output', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Result notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python', status: 'FINISHED', results: [{ type: 'TEXT', data: 'answer' }] }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+
+    expect(screen.getByTestId('react-notebook-core-results').textContent).toContain('answer');
+    expect(screen.getByTestId('react-notebook-core-result').querySelector('pre')).not.toBeNull();
+  });
 });

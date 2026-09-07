@@ -11,10 +11,12 @@
  */
 
 import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookFormValue } from '@zeppelin/notebook-core';
+import { DatasetType, type ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import { useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
 import { ReactErrorBoundary } from '../paragraph/ReactErrorBoundary';
+import { SingleResultRenderer } from '../../templates/SingleResultRenderer';
 
 export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
   Readonly<{
@@ -48,6 +50,10 @@ export const NotebookCoreAdapter = ({
   const updateNoteForm = (name: string, value: NotebookFormValue): void => {
     onNoteFormsChange?.({ ...snapshot.noteParams, [name]: value });
   };
+  const toRenderedResult = (type: string, data: string): ParagraphIResultsMsgItem => ({
+    type: type as DatasetType,
+    data
+  });
 
   return (
     <section
@@ -217,9 +223,9 @@ export const NotebookCoreAdapter = ({
               {paragraph.results && paragraph.results.length > 0 ? (
                 <div data-testid="react-notebook-core-results">
                   {paragraph.results.map((result, resultIndex) => (
-                    <pre key={resultIndex} data-testid="react-notebook-core-result">
-                      {result.data}
-                    </pre>
+                    <div key={resultIndex} data-testid="react-notebook-core-result">
+                      <SingleResultRenderer index={resultIndex} result={toRenderedResult(result.type, result.data)} />
+                    </div>
                   ))}
                 </div>
               ) : null}
