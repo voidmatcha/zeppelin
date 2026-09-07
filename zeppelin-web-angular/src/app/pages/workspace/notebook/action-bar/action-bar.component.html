@@ -203,44 +203,46 @@
         </nz-dropdown-menu>
       </nz-space-compact>
     }
-    <nz-space-compact nzSize="small">
-      <button
-        nz-button
-        nz-dropdown
-        [(nzVisible)]="isSearchMenuVisible"
-        [nzDropdownMenu]="searchMenu"
-        nzTrigger="click"
-        nz-tooltip
-        nzTooltipTitle="Search code"
-        nzTooltipTrigger="hover"
-        (nzVisibleChange)="onSearchMenuOpenChange($event)"
-      >
-        <i nz-icon nzType="search" nzTheme="outline"></i>
-      </button>
-      <!-- Search Code Dropdown UI -->
-      <nz-dropdown-menu #searchMenu="nzDropdownMenu">
-        <div class="dropdown-menu search-code">
-          <div class="search-code-row">
-            <nz-input-group nzAddOnBefore="Find">
-              <input type="text" nz-input #searchInput [(ngModel)]="searchText" (ngModelChange)="searchCode()" />
-            </nz-input-group>
-            <nz-space-compact class="search-row-btn-group">
-              <button nz-button (click)="onFindPrevClick(searchText)"><i nz-icon nzType="left"></i></button>
-              <button nz-button (click)="onFindNextClick(searchText)"><i nz-icon nzType="right"></i></button>
-            </nz-space-compact>
+    @if (!reactNotebook) {
+      <nz-space-compact nzSize="small">
+        <button
+          nz-button
+          nz-dropdown
+          [(nzVisible)]="isSearchMenuVisible"
+          [nzDropdownMenu]="searchMenu"
+          nzTrigger="click"
+          nz-tooltip
+          nzTooltipTitle="Search code"
+          nzTooltipTrigger="hover"
+          (nzVisibleChange)="onSearchMenuOpenChange($event)"
+        >
+          <i nz-icon nzType="search" nzTheme="outline"></i>
+        </button>
+        <!-- Search Code Dropdown UI -->
+        <nz-dropdown-menu #searchMenu="nzDropdownMenu">
+          <div class="dropdown-menu search-code">
+            <div class="search-code-row">
+              <nz-input-group nzAddOnBefore="Find">
+                <input type="text" nz-input #searchInput [(ngModel)]="searchText" (ngModelChange)="searchCode()" />
+              </nz-input-group>
+              <nz-space-compact class="search-row-btn-group">
+                <button nz-button (click)="onFindPrevClick(searchText)"><i nz-icon nzType="left"></i></button>
+                <button nz-button (click)="onFindNextClick(searchText)"><i nz-icon nzType="right"></i></button>
+              </nz-space-compact>
+            </div>
+            <div class="search-code-row">
+              <nz-input-group nzAddOnBefore="Replace">
+                <input type="text" nz-input [(ngModel)]="replaceText" />
+              </nz-input-group>
+              <nz-space-compact class="search-row-btn-group">
+                <button nz-button (click)="onReplaceClick(searchText, replaceText)">Replace</button>
+                <button nz-button (click)="onReplaceAllClick(searchText, replaceText)">All</button>
+              </nz-space-compact>
+            </div>
           </div>
-          <div class="search-code-row">
-            <nz-input-group nzAddOnBefore="Replace">
-              <input type="text" nz-input [(ngModel)]="replaceText" />
-            </nz-input-group>
-            <nz-space-compact class="search-row-btn-group">
-              <button nz-button (click)="onReplaceClick(searchText, replaceText)">Replace</button>
-              <button nz-button (click)="onReplaceAllClick(searchText, replaceText)">All</button>
-            </nz-space-compact>
-          </div>
-        </div>
-      </nz-dropdown-menu>
-    </nz-space-compact>
+        </nz-dropdown-menu>
+      </nz-space-compact>
+    }
     @if (!reactNotebook && !viewOnly) {
       <nz-space-compact nzSize="small">
         @if (isTrash) {
