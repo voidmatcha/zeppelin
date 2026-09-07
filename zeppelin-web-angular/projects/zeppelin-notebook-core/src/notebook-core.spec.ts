@@ -115,6 +115,24 @@ describe('notebook core runtime spike', () => {
     expect(Object.isFrozen(runtime.port.getSnapshot().paragraphs[0].resultConfigs)).toBe(true);
   });
 
+  it('owns bounded progress updates for a known paragraph', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Progress notebook',
+      paragraphs: [{ id: 'p-1', text: '%python', status: 'RUNNING', progress: 0 }]
+    });
+
+    expect(runtime.apply({ type: 'paragraph-progressed', paragraphId: 'p-1', progress: 42 })).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0].progress).toBe(42);
+    expect(runtime.apply({ type: 'paragraph-progressed', paragraphId: 'p-1', progress: 110 })).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0].progress).toBe(100);
+    expect(runtime.apply({ type: 'paragraph-progressed', paragraphId: 'missing', progress: 20 })).toBe(false);
+  });
+
   it('owns immutable note form definitions and values through the stable port', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
     runtime.apply({ type: 'load-started' });
@@ -201,8 +219,8 @@ describe('notebook core runtime spike', () => {
       noteForms: {},
       noteParams: {},
       paragraphs: [
-        { id: 'p-1', text: '%md shared state', status: 'FINISHED', isDirty: false },
-        { id: 'p-2', text: '%spark 1 + 1', status: 'READY', isDirty: false }
+        { id: 'p-1', text: '%md shared state', status: 'FINISHED', progress: 0, isDirty: false },
+        { id: 'p-2', text: '%spark 1 + 1', status: 'READY', progress: 0, isDirty: false }
       ],
       error: null
     });
@@ -346,6 +364,7 @@ describe('notebook core runtime spike', () => {
       id: 'p-1',
       text: '%python\nprint("updated")',
       status: 'READY',
+      progress: 0,
       isDirty: true
     });
 
@@ -354,6 +373,7 @@ describe('notebook core runtime spike', () => {
       id: 'p-1',
       text: '%python\nprint("updated")',
       status: 'RUNNING',
+      progress: 0,
       isDirty: true
     });
 
@@ -388,6 +408,7 @@ describe('notebook core runtime spike', () => {
       id: 'p-1',
       text: '%md local draft',
       status: 'READY',
+      progress: 0,
       isDirty: true
     });
 

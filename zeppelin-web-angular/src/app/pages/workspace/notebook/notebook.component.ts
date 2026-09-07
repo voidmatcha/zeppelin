@@ -276,6 +276,11 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.acceptParagraphStatus(data.id, data.status);
   }
 
+  @MessageListener(OP.PROGRESS)
+  updateCoreParagraphProgress(data: MessageReceiveDataTypeMap[OP.PROGRESS]) {
+    this.notebookCoreRouteAdapter.acceptParagraphProgress(data.id, data.progress);
+  }
+
   updateCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_UPDATE_OUTPUT]) {
     this.notebookCoreRouteAdapter.acceptParagraphOutputUpdate(data.paragraphId, data.index, data.type, data.data);
     this.cdr.markForCheck();

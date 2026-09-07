@@ -239,6 +239,22 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByRole('button', { name: /Line Chart$/ }).className).toContain('ant-btn-primary');
   });
 
+  it('renders Core-owned progress for a running paragraph', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Running notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python', status: 'RUNNING', progress: 55 }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+
+    expect((screen.getByRole('progressbar', { name: 'Paragraph 1 progress' }) as HTMLProgressElement).value).toBe(55);
+  });
+
   it('preserves unsupported Core output instead of dropping it', () => {
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });

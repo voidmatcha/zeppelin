@@ -67,6 +67,17 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0].resultConfigs).toEqual({ '0': { graph: { mode: 'lineChart' } } });
   });
 
+  it('maps a progress event into the Core paragraph snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote('RUNNING');
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphProgress('paragraph-1', 55);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].progress).toBe(55);
+  });
+
   it('rejects run commands for revisions, missing paragraphs, and active paragraphs', () => {
     const runParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as MessageService);
