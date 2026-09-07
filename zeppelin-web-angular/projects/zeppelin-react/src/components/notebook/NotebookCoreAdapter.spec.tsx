@@ -505,6 +505,26 @@ describe('NotebookCoreAdapter', () => {
     expect((screen.getByRole('button', { name: /Line Chart$/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('separates a runner capability from edit capability', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Runner notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python\\nprint(1)', status: 'READY' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} canEdit={false} canRun />);
+
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Add below' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Run all' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('renders note forms and sends changed values through the host callback', () => {
     const onNoteFormsChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
