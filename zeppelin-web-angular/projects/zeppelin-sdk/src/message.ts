@@ -373,6 +373,10 @@ export class Message {
     this.send<OP.GET_NOTE>(OP.GET_NOTE, { id: noteId });
   }
 
+  getParagraphOutput(noteId: string, paragraphId: string): void {
+    this.send<OP.GET_PARAGRAPH_OUTPUT>(OP.GET_PARAGRAPH_OUTPUT, { noteId, paragraphId });
+  }
+
   updateNote(noteId: string, noteName: string, noteConfig: NoteConfig): void {
     this.send<OP.NOTE_UPDATE>(OP.NOTE_UPDATE, { id: noteId, name: noteName, config: noteConfig });
   }

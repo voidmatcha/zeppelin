@@ -97,6 +97,7 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
 
   private Map<String, ParagraphRuntimeInfo> runtimeInfos = new HashMap<>();
   private transient List<InterpreterResultMessage> outputBuffer = new ArrayList<>();
+  private transient long outputSequence;
 
 
   @VisibleForTesting
@@ -692,15 +693,16 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     this.runtimeInfos.clear();
   }
 
-  public void cleanOutputBuffer() {
+  public synchronized void cleanOutputBuffer() {
     this.outputBuffer.clear();
+    this.outputSequence = 0;
   }
 
   /**
    * Save the buffered output to InterpreterResults. So that open another tab or refresh
    * note you can see the latest checkpoint's output.
    */
-  public void checkpointOutput() {
+  public synchronized void checkpointOutput() {
     LOGGER.info("Checkpoint Paragraph output for paragraph: {}", getId());
     this.results = new InterpreterResult(Code.SUCCESS);
     for (InterpreterResultMessage buffer : outputBuffer) {
@@ -792,7 +794,7 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     return note.getNoteParser().fromJson(json);
   }
 
-  public void updateOutputBuffer(int index, InterpreterResult.Type type, String output) {
+  public synchronized void updateOutputBuffer(int index, InterpreterResult.Type type, String output) {
     InterpreterResultMessage interpreterResultMessage = new InterpreterResultMessage(type, output);;
     if (outputBuffer.size() == index) {
       outputBuffer.add(interpreterResultMessage);
@@ -801,6 +803,29 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     } else {
       LOGGER.warn("Get output of index: {}, but there's only {} output in outputBuffer", index, outputBuffer.size());
     }
+  }
+
+  public synchronized void appendOutputBuffer(int index, String output) {
+    if (outputBuffer.size() == index) {
+      outputBuffer.add(new InterpreterResultMessage(InterpreterResult.Type.TEXT, output));
+    } else if (outputBuffer.size() > index) {
+      InterpreterResultMessage existing = outputBuffer.get(index);
+      outputBuffer.set(index, new InterpreterResultMessage(existing.getType(), existing.getData() + output));
+    } else {
+      LOGGER.warn("Get output of index: {}, but there's only {} output in outputBuffer", index, outputBuffer.size());
+    }
+  }
+
+  public synchronized long nextOutputSequence() {
+    return ++outputSequence;
+  }
+
+  public synchronized long getOutputSequence() {
+    return outputSequence;
+  }
+
+  public synchronized List<InterpreterResultMessage> getOutputSnapshot() {
+    return new ArrayList<>(outputBuffer);
   }
 
   public void recover() {
