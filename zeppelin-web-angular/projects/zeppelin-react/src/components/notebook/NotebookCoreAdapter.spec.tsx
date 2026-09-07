@@ -15,6 +15,20 @@ import { act } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('./NotebookMonacoEditor', () => ({
+  NotebookMonacoEditor: ({
+    ariaLabel,
+    disabled,
+    onChange,
+    value
+  }: {
+    ariaLabel: string;
+    disabled: boolean;
+    onChange: (value: string) => void;
+    value: string;
+  }) => <textarea aria-label={ariaLabel} disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
+}));
+
 import { NotebookCoreAdapter } from './NotebookCoreAdapter';
 
 describe('NotebookCoreAdapter', () => {

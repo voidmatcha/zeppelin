@@ -12,6 +12,7 @@
 
 const ModuleFederationPlugin = require('webpack/lib/container/ModuleFederationPlugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
 const path = require('path');
 
 module.exports = (_env, argv) => {
@@ -66,6 +67,7 @@ module.exports = (_env, argv) => {
       ]
     },
     plugins: [
+      new MonacoWebpackPlugin({ languages: ['markdown', 'python', 'sql'] }),
       // No `shared` scope: the shell bundles no React and never calls container.init.
       // This remote is the only participant, so there is nothing to dedupe against. Re-add it once a second exists.
       new ModuleFederationPlugin({
