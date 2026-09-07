@@ -620,4 +620,22 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().collaborativeUsers).toBeUndefined();
     expect(runtime.apply({ type: 'collaboration-updated', users: ['stale-user'] })).toBe(false);
   });
+
+  it('owns frozen note permissions and clears them when the route changes', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'note-loaded', noteId: 'note-a', revisionId: null, title: 'Note A', paragraphs: [] });
+
+    runtime.apply({
+      type: 'permissions-updated',
+      permissions: { readers: ['reader'], owners: ['owner'], writers: ['writer'], runners: ['runner'] }
+    });
+    const permissions = runtime.port.getSnapshot().permissions;
+    expect(permissions).toEqual({ readers: ['reader'], owners: ['owner'], writers: ['writer'], runners: ['runner'] });
+    expect(Object.isFrozen(permissions)).toBe(true);
+    expect(Object.isFrozen(permissions!.owners)).toBe(true);
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    expect(runtime.port.getSnapshot().permissions).toBeUndefined();
+  });
 });

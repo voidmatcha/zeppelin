@@ -20,7 +20,8 @@ import type {
   NotebookParagraphInput,
   NotebookParagraphResult,
   NotebookParagraphResultConfigs,
-  NotebookParagraphSnapshot
+  NotebookParagraphSnapshot,
+  NotebookPermissions
 } from './host-remote-contract';
 
 export type NotebookCoreEvent =
@@ -56,6 +57,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'paragraph-run-rejected'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
   | Readonly<{ type: 'note-forms-updated'; noteForms: NotebookDynamicForms; noteParams: NotebookFormParams }>
+  | Readonly<{ type: 'permissions-updated'; permissions: NotebookPermissions }>
   | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
@@ -90,6 +92,7 @@ type NotebookCoreState = Readonly<{
   title: string | null;
   noteForms: NotebookDynamicForms;
   noteParams: NotebookFormParams;
+  permissions: NotebookPermissions | null;
   collaborativeUsers: readonly string[] | null;
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
@@ -127,6 +130,14 @@ const freezeNoteParams = (params: NotebookFormParams = {}): NotebookFormParams =
       return result;
     }, {})
   );
+
+const freezePermissions = (permissions: NotebookPermissions): NotebookPermissions =>
+  Object.freeze({
+    readers: Object.freeze([...permissions.readers]),
+    owners: Object.freeze([...permissions.owners]),
+    writers: Object.freeze([...permissions.writers]),
+    runners: Object.freeze([...permissions.runners])
+  });
 
 const freezeResultConfigValue = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -184,6 +195,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     title: state.title,
     noteForms: state.noteForms,
     noteParams: state.noteParams,
+    ...(state.permissions ? { permissions: state.permissions } : {}),
     ...(state.collaborativeUsers ? { collaborativeUsers: state.collaborativeUsers } : {}),
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
@@ -223,6 +235,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     title: null,
     noteForms: freezeNoteForms(),
     noteParams: freezeNoteParams(),
+    permissions: null,
     collaborativeUsers: null,
     ...emptyParagraphState(),
     error: null
@@ -257,6 +270,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
+        permissions: null,
         collaborativeUsers: null,
         ...emptyParagraphState(),
         error: null
@@ -269,6 +283,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
+        permissions: null,
         collaborativeUsers: null,
         ...emptyParagraphState(),
         error: null
@@ -547,6 +562,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteForms: freezeNoteForms(event.noteForms),
         noteParams: freezeNoteParams(event.noteParams)
       });
+    case 'permissions-updated':
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      return freezeState({ ...state, version, permissions: freezePermissions(event.permissions) });
     case 'collaboration-updated':
       if (state.phase !== 'ready') {
         return state;
@@ -567,6 +587,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
+        permissions: null,
         collaborativeUsers: null,
         ...emptyParagraphState(),
         error: event.error

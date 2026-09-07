@@ -120,6 +120,7 @@ export const NotebookCoreAdapter = ({
       data-phase={snapshot.phase}
       data-host-theme={hostTheme}
       data-title={snapshot.title ?? ''}
+      data-permission-owner-count={snapshot.permissions?.owners.length ?? 0}
       data-paragraph-count={snapshot.paragraphs.length}
       data-paragraph-statuses={JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.status))}
       data-command-accepted={commandAccepted === null ? 'not-dispatched' : String(commandAccepted)}
