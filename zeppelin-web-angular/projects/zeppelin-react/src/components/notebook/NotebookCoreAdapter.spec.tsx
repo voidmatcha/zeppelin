@@ -268,6 +268,61 @@ describe('NotebookCoreAdapter', () => {
     expect(onLookAndFeelChange).toHaveBeenCalledWith('report');
   });
 
+  it('delegates revision selection and checkpoint actions to the host', () => {
+    const onRevisionSelect = vi.fn();
+    const onCheckpointNotebook = vi.fn();
+    const onSetNotebookRevision = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+
+    const { rerender } = render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        revisions={[
+          { id: 'Head', message: 'Head' },
+          { id: 'revision-1', message: 'before rename', time: 1 }
+        ]}
+        currentRevision="Head"
+        onRevisionSelect={onRevisionSelect}
+        onCheckpointNotebook={onCheckpointNotebook}
+        onSetNotebookRevision={onSetNotebookRevision}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Notebook revision' }), {
+      target: { value: 'revision-1' }
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Checkpoint message' }), {
+      target: { value: 'before release' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Checkpoint' }));
+    expect(onRevisionSelect).toHaveBeenCalledWith('revision-1');
+    expect(onCheckpointNotebook).toHaveBeenCalledWith('before release');
+
+    rerender(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        revisions={[
+          { id: 'Head', message: 'Head' },
+          { id: 'revision-1', message: 'before rename', time: 1 }
+        ]}
+        currentRevision="revision-1"
+        revisionView
+        onSetNotebookRevision={onSetNotebookRevision}
+      />
+    );
+    expect(screen.queryByRole('textbox', { name: 'Checkpoint message' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Set revision as head' }));
+    expect(onSetNotebookRevision).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });

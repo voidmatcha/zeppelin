@@ -45,6 +45,12 @@ export const NotebookCoreAdapter = ({
   lookAndFeel = 'default',
   onLookAndFeelChange,
   onShowShortcut,
+  revisions = [],
+  currentRevision,
+  revisionView = false,
+  onRevisionSelect,
+  onCheckpointNotebook,
+  onSetNotebookRevision,
   onExtensionChange,
   onNoteFormsChange,
   readOnly = false
@@ -53,6 +59,7 @@ export const NotebookCoreAdapter = ({
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
   const [searchTerm, setSearchTerm] = useState('');
+  const [checkpointMessage, setCheckpointMessage] = useState('');
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
@@ -76,10 +83,7 @@ export const NotebookCoreAdapter = ({
   );
   const canTogglePersonalizedMode = hostCanTogglePersonalizedMode && !hasRunningParagraph;
 
-  const dispatch = (
-    type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph',
-    paragraphId: string
-  ): void => {
+  const dispatch = (type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph', paragraphId: string): void => {
     const accepted = core.dispatch({ type, paragraphId });
     setCommandAccepted(accepted);
   };
@@ -117,11 +121,7 @@ export const NotebookCoreAdapter = ({
           onBlur={() => onNotebookTitleChange?.(titleDraft)}
         />
         <span>{snapshot.paragraphs.length} paragraphs</span>
-        <input
-          aria-label="Search notebook"
-          value={searchTerm}
-          onChange={event => setSearchTerm(event.target.value)}
-        />
+        <input aria-label="Search notebook" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} />
         <button
           type="button"
           disabled={!canEdit || hasRunningParagraph}
@@ -180,6 +180,42 @@ export const NotebookCoreAdapter = ({
             <option value="report">report</option>
           </select>
         </label>
+        {revisions.length > 0 ? (
+          <>
+            <label>
+              Revision
+              <select
+                aria-label="Notebook revision"
+                value={currentRevision ?? ''}
+                onChange={event => onRevisionSelect?.(event.target.value)}
+              >
+                {revisions.map(revision => (
+                  <option key={revision.id ?? revision.message} value={revision.id ?? ''}>
+                    {revision.message}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!readOnly && !revisionView ? (
+              <label>
+                Checkpoint message
+                <input
+                  aria-label="Checkpoint message"
+                  value={checkpointMessage}
+                  onChange={event => setCheckpointMessage(event.target.value)}
+                />
+                <button type="button" onClick={() => onCheckpointNotebook?.(checkpointMessage)}>
+                  Checkpoint
+                </button>
+              </label>
+            ) : null}
+            {!readOnly && revisionView ? (
+              <button type="button" onClick={onSetNotebookRevision}>
+                Set revision as head
+              </button>
+            ) : null}
+          </>
+        ) : null}
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
           Interpreter settings
         </button>

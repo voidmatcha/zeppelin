@@ -140,7 +140,7 @@
         }
       </nz-space-compact>
     }
-    @if (isRevisionSupported) {
+    @if (isRevisionSupported && !reactNotebook) {
       <nz-space-compact nzSize="small">
         @if (!viewOnly) {
           <button
