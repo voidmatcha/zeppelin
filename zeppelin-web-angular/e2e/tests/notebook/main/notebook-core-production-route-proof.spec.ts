@@ -95,6 +95,33 @@ const coldInterpreterExecutionTimeout = 90000;
 test.describe('Notebook Core production route feasibility proof', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
 
+  test('keeps the React notebook theme synchronized with the Angular host', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/CoreTheme_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactAdapter = page.getByTestId('notebook-core-react-adapter');
+      await expect(reactAdapter).toHaveAttribute('data-port-shared', 'true', { timeout: 30000 });
+
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      await expect(reactAdapter).toHaveAttribute('data-host-theme', 'dark');
+
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      await expect(reactAdapter).toHaveAttribute('data-host-theme', 'light');
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('projects real NOTE state into one cached core while the product route reuses NotebookComponent', async ({
     page
   }) => {

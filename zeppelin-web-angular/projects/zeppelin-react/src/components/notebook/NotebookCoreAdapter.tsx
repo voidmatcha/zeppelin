@@ -16,6 +16,7 @@ import { createRoot, Root } from 'react-dom/client';
 
 import { ReactErrorBoundary } from '../paragraph/ReactErrorBoundary';
 import { SingleResultRenderer } from '../../templates/SingleResultRenderer';
+import { useHostThemeMode, ZeppelinThemeProvider } from '../../theme/ZeppelinThemeProvider';
 import { NotebookMonacoEditor } from './NotebookMonacoEditor';
 
 export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
@@ -59,6 +60,7 @@ export const NotebookCoreAdapter = ({
   readOnly = false
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
+  const hostTheme = useHostThemeMode();
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
   const [searchTerm, setSearchTerm] = useState('');
@@ -116,6 +118,7 @@ export const NotebookCoreAdapter = ({
       data-version={snapshot.version}
       data-note-id={snapshot.noteId}
       data-phase={snapshot.phase}
+      data-host-theme={hostTheme}
       data-title={snapshot.title ?? ''}
       data-paragraph-count={snapshot.paragraphs.length}
       data-paragraph-statuses={JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.status))}
@@ -468,7 +471,9 @@ export const mount = (element: HTMLElement, initialProps: NotebookCoreAdapterPro
   const renderWith = (props: NotebookCoreAdapterProps): void => {
     root.render(
       <ReactErrorBoundary onError={props.onError}>
-        <NotebookCoreAdapter {...props} />
+        <ZeppelinThemeProvider>
+          <NotebookCoreAdapter {...props} />
+        </ZeppelinThemeProvider>
       </ReactErrorBoundary>
     );
   };
