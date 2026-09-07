@@ -19,6 +19,7 @@ import {
   type NotebookCoreSnapshot,
   type NotebookDynamicForms,
   type NotebookFormParams,
+  type NotebookLookAndFeel,
   type NotebookParagraphStatus,
   type NotebookPermissions,
   type NotebookRevision,
@@ -74,6 +75,11 @@ const toNotebookSchedule = (note: LoadedNote): NotebookSchedule | undefined =>
       }
     : undefined;
 
+const toNotebookLookAndFeel = (note: LoadedNote): NotebookLookAndFeel => {
+  const lookAndFeel = note.config?.looknfeel;
+  return lookAndFeel === 'report' || lookAndFeel === 'simple' ? lookAndFeel : 'default';
+};
+
 @Injectable()
 export class NotebookCoreRouteAdapter {
   readonly port: NotebookCorePort;
@@ -107,6 +113,7 @@ export class NotebookCoreRouteAdapter {
       noteForms: note.noteForms as NotebookDynamicForms | undefined,
       noteParams: note.noteParams as NotebookFormParams | undefined,
       scheduler: toNotebookSchedule(note),
+      lookAndFeel: toNotebookLookAndFeel(note),
       paragraphs: note.paragraphs.map(toParagraphSnapshot)
     });
     if (!accepted) {
@@ -239,6 +246,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptSchedule(schedule: NotebookSchedule | null): void {
     this.runtime.apply({ type: 'schedule-updated', scheduler: schedule });
+  }
+
+  acceptLookAndFeel(lookAndFeel: NotebookLookAndFeel): void {
+    this.runtime.apply({ type: 'look-and-feel-updated', lookAndFeel });
   }
 
   acceptRevisions(revisions: readonly NotebookRevision[]): void {

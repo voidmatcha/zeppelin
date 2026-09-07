@@ -64,6 +64,7 @@ export const NotebookCoreAdapter = ({
   const coreRevisions = snapshot.revisions ?? revisions;
   const coreCurrentRevision = snapshot.revisionId ?? currentRevision ?? 'Head';
   const coreRevisionView = snapshot.revisionId !== null || revisionView;
+  const coreLookAndFeel = snapshot.lookAndFeel ?? lookAndFeel;
   const hostTheme = useHostThemeMode();
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
@@ -189,8 +190,8 @@ export const NotebookCoreAdapter = ({
           <select
             aria-label="Notebook look and feel"
             disabled={!canEdit}
-            value={lookAndFeel}
-            onChange={event => onLookAndFeelChange?.(event.target.value as typeof lookAndFeel)}
+            value={coreLookAndFeel}
+            onChange={event => onLookAndFeelChange?.(event.target.value as typeof coreLookAndFeel)}
           >
             <option value="default">default</option>
             <option value="simple">simple</option>
