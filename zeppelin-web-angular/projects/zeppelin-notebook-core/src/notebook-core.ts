@@ -56,6 +56,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'paragraph-run-rejected'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
   | Readonly<{ type: 'note-forms-updated'; noteForms: NotebookDynamicForms; noteParams: NotebookFormParams }>
+  | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
 export type NotebookCoreRuntime = Readonly<{
@@ -89,6 +90,7 @@ type NotebookCoreState = Readonly<{
   title: string | null;
   noteForms: NotebookDynamicForms;
   noteParams: NotebookFormParams;
+  collaborativeUsers: readonly string[] | null;
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
   error: string | null;
@@ -182,6 +184,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     title: state.title,
     noteForms: state.noteForms,
     noteParams: state.noteParams,
+    ...(state.collaborativeUsers ? { collaborativeUsers: state.collaborativeUsers } : {}),
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
@@ -220,6 +223,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     title: null,
     noteForms: freezeNoteForms(),
     noteParams: freezeNoteParams(),
+    collaborativeUsers: null,
     ...emptyParagraphState(),
     error: null
   });
@@ -253,6 +257,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
+        collaborativeUsers: null,
         ...emptyParagraphState(),
         error: null
       });
@@ -264,6 +269,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
+        collaborativeUsers: null,
         ...emptyParagraphState(),
         error: null
       });
@@ -541,6 +547,15 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteForms: freezeNoteForms(event.noteForms),
         noteParams: freezeNoteParams(event.noteParams)
       });
+    case 'collaboration-updated':
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        collaborativeUsers: event.users ? Object.freeze([...event.users]) : null
+      });
     case 'load-failed':
       if (event.noteId !== state.noteId || event.revisionId !== state.revisionId) {
         return state;
@@ -552,6 +567,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
+        collaborativeUsers: null,
         ...emptyParagraphState(),
         error: event.error
       });

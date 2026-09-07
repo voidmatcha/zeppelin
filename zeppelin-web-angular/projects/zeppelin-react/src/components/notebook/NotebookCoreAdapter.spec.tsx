@@ -128,6 +128,27 @@ describe('NotebookCoreAdapter', () => {
     expect(dispatchCommand).toHaveBeenLastCalledWith({ type: 'cancel-all-paragraphs' });
   });
 
+  it('renders collaboration presence from the shared Core snapshot', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+    runtime.apply({ type: 'collaboration-updated', users: ['alice', 'bob'] });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(screen.getByLabelText('Collaborators').textContent).toBe('Collaborators: 2');
+
+    act(() => {
+      runtime.apply({ type: 'collaboration-updated', users: null });
+    });
+    expect(screen.queryByLabelText('Collaborators')).toBeNull();
+  });
+
   it('disables execution for revision snapshots', () => {
     const runtime = createNotebookCore({ noteId: 'note-1', revisionId: 'revision-1' });
     runtime.apply({ type: 'load-started' });
