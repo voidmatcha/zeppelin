@@ -32,6 +32,7 @@ export const NotebookCoreAdapter = ({
   onParagraphInsert,
   onParagraphRemove,
   onParagraphMove,
+  onParagraphResultConfigChange,
   onNotebookTitleChange,
   onNoteFormsChange,
   readOnly = false
@@ -251,6 +252,7 @@ export const NotebookCoreAdapter = ({
                         <SingleResultRenderer
                           config={paragraph.resultConfigs as ParagraphConfigResults | undefined}
                           index={resultIndex}
+                          onConfigChange={config => onParagraphResultConfigChange?.(paragraph.id, resultIndex, config)}
                           result={toRenderedResult(result.type, result.data)}
                         />
                       ) : (

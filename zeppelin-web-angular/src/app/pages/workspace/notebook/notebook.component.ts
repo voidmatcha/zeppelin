@@ -36,6 +36,8 @@ import {
   MessageReceiveDataTypeMap,
   Note,
   OP,
+  ParagraphConfigResult,
+  ReceivedMessage,
   RevisionListItem
 } from '@zeppelin/sdk';
 import {
@@ -567,6 +569,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
             params[name] = typeof value === 'string' ? value : [...value];
             return params;
           }, {})
+        ),
+      onParagraphResultConfigChange: (paragraphId, resultIndex, config) =>
+        this.notebookCoreRouteAdapter.updateParagraphResultConfig(
+          paragraphId,
+          resultIndex,
+          config as ParagraphConfigResult
         ),
       onError: () => {
         this.reactNotebookFailed = true;

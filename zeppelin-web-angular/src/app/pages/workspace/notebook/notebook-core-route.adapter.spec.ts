@@ -78,6 +78,26 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0].language).toBe('sql');
   });
 
+  it('commits an updated result configuration through the existing paragraph contract', () => {
+    const commitParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.updateParagraphResultConfig('paragraph-1', 0, { graph: { mode: 'lineChart' } })).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0].resultConfigs).toEqual({ '0': { graph: { mode: 'lineChart' } } });
+    expect(commitParagraph).toHaveBeenCalledWith(
+      'paragraph-1',
+      'Proof paragraph',
+      '%python\nprint("from React")',
+      expect.objectContaining({ results: { '0': { graph: { mode: 'lineChart' } } } }),
+      note.paragraphs[0].settings.params,
+      note.id
+    );
+  });
+
   it('maps a progress event into the Core paragraph snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote('RUNNING');

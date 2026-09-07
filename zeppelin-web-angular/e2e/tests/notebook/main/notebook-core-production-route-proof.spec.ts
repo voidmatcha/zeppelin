@@ -28,7 +28,12 @@ const getParagraphHostIds = async (page: Page): Promise<string[]> =>
     .locator('zeppelin-notebook-paragraph')
     .evaluateAll(elements => elements.map(element => element.getAttribute('data-testid') ?? ''));
 
-type PersistedParagraph = Readonly<{ id: string; text: string; status: string }>;
+type PersistedParagraph = Readonly<{
+  id: string;
+  text: string;
+  status: string;
+  config?: { results?: Record<string, { graph?: { mode?: string } }> };
+}>;
 
 const getPersistedParagraph = async (page: Page, noteId: string, index: number): Promise<PersistedParagraph> => {
   const response = await page.request.get(`/api/notebook/${noteId}`, { failOnStatusCode: false });
@@ -398,6 +403,36 @@ test.describe('Notebook Core production route feasibility proof', () => {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
+    }
+  });
+
+  test('persists a React table visualization mode through the existing paragraph contract', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const code = "%python\nprint('%table name\\tcount\\na\\t12\\nb\\t24')";
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactResultMode_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      await expect(editor).toBeVisible({ timeout: 30000 });
+      await editor.fill(code);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await editor.press('Shift+Enter');
+      await expect(reactNotebook.getByRole('button', { name: /Line Chart$/ })).toBeVisible({
+        timeout: coldInterpreterExecutionTimeout
+      });
+      await reactNotebook.getByRole('button', { name: /Line Chart$/ }).click();
+      await expect
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).config?.results?.['0']?.graph?.mode)
+        .toBe('lineChart');
+    } finally {
+      if (noteId) await page.request.delete(`/api/notebook/${noteId}`);
     }
   });
 
