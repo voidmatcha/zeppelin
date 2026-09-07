@@ -599,4 +599,25 @@ describe('notebook core runtime spike', () => {
       paragraphs: []
     });
   });
+
+  it('owns collaboration presence in the snapshot and clears it when the route changes', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: []
+    });
+
+    runtime.apply({ type: 'collaboration-updated', users: ['alice', 'bob'] });
+    const collaborating = runtime.port.getSnapshot();
+    expect(collaborating.collaborativeUsers).toEqual(['alice', 'bob']);
+    expect(Object.isFrozen(collaborating.collaborativeUsers)).toBe(true);
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    expect(runtime.port.getSnapshot().collaborativeUsers).toBeUndefined();
+    expect(runtime.apply({ type: 'collaboration-updated', users: ['stale-user'] })).toBe(false);
+  });
 });

@@ -113,6 +113,19 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0].language).toBe('sql');
   });
 
+  it('maps collaborative-mode status into the Core snapshot for the React adapter', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptCollaborativeModeStatus(['alice', 'bob']);
+
+    expect(adapter.port.getSnapshot().collaborativeUsers).toEqual(['alice', 'bob']);
+    adapter.acceptCollaborativeModeStatus(null);
+    expect(adapter.port.getSnapshot().collaborativeUsers).toBeUndefined();
+  });
+
   it('commits an updated result configuration through the existing paragraph contract', () => {
     const commitParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);

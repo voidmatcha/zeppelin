@@ -217,6 +217,10 @@ export class NotebookCoreRouteAdapter {
     this.runtime.apply({ type: 'note-forms-updated', noteForms, noteParams });
   }
 
+  acceptCollaborativeModeStatus(users: readonly string[] | null): void {
+    this.runtime.apply({ type: 'collaboration-updated', users });
+  }
+
   updateParagraphResultConfig(paragraphId: string, resultIndex: number, resultConfig: ParagraphConfigResult): boolean {
     const paragraph = this.paragraphViewsById.get(paragraphId);
     const coreParagraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
