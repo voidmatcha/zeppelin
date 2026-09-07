@@ -547,7 +547,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
           Object.entries(noteParams).reduce<DynamicFormParams>((params, [name, value]) => {
-            params[name] = Array.isArray(value) ? [...value] : value;
+            params[name] = typeof value === 'string' ? value : [...value];
             return params;
           }, {})
         ),
