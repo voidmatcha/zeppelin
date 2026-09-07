@@ -213,7 +213,11 @@ export const NotebookCoreAdapter = ({
                   value={checkpointMessage}
                   onChange={event => setCheckpointMessage(event.target.value)}
                 />
-                <button type="button" onClick={() => onCheckpointNotebook?.(checkpointMessage)}>
+                <button
+                  type="button"
+                  disabled={!canEdit || !checkpointMessage.trim()}
+                  onClick={() => onCheckpointNotebook?.(checkpointMessage.trim())}
+                >
                   Checkpoint
                 </button>
               </label>
