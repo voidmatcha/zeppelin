@@ -21,7 +21,8 @@ import type {
   NotebookParagraphResult,
   NotebookParagraphResultConfigs,
   NotebookParagraphSnapshot,
-  NotebookPermissions
+  NotebookPermissions,
+  NotebookSchedule
 } from './host-remote-contract';
 
 export type NotebookCoreEvent =
@@ -34,6 +35,7 @@ export type NotebookCoreEvent =
       title: string;
       noteForms?: NotebookDynamicForms;
       noteParams?: NotebookFormParams;
+      scheduler?: NotebookSchedule;
       paragraphs: readonly NotebookParagraphInput[];
     }>
   | Readonly<{ type: 'paragraph-added'; index: number; paragraph: NotebookParagraphInput }>
@@ -59,6 +61,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'note-forms-updated'; noteForms: NotebookDynamicForms; noteParams: NotebookFormParams }>
   | Readonly<{ type: 'permissions-updated'; permissions: NotebookPermissions }>
   | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
+  | Readonly<{ type: 'schedule-updated'; scheduler: NotebookSchedule | null }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
 export type NotebookCoreRuntime = Readonly<{
@@ -94,6 +97,7 @@ type NotebookCoreState = Readonly<{
   noteParams: NotebookFormParams;
   permissions: NotebookPermissions | null;
   collaborativeUsers: readonly string[] | null;
+  scheduler: NotebookSchedule | null;
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
   error: string | null;
@@ -137,6 +141,12 @@ const freezePermissions = (permissions: NotebookPermissions): NotebookPermission
     owners: Object.freeze([...permissions.owners]),
     writers: Object.freeze([...permissions.writers]),
     runners: Object.freeze([...permissions.runners])
+  });
+
+const freezeSchedule = (scheduler: NotebookSchedule): NotebookSchedule =>
+  Object.freeze({
+    ...(scheduler.cron ? { cron: scheduler.cron } : {}),
+    releaseResource: scheduler.releaseResource
   });
 
 const freezeResultConfigValue = (value: unknown): unknown => {
@@ -197,6 +207,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     noteParams: state.noteParams,
     ...(state.permissions ? { permissions: state.permissions } : {}),
     ...(state.collaborativeUsers ? { collaborativeUsers: state.collaborativeUsers } : {}),
+    ...(state.scheduler ? { scheduler: state.scheduler } : {}),
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
@@ -237,6 +248,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     noteParams: freezeNoteParams(),
     permissions: null,
     collaborativeUsers: null,
+    scheduler: null,
     ...emptyParagraphState(),
     error: null
   });
@@ -272,6 +284,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteParams: freezeNoteParams(),
         permissions: null,
         collaborativeUsers: null,
+        scheduler: null,
         ...emptyParagraphState(),
         error: null
       });
@@ -285,6 +298,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteParams: freezeNoteParams(),
         permissions: null,
         collaborativeUsers: null,
+        scheduler: null,
         ...emptyParagraphState(),
         error: null
       });
@@ -299,6 +313,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         title: event.title,
         noteForms: freezeNoteForms(event.noteForms),
         noteParams: freezeNoteParams(event.noteParams),
+        scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null,
         ...toParagraphState(event.paragraphs),
         error: null
       });
@@ -576,6 +591,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         collaborativeUsers: event.users ? Object.freeze([...event.users]) : null
       });
+    case 'schedule-updated':
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      return freezeState({ ...state, version, scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null });
     case 'load-failed':
       if (event.noteId !== state.noteId || event.revisionId !== state.revisionId) {
         return state;
@@ -589,6 +609,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteParams: freezeNoteParams(),
         permissions: null,
         collaborativeUsers: null,
+        scheduler: null,
         ...emptyParagraphState(),
         error: event.error
       });

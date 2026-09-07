@@ -638,4 +638,27 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
     expect(runtime.port.getSnapshot().permissions).toBeUndefined();
   });
+
+  it('owns a frozen schedule and clears it when the route changes', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      scheduler: { cron: '0 0/5 * * * ?', releaseResource: false },
+      paragraphs: []
+    });
+
+    const scheduler = runtime.port.getSnapshot().scheduler;
+    expect(scheduler).toEqual({ cron: '0 0/5 * * * ?', releaseResource: false });
+    expect(Object.isFrozen(scheduler)).toBe(true);
+
+    runtime.apply({ type: 'schedule-updated', scheduler: { releaseResource: true } });
+    expect(runtime.port.getSnapshot().scheduler).toEqual({ releaseResource: true });
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    expect(runtime.port.getSnapshot().scheduler).toBeUndefined();
+  });
 });

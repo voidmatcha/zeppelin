@@ -222,7 +222,6 @@ describe('NotebookCoreAdapter', () => {
       title: 'Notebook',
       paragraphs: []
     });
-
     render(
       <NotebookCoreAdapter
         core={runtime.port}
@@ -381,7 +380,7 @@ describe('NotebookCoreAdapter', () => {
     expect(onSetNotebookRevision).toHaveBeenCalledTimes(1);
   });
 
-  it('delegates scheduler configuration and shows host collaboration state', () => {
+  it('delegates Core scheduler configuration and shows Core collaboration state', () => {
     const onScheduleChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
@@ -390,14 +389,14 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Notebook',
+      scheduler: { cron: '0 0/5 * * * ?', releaseResource: false },
       paragraphs: []
     });
+    runtime.apply({ type: 'collaboration-updated', users: [] });
 
     render(
       <NotebookCoreAdapter
         core={runtime.port}
-        collaborativeUsers={[]}
-        scheduler={{ cron: '0 0/5 * * * ?', releaseResource: false }}
         onScheduleChange={onScheduleChange}
       />
     );
