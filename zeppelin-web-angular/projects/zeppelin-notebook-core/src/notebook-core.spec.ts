@@ -55,6 +55,8 @@ describe('notebook core runtime spike', () => {
       revisionId: null,
       phase: 'idle',
       title: null,
+      noteForms: {},
+      noteParams: {},
       paragraphs: [],
       error: null
     });
@@ -92,6 +94,41 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', status: 'FINISHED' });
 
     expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first second' }]);
+  });
+
+  it('owns immutable note form definitions and values through the stable port', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Form note',
+      noteForms: {
+        region: {
+          name: 'region',
+          displayName: 'Region',
+          type: 'Select',
+          defaultValue: 'us-east-1',
+          hidden: false,
+          options: [{ value: 'us-east-1' }, { value: 'ap-northeast-2', displayName: 'Seoul' }]
+        }
+      },
+      noteParams: { region: 'us-east-1' },
+      paragraphs: []
+    });
+
+    expect(runtime.port.getSnapshot().noteParams).toEqual({ region: 'us-east-1' });
+    expect(Object.isFrozen(runtime.port.getSnapshot().noteForms.region.options)).toBe(true);
+    expect(
+      runtime.apply({
+        type: 'note-forms-updated',
+        noteForms: runtime.port.getSnapshot().noteForms,
+        noteParams: { region: 'ap-northeast-2' }
+      })
+    ).toBe(true);
+    expect(runtime.port.getSnapshot().noteParams).toEqual({ region: 'ap-northeast-2' });
+    expect(Object.isFrozen(runtime.port.getSnapshot().noteParams)).toBe(true);
   });
 
   it('reports whether an event was accepted without publishing ignored events', () => {
@@ -142,6 +179,8 @@ describe('notebook core runtime spike', () => {
       revisionId: 'rev-1',
       phase: 'ready',
       title: 'Runtime proof note',
+      noteForms: {},
+      noteParams: {},
       paragraphs: [
         { id: 'p-1', text: '%md shared state', status: 'FINISHED', isDirty: false },
         { id: 'p-2', text: '%spark 1 + 1', status: 'READY', isDirty: false }

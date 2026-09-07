@@ -17,6 +17,8 @@ import {
   type NotebookCoreCommand,
   type NotebookCorePort,
   type NotebookCoreSnapshot,
+  type NotebookDynamicForms,
+  type NotebookFormParams,
   type NotebookParagraphStatus
 } from '@zeppelin/notebook-core';
 import type { Note } from '@zeppelin/sdk';
@@ -79,6 +81,8 @@ export class NotebookCoreRouteAdapter {
       noteId: note.id,
       revisionId,
       title: note.name,
+      noteForms: note.noteForms as NotebookDynamicForms | undefined,
+      noteParams: note.noteParams as NotebookFormParams | undefined,
       paragraphs: note.paragraphs.map(toParagraphSnapshot)
     });
     if (!accepted) {
@@ -176,6 +180,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptNoteUpdated(title: string): void {
     this.runtime.apply({ type: 'note-updated', title });
+  }
+
+  acceptNoteForms(noteForms: NotebookDynamicForms, noteParams: NotebookFormParams): void {
+    this.runtime.apply({ type: 'note-forms-updated', noteForms, noteParams });
   }
 
   private selectParagraphViews(): readonly LoadedParagraph[] {

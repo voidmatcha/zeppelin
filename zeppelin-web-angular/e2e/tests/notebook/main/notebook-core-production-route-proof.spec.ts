@@ -39,6 +39,13 @@ const getPersistedParagraph = async (page: Page, noteId: string, index: number):
   return paragraph!;
 };
 
+const getPersistedNoteParams = async (page: Page, noteId: string): Promise<Record<string, unknown>> => {
+  const response = await page.request.get(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+  expect(response.ok(), `Fetch note failed: ${response.status()} ${await response.text()}`).toBeTruthy();
+  const body = (await response.json()) as { body?: { noteParams?: Record<string, unknown> } };
+  return body.body?.noteParams ?? {};
+};
+
 const getCoreParagraphValues = async (proof: Locator, attribute: string): Promise<string[]> =>
   JSON.parse((await proof.getAttribute(attribute)) ?? '[]') as string[];
 
@@ -354,6 +361,39 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook.getByRole('article', { name: 'Paragraph 1' })).toContainText('FINISHED', {
         timeout: 60000
       });
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
+  test('persists server-provided note form changes from the React notebook route', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const noteFormName = `region_${stamp}`;
+    const code = `%python\nprint("$\${${noteFormName}(Region)=us-east-1,us-east-1|ap-northeast-2(Seoul)}")`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactNotebookForms_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await editor.fill(code);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
+      await page.getByRole('button', { name: 'Run', exact: true }).click();
+
+      const form = page.getByRole('combobox', { name: 'Region' });
+      await expect(form).toHaveValue('us-east-1', { timeout: 30000 });
+      await form.selectOption('ap-northeast-2');
+      await expect.poll(async () => (await getPersistedNoteParams(page, noteId!))[noteFormName]).toBe('ap-northeast-2');
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);

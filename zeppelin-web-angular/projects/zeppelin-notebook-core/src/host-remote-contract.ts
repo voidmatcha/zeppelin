@@ -17,6 +17,22 @@ export type NotebookParagraphResult = Readonly<{
   data: string;
 }>;
 
+export type NotebookFormValue = string | readonly string[];
+
+export type NotebookDynamicForm = Readonly<{
+  defaultValue: NotebookFormValue;
+  hidden: boolean;
+  name: string;
+  displayName?: string;
+  type: string;
+  argument?: string;
+  options?: readonly Readonly<{ value: string; displayName?: string }>[];
+}>;
+
+export type NotebookDynamicForms = Readonly<Record<string, NotebookDynamicForm>>;
+
+export type NotebookFormParams = Readonly<Record<string, NotebookFormValue>>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
@@ -35,6 +51,8 @@ export type NotebookCoreSnapshot = Readonly<{
   revisionId: string | null;
   phase: NotebookCorePhase;
   title: string | null;
+  noteForms: NotebookDynamicForms;
+  noteParams: NotebookFormParams;
   paragraphs: readonly NotebookParagraphSnapshot[];
   error: string | null;
 }>;
@@ -64,4 +82,5 @@ export type NotebookCoreRemoteProps = Readonly<{
   onParagraphRemove?: (paragraphId: string) => void;
   onParagraphMove?: (paragraphId: string, index: number) => void;
   onNotebookTitleChange?: (title: string) => void;
+  onNoteFormsChange?: (params: NotebookFormParams) => void;
 }>;

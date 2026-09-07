@@ -32,7 +32,7 @@ describe('NotebookCoreAdapter', () => {
 
     render(<NotebookCoreAdapter core={runtime.port} expectedCore={runtime.port} />);
 
-    const adapter = screen.getByRole('region', { name: 'React Notebook Core proof' });
+    const adapter = screen.getByRole('region', { name: 'React Notebook' });
     expect(adapter.getAttribute('data-port-shared')).toBe('true');
     expect(adapter.getAttribute('data-note-id')).toBe('note-1');
     expect(adapter.getAttribute('data-title')).toBe('Shared notebook');
@@ -40,7 +40,7 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('%python\nprint(1)');
     expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('READY');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Run first paragraph from React' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
 
     expect(dispatchCommand).toHaveBeenCalledTimes(1);
     expect(dispatchCommand).toHaveBeenCalledWith({ type: 'run-paragraph', paragraphId: 'paragraph-1' });
@@ -66,8 +66,36 @@ describe('NotebookCoreAdapter', () => {
 
     render(<NotebookCoreAdapter core={runtime.port} expectedCore={runtime.port} />);
 
-    expect((screen.getByRole('button', { name: 'Run first paragraph from React' }) as HTMLButtonElement).disabled).toBe(
-      true
-    );
+    expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('renders note forms and sends changed values through the host callback', () => {
+    const onNoteFormsChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Shared notebook',
+      noteForms: {
+        region: {
+          name: 'region',
+          displayName: 'Region',
+          type: 'Select',
+          defaultValue: 'us-east-1',
+          hidden: false,
+          options: [{ value: 'us-east-1' }, { value: 'ap-northeast-2', displayName: 'Seoul' }]
+        }
+      },
+      noteParams: { region: 'us-east-1' },
+      paragraphs: []
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onNoteFormsChange={onNoteFormsChange} />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Region' }), { target: { value: 'ap-northeast-2' } });
+
+    expect(onNoteFormsChange).toHaveBeenCalledWith({ region: 'ap-northeast-2' });
   });
 });
