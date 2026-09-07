@@ -33,6 +33,8 @@ export const NotebookCoreAdapter = ({
   onParagraphMove,
   onParagraphResultConfigChange,
   onNotebookTitleChange,
+  onCloneNotebook,
+  onExportNotebook,
   onReloadNotebook,
   onExtensionChange,
   onNoteFormsChange,
@@ -129,6 +131,12 @@ export const NotebookCoreAdapter = ({
         </button>
         <button type="button" onClick={onReloadNotebook}>
           Reload notebook
+        </button>
+        <button type="button" disabled={!canEdit} onClick={onCloneNotebook}>
+          Clone notebook
+        </button>
+        <button type="button" onClick={onExportNotebook}>
+          Export notebook
         </button>
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
           Interpreter settings

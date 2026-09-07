@@ -148,6 +148,8 @@ describe('NotebookCoreAdapter', () => {
   });
 
   it('delegates notebook reload and extension selection to the host', () => {
+    const onCloneNotebook = vi.fn();
+    const onExportNotebook = vi.fn();
     const onReloadNotebook = vi.fn();
     const onExtensionChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
@@ -163,15 +165,21 @@ describe('NotebookCoreAdapter', () => {
     render(
       <NotebookCoreAdapter
         core={runtime.port}
+        onCloneNotebook={onCloneNotebook}
+        onExportNotebook={onExportNotebook}
         onReloadNotebook={onReloadNotebook}
         onExtensionChange={onExtensionChange}
       />
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Clone notebook' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export notebook' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reload notebook' }));
     fireEvent.click(screen.getByRole('button', { name: 'Interpreter settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Revisions' }));
 
+    expect(onCloneNotebook).toHaveBeenCalledTimes(1);
+    expect(onExportNotebook).toHaveBeenCalledTimes(1);
     expect(onReloadNotebook).toHaveBeenCalledTimes(1);
     expect(onExtensionChange).toHaveBeenNthCalledWith(1, 'interpreter');
     expect(onExtensionChange).toHaveBeenNthCalledWith(2, 'permissions');
