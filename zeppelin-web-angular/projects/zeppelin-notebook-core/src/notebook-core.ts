@@ -39,6 +39,7 @@ export type NotebookCoreEvent =
       noteParams?: NotebookFormParams;
       scheduler?: NotebookSchedule;
       lookAndFeel?: NotebookLookAndFeel;
+      personalizedMode?: boolean;
       paragraphs: readonly NotebookParagraphInput[];
     }>
   | Readonly<{ type: 'paragraph-added'; index: number; paragraph: NotebookParagraphInput }>
@@ -66,6 +67,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
   | Readonly<{ type: 'schedule-updated'; scheduler: NotebookSchedule | null }>
   | Readonly<{ type: 'look-and-feel-updated'; lookAndFeel: NotebookLookAndFeel }>
+  | Readonly<{ type: 'personalized-mode-updated'; personalizedMode: boolean }>
   | Readonly<{ type: 'revisions-updated'; revisions: readonly NotebookRevision[] }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
@@ -104,6 +106,7 @@ type NotebookCoreState = Readonly<{
   collaborativeUsers: readonly string[] | null;
   scheduler: NotebookSchedule | null;
   lookAndFeel: NotebookLookAndFeel;
+  personalizedMode: boolean;
   revisions: readonly NotebookRevision[];
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
@@ -220,6 +223,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     ...(state.scheduler ? { scheduler: state.scheduler } : {}),
     ...(state.revisions.length > 0 ? { revisions: state.revisions } : {}),
     lookAndFeel: state.lookAndFeel,
+    personalizedMode: state.personalizedMode,
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
@@ -262,6 +266,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     collaborativeUsers: null,
     scheduler: null,
     lookAndFeel: 'default',
+    personalizedMode: false,
     revisions: Object.freeze([]),
     ...emptyParagraphState(),
     error: null
@@ -300,6 +305,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         collaborativeUsers: null,
         scheduler: null,
         lookAndFeel: 'default',
+        personalizedMode: false,
         revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: null
@@ -316,6 +322,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         collaborativeUsers: null,
         scheduler: null,
         lookAndFeel: 'default',
+        personalizedMode: false,
         revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: null
@@ -333,6 +340,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteParams: freezeNoteParams(event.noteParams),
         scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null,
         lookAndFeel: event.lookAndFeel ?? 'default',
+        personalizedMode: event.personalizedMode ?? false,
         ...toParagraphState(event.paragraphs),
         error: null
       });
@@ -620,6 +628,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       return freezeState({ ...state, version, lookAndFeel: event.lookAndFeel });
+    case 'personalized-mode-updated':
+      if (state.phase !== 'ready' || state.personalizedMode === event.personalizedMode) {
+        return state;
+      }
+      return freezeState({ ...state, version, personalizedMode: event.personalizedMode });
     case 'revisions-updated':
       if (state.phase !== 'ready') {
         return state;
@@ -640,6 +653,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         collaborativeUsers: null,
         scheduler: null,
         lookAndFeel: 'default',
+        personalizedMode: false,
         revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: event.error

@@ -65,6 +65,7 @@ export const NotebookCoreAdapter = ({
   const coreCurrentRevision = snapshot.revisionId ?? currentRevision ?? 'Head';
   const coreRevisionView = snapshot.revisionId !== null || revisionView;
   const coreLookAndFeel = snapshot.lookAndFeel ?? lookAndFeel;
+  const corePersonalizedMode = snapshot.personalizedMode ?? personalizedMode;
   const hostTheme = useHostThemeMode();
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
@@ -174,7 +175,7 @@ export const NotebookCoreAdapter = ({
         </button>
         {canTogglePersonalizedMode ? (
           <button type="button" onClick={onTogglePersonalizedMode}>
-            {personalizedMode ? 'Switch to collaboration mode' : 'Switch to personal mode'}
+            {corePersonalizedMode ? 'Switch to collaboration mode' : 'Switch to personal mode'}
           </button>
         ) : null}
         {canDeleteNotebook ? (

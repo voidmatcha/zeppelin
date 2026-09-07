@@ -699,6 +699,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
           this.note!.config.personalizedMode === undefined || this.note!.config.personalizedMode === 'true'
             ? 'false'
             : 'true';
+        this.notebookCoreRouteAdapter.acceptPersonalizedMode(this.note!.config.personalizedMode === 'true');
         this.messageService.updatePersonalizedMode(this.note!.id, this.note!.config.personalizedMode);
       }
     });

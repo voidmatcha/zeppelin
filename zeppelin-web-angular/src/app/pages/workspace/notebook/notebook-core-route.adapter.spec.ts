@@ -168,6 +168,19 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().lookAndFeel).toBe('report');
   });
 
+  it('maps personalized mode into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.config = { personalizedMode: 'true' };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.port.getSnapshot().personalizedMode).toBe(true);
+
+    adapter.acceptPersonalizedMode(false);
+    expect(adapter.port.getSnapshot().personalizedMode).toBe(false);
+  });
+
   it('maps the existing revision list into the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();

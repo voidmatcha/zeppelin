@@ -58,6 +58,7 @@ describe('notebook core runtime spike', () => {
       noteForms: {},
       noteParams: {},
       lookAndFeel: 'default',
+      personalizedMode: false,
       paragraphs: [],
       error: null
     });
@@ -220,6 +221,7 @@ describe('notebook core runtime spike', () => {
       noteForms: {},
       noteParams: {},
       lookAndFeel: 'default',
+      personalizedMode: false,
       paragraphs: [
         { id: 'p-1', text: '%md shared state', status: 'FINISHED', progress: 0, isDirty: false },
         { id: 'p-2', text: '%spark 1 + 1', status: 'READY', progress: 0, isDirty: false }
@@ -706,5 +708,25 @@ describe('notebook core runtime spike', () => {
 
     runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
     expect(runtime.port.getSnapshot().lookAndFeel).toBe('default');
+  });
+
+  it('owns personalized mode and resets it for the next route', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      personalizedMode: true,
+      paragraphs: []
+    });
+    expect(runtime.port.getSnapshot().personalizedMode).toBe(true);
+
+    runtime.apply({ type: 'personalized-mode-updated', personalizedMode: false });
+    expect(runtime.port.getSnapshot().personalizedMode).toBe(false);
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    expect(runtime.port.getSnapshot().personalizedMode).toBe(false);
   });
 });
