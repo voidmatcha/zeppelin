@@ -583,7 +583,8 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
         command.type === 'cancel-paragraph' ||
         command.type === 'patch-paragraph' ||
         command.type === 'run-all-paragraphs' ||
-        command.type === 'cancel-all-paragraphs'
+        command.type === 'cancel-all-paragraphs' ||
+        command.type === 'clear-all-paragraph-output'
       ) {
         return route.dispatchCommand?.(command) ?? false;
       }

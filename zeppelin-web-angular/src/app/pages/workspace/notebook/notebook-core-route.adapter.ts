@@ -280,6 +280,11 @@ export class NotebookCoreRouteAdapter {
       return true;
     }
 
+    if (command.type === 'clear-all-paragraph-output') {
+      this.messageService.paragraphClearAllOutput(snapshot.noteId);
+      return true;
+    }
+
     const coreParagraph = snapshot.paragraphs.find(paragraph => paragraph.id === command.paragraphId);
     if (!coreParagraph) {
       return false;
