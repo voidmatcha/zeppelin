@@ -16,7 +16,14 @@ import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
 import { NzModalService } from 'ng-zorro-antd/modal';
 
 import { MessageListener, MessageListenersManager } from '@zeppelin/core';
-import { JobsItem, JobManagerDisabled, JobStatus, ListNoteJobs, ListUpdateNoteJobs, OP } from '@zeppelin/sdk';
+import {
+  JobStatus,
+  OP,
+  type JobsItem,
+  type JobManagerDisabled,
+  type ListNoteJobs,
+  type ListUpdateNoteJobs
+} from '@zeppelin/sdk';
 import { JobManagerService, MessageService } from '@zeppelin/services';
 
 enum JobDateSortKeys {
