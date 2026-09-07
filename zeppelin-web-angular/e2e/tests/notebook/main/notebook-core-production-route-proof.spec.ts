@@ -481,7 +481,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/ReactNotebook_${stamp}`);
-      await page.goto(`/#/notebook/${noteId}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
 
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
