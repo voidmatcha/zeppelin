@@ -263,7 +263,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .toBe(1);
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
       await expect(proof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));
-      await expect(reactAdapter.getByRole('article', { name: 'Paragraph 1' })).toContainText(code);
+      await expect(reactAdapter.getByRole('textbox', { name: 'Paragraph 1 editor' })).toHaveValue(code);
 
       await reactAdapter.getByRole('button', { name: 'Run', exact: true }).click();
 
