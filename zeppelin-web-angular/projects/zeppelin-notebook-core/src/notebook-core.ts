@@ -46,6 +46,7 @@ export type NotebookCoreEvent =
       resultConfigs?: NotebookParagraphResultConfigs;
       source?: 'local' | 'server';
     }>
+  | Readonly<{ type: 'paragraph-progressed'; paragraphId: string; progress: number }>
   | Readonly<{ type: 'paragraph-output-updated'; paragraphId: string; index: number; result: NotebookParagraphResult }>
   | Readonly<{ type: 'paragraph-output-appended'; paragraphId: string; index: number; data: string }>
   | Readonly<{ type: 'paragraph-save-requested'; paragraphId: string }>
@@ -155,6 +156,7 @@ const freezeParagraphSnapshot = (
     id: paragraph.id,
     text: paragraph.text,
     status: paragraph.status,
+    progress: paragraph.progress ?? 0,
     isDirty: paragraph.text !== savedText,
     ...(paragraph.results
       ? { results: Object.freeze(paragraph.results.map(result => Object.freeze({ ...result }))) }
@@ -347,6 +349,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
                 ? currentSnapshot.text
                 : (event.text ?? currentSnapshot.text),
             status: event.status ?? currentSnapshot.status,
+            progress: currentSnapshot.progress,
             results: currentSnapshot.results,
             resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs
           },
@@ -369,6 +372,30 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         ...state,
         version,
         paragraphsById: { ...state.paragraphsById, [event.paragraphId]: freezeParagraph(paragraph) }
+      });
+    }
+    case 'paragraph-progressed': {
+      if (state.phase !== 'ready' || !Number.isFinite(event.progress)) {
+        return state;
+      }
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current) {
+        return state;
+      }
+      const progress = Math.max(0, Math.min(100, event.progress));
+      if (current.snapshot.progress === progress) {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            snapshot: freezeParagraphSnapshot({ ...current.snapshot, progress })
+          })
+        }
       });
     }
     case 'paragraph-output-updated': {
