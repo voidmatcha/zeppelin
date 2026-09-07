@@ -573,6 +573,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       core: this.notebookCoreRouteAdapter.port,
       expectedCore: this.notebookCoreRouteAdapter.port,
       readOnly: this.viewOnly,
+      canEdit: this.canCurrentUserWrite(),
+      canRun: this.canCurrentUserRun(),
       onParagraphTextChange: (paragraphId, text) =>
         this.notebookCoreRouteAdapter.updateParagraphText(paragraphId, text),
       onParagraphInsert: index => this.insertCoreParagraph(index),
@@ -632,6 +634,47 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         this.cdr.markForCheck();
       }
     };
+  }
+
+  private canCurrentUserWrite(): boolean {
+    if (!this.permissions) {
+      return this.ticketService.ticket.principal === 'anonymous';
+    }
+    return (
+      this.hasCurrentUserPermission(this.permissions?.writers) ||
+      this.hasCurrentUserPermission(this.permissions?.owners)
+    );
+  }
+
+  private canCurrentUserRun(): boolean {
+    if (!this.permissions) {
+      return this.ticketService.ticket.principal === 'anonymous';
+    }
+    return (
+      this.canCurrentUserWrite() ||
+      this.hasCurrentUserPermission(this.permissions?.runners) ||
+      this.hasCurrentUserPermission(this.permissions?.owners)
+    );
+  }
+
+  private hasCurrentUserPermission(permissionEntries: readonly string[] | undefined): boolean {
+    if (!permissionEntries?.length) {
+      return true;
+    }
+    const currentUserAndRoles = new Set<string>([this.ticketService.ticket.principal]);
+    try {
+      const roles = JSON.parse(this.ticketService.ticket.roles) as unknown;
+      if (Array.isArray(roles)) {
+        for (const role of roles) {
+          if (typeof role === 'string') {
+            currentUserAndRoles.add(role);
+          }
+        }
+      }
+    } catch {
+      // A malformed ticket role payload must not grant a client-side capability.
+    }
+    return permissionEntries.some(entry => currentUserAndRoles.has(entry));
   }
 
   private setReactExtension(extension: 'interpreter' | 'permissions' | 'revisions' | 'hide'): void {

@@ -30,6 +30,9 @@ const loginAs = async (page: Page, username: string, password: string): Promise<
   await loginPage.login(username, password);
   await expect(page.locator('zeppelin-login')).toBeHidden({ timeout: 30000 });
   await waitForZeppelinReady(page);
+  const ticket = await page.request.get('/api/security/ticket');
+  expect(ticket.ok(), `Ticket lookup failed: ${ticket.status()} ${await ticket.text()}`).toBeTruthy();
+  expect(((await ticket.json()) as { body?: { principal?: string } }).body?.principal).toBe(username);
 };
 
 const grantNotebookAccess = async (page: Page, noteId: string, user: string): Promise<void> => {
@@ -649,6 +652,59 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await user2Editor.fill(code);
       await expect(user1Editor).toHaveValue(code, { timeout: 30000 });
+    } finally {
+      await user2Context.close();
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
+  test('disables React mutations for an authenticated reader', async ({ browser, page }) => {
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+    const ticket = await page.request.get('/api/security/ticket');
+    const principal = ((await ticket.json()) as { body?: { principal?: string } }).body?.principal;
+    test.skip(principal !== 'user1', 'Requires the local user1/user2 Shiro fixture.');
+
+    const user2Context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const user2Page = await user2Context.newPage();
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/Reader_${stamp}`);
+      const response = await page.request.put(`/api/notebook/${noteId}/permissions`, {
+        data: {
+          owners: ['user1'],
+          readers: ['user1', 'user2'],
+          writers: ['user1'],
+          runners: ['user1']
+        }
+      });
+      expect(
+        response.ok(),
+        `Set reader permissions failed: ${response.status()} ${await response.text()}`
+      ).toBeTruthy();
+      await loginAs(user2Page, 'user2', 'password3');
+      const permissions = await user2Page.request.get(`/api/notebook/${noteId}/permissions`);
+      expect(
+        permissions.ok(),
+        `Reader permission lookup failed: ${permissions.status()} ${await permissions.text()}`
+      ).toBeTruthy();
+      expect((await permissions.json()).body).toMatchObject({
+        owners: ['user1'],
+        readers: ['user1', 'user2'],
+        writers: ['user1'],
+        runners: ['user1']
+      });
+      await user2Page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      await expect(user2Page.getByRole('textbox', { name: 'Notebook title' })).toBeDisabled({ timeout: 30000 });
+      await expect(user2Page.getByRole('button', { name: 'Add below', exact: true })).toBeDisabled();
+      await expect(user2Page.getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
+      await expect(user2Page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
     } finally {
       await user2Context.close();
       if (noteId) {

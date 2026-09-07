@@ -57,7 +57,9 @@ export const NotebookCoreAdapter = ({
   collaborativeUsers,
   onExtensionChange,
   onNoteFormsChange,
-  readOnly = false
+  readOnly = false,
+  canEdit: hostCanEdit = true,
+  canRun: hostCanRun = true
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const coreScheduler = snapshot.scheduler ?? scheduler;
@@ -78,7 +80,7 @@ export const NotebookCoreAdapter = ({
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text]))
   );
-  const canEdit = !readOnly && snapshot.revisionId === null;
+  const canEdit = hostCanEdit && !readOnly && snapshot.revisionId === null;
   useEffect(() => {
     setTitleDraft(snapshot.title ?? '');
   }, [snapshot.noteId, snapshot.title]);
@@ -90,7 +92,9 @@ export const NotebookCoreAdapter = ({
     setReleaseResourceDraft(coreScheduler?.releaseResource ?? false);
   }, [coreScheduler?.cron, coreScheduler?.releaseResource]);
   const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
-    canEdit &&
+    hostCanRun &&
+    !readOnly &&
+    snapshot.revisionId === null &&
     snapshot.phase === 'ready' &&
     Boolean(paragraph.text) &&
     paragraph.status !== 'PENDING' &&
@@ -143,14 +147,16 @@ export const NotebookCoreAdapter = ({
         <input aria-label="Search notebook" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} />
         <button
           type="button"
-          disabled={!canEdit || hasRunningParagraph}
+          disabled={
+            !hostCanRun || readOnly || snapshot.revisionId !== null || snapshot.phase !== 'ready' || hasRunningParagraph
+          }
           onClick={() => dispatchNotebook('run-all-paragraphs')}
         >
           Run all
         </button>
         <button
           type="button"
-          disabled={!canEdit || !hasRunningParagraph}
+          disabled={!hostCanRun || readOnly || snapshot.revisionId !== null || !hasRunningParagraph}
           onClick={() => dispatchNotebook('cancel-all-paragraphs')}
         >
           Cancel all
@@ -429,7 +435,12 @@ export const NotebookCoreAdapter = ({
                 </button>
                 <button
                   type="button"
-                  disabled={!canEdit || (paragraph.status !== 'PENDING' && paragraph.status !== 'RUNNING')}
+                  disabled={
+                    !hostCanRun ||
+                    readOnly ||
+                    snapshot.revisionId !== null ||
+                    (paragraph.status !== 'PENDING' && paragraph.status !== 'RUNNING')
+                  }
                   onClick={() => dispatch('cancel-paragraph', paragraph.id)}
                 >
                   Cancel
