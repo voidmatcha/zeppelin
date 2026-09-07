@@ -46,23 +46,25 @@
       #actionBar
     ></zeppelin-notebook-action-bar>
     <div class="flex-container">
-      <div
-        class="sidebar-area"
-        nz-resizable
-        [nzMaxWidth]="!isSidebarOpen ? 40 : 800"
-        [nzMinWidth]="!isSidebarOpen ? 40 : 280"
-        (nzResize)="onResizeSidebar($event)"
-        [style.min-width.px]="!isSidebarOpen ? 40 : sidebarWidth"
-      >
-        <zeppelin-notebook-sidebar
-          [note]="note"
-          (isSidebarOpenChange)="onSidebarOpenChange($event)"
-          (scrollToParagraph)="onParagraphScrolled($event)"
-        ></zeppelin-notebook-sidebar>
-        @if (isSidebarOpen) {
-          <nz-resize-handle nzDirection="right"><div class="sidebar-resize"></div></nz-resize-handle>
-        }
-      </div>
+      @if (!useReactNotebook || reactNotebookFailed) {
+        <div
+          class="sidebar-area"
+          nz-resizable
+          [nzMaxWidth]="!isSidebarOpen ? 40 : 800"
+          [nzMinWidth]="!isSidebarOpen ? 40 : 280"
+          (nzResize)="onResizeSidebar($event)"
+          [style.min-width.px]="!isSidebarOpen ? 40 : sidebarWidth"
+        >
+          <zeppelin-notebook-sidebar
+            [note]="note"
+            (isSidebarOpenChange)="onSidebarOpenChange($event)"
+            (scrollToParagraph)="onParagraphScrolled($event)"
+          ></zeppelin-notebook-sidebar>
+          @if (isSidebarOpen) {
+            <nz-resize-handle nzDirection="right"><div class="sidebar-resize"></div></nz-resize-handle>
+          }
+        </div>
+      }
       <div class="notebook-area">
         @if (activatedExtension !== 'hide' && permissions) {
           <div class="extension-area">
