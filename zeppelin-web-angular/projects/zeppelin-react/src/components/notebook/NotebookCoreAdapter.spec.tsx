@@ -19,14 +19,24 @@ vi.mock('./NotebookMonacoEditor', () => ({
   NotebookMonacoEditor: ({
     ariaLabel,
     disabled,
+    language,
     onChange,
     value
   }: {
     ariaLabel: string;
     disabled: boolean;
+    language?: string;
     onChange: (value: string) => void;
     value: string;
-  }) => <textarea aria-label={ariaLabel} disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
+  }) => (
+    <textarea
+      aria-label={ariaLabel}
+      data-language={language}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+      value={value}
+    />
+  )
 }));
 
 import { NotebookCoreAdapter } from './NotebookCoreAdapter';
@@ -253,6 +263,22 @@ describe('NotebookCoreAdapter', () => {
     render(<NotebookCoreAdapter core={runtime.port} />);
 
     expect((screen.getByRole('progressbar', { name: 'Paragraph 1 progress' }) as HTMLProgressElement).value).toBe(55);
+  });
+
+  it('passes the Core editor language to Monaco', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'SQL notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%sql\nselect 1', status: 'READY', language: 'sql' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+
+    expect(screen.getByRole('textbox', { name: 'Paragraph 1 editor' }).getAttribute('data-language')).toBe('sql');
   });
 
   it('preserves unsupported Core output instead of dropping it', () => {
