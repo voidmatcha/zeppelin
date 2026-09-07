@@ -70,6 +70,8 @@ export type NotebookCoreSnapshotListener = () => void;
 export type NotebookCoreCommand =
   | Readonly<{ type: 'run-paragraph'; paragraphId: string }>
   | Readonly<{ type: 'cancel-paragraph'; paragraphId: string }>
+  | Readonly<{ type: 'run-all-paragraphs' }>
+  | Readonly<{ type: 'cancel-all-paragraphs' }>
   | Readonly<{ type: 'commit-paragraph'; paragraphId: string }>
   | Readonly<{ type: 'patch-paragraph'; paragraphId: string; patch: string }>;
 

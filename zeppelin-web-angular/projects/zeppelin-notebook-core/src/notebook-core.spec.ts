@@ -24,7 +24,7 @@ describe('notebook core runtime spike', () => {
       revisionId: null,
       dispatchCommand: command => {
         dispatched.push(command);
-        return command.paragraphId === 'p-1';
+        return 'paragraphId' in command && command.paragraphId === 'p-1';
       }
     });
     runtime.apply({ type: 'load-started' });

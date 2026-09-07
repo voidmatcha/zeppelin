@@ -11,7 +11,6 @@
  */
 
 import type { NotebookCorePort, NotebookCoreRemoteProps, NotebookFormValue } from '@zeppelin/notebook-core';
-import { DatasetType, type ParagraphConfigResults, type ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
@@ -56,24 +55,26 @@ export const NotebookCoreAdapter = ({
     Boolean(paragraph.text) &&
     paragraph.status !== 'PENDING' &&
     paragraph.status !== 'RUNNING';
+  const hasRunningParagraph = snapshot.paragraphs.some(
+    paragraph => paragraph.status === 'PENDING' || paragraph.status === 'RUNNING'
+  );
 
-  const dispatch = (type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph', paragraphId: string): void => {
+  const dispatch = (
+    type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph',
+    paragraphId: string
+  ): void => {
     const accepted = core.dispatch({ type, paragraphId });
+    setCommandAccepted(accepted);
+  };
+  const dispatchNotebook = (type: 'run-all-paragraphs' | 'cancel-all-paragraphs'): void => {
+    const accepted = core.dispatch({ type });
     setCommandAccepted(accepted);
   };
   const updateNoteForm = (name: string, value: NotebookFormValue): void => {
     onNoteFormsChange?.({ ...snapshot.noteParams, [name]: value });
   };
-  const toRenderedResult = (type: string, data: string): ParagraphIResultsMsgItem => ({
-    type: type as DatasetType,
-    data
-  });
   const canRenderResult = (type: string): boolean =>
-    type === DatasetType.TABLE ||
-    type === DatasetType.HTML ||
-    type === DatasetType.TEXT ||
-    type === DatasetType.IMG ||
-    type === DatasetType.ANGULAR;
+    type === 'TABLE' || type === 'HTML' || type === 'TEXT' || type === 'IMG' || type === 'ANGULAR';
 
   return (
     <section
@@ -97,6 +98,20 @@ export const NotebookCoreAdapter = ({
           onBlur={() => onNotebookTitleChange?.(titleDraft)}
         />
         <span>{snapshot.paragraphs.length} paragraphs</span>
+        <button
+          type="button"
+          disabled={!canEdit || hasRunningParagraph}
+          onClick={() => dispatchNotebook('run-all-paragraphs')}
+        >
+          Run all
+        </button>
+        <button
+          type="button"
+          disabled={!canEdit || !hasRunningParagraph}
+          onClick={() => dispatchNotebook('cancel-all-paragraphs')}
+        >
+          Cancel all
+        </button>
       </header>
       <nav aria-label="Notebook outline">
         <ol>
@@ -250,7 +265,7 @@ export const NotebookCoreAdapter = ({
                     <div key={resultIndex} data-testid="react-notebook-core-result">
                       {canRenderResult(result.type) ? (
                         <SingleResultRenderer
-                          config={paragraph.resultConfigs as ParagraphConfigResults | undefined}
+                          config={paragraph.resultConfigs}
                           index={resultIndex}
                           modeChangeDisabled={!canEdit}
                           onConfigChange={
@@ -258,7 +273,7 @@ export const NotebookCoreAdapter = ({
                               ? config => onParagraphResultConfigChange?.(paragraph.id, resultIndex, config)
                               : undefined
                           }
-                          result={toRenderedResult(result.type, result.data)}
+                          result={result}
                         />
                       ) : (
                         <pre>{result.data}</pre>

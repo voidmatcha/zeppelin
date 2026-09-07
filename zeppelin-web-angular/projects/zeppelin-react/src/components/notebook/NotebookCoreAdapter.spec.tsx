@@ -77,6 +77,29 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('FINISHED');
   });
 
+  it('dispatches React notebook-wide execution and cancellation through the shared Port', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-1', dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python\nprint(1)', status: 'READY' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Run all' }));
+    expect(dispatchCommand).toHaveBeenLastCalledWith({ type: 'run-all-paragraphs' });
+
+    act(() => {
+      runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', status: 'RUNNING' });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel all' }));
+    expect(dispatchCommand).toHaveBeenLastCalledWith({ type: 'cancel-all-paragraphs' });
+  });
+
   it('disables execution for revision snapshots', () => {
     const runtime = createNotebookCore({ noteId: 'note-1', revisionId: 'revision-1' });
     runtime.apply({ type: 'load-started' });
@@ -91,6 +114,7 @@ describe('NotebookCoreAdapter', () => {
     render(<NotebookCoreAdapter core={runtime.port} expectedCore={runtime.port} />);
 
     expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Run all' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('keeps a local title draft until a Core title update arrives', () => {
