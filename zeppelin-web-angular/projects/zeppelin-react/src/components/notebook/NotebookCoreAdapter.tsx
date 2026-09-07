@@ -51,6 +51,9 @@ export const NotebookCoreAdapter = ({
   onRevisionSelect,
   onCheckpointNotebook,
   onSetNotebookRevision,
+  scheduler,
+  onScheduleChange,
+  collaborativeUsers,
   onExtensionChange,
   onNoteFormsChange,
   readOnly = false
@@ -60,6 +63,8 @@ export const NotebookCoreAdapter = ({
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
   const [searchTerm, setSearchTerm] = useState('');
   const [checkpointMessage, setCheckpointMessage] = useState('');
+  const [cronDraft, setCronDraft] = useState(scheduler?.cron ?? '');
+  const [releaseResourceDraft, setReleaseResourceDraft] = useState(scheduler?.releaseResource ?? false);
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
@@ -72,6 +77,10 @@ export const NotebookCoreAdapter = ({
   useEffect(() => {
     setParagraphDrafts(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text])));
   }, [snapshot.noteId, snapshot.paragraphs]);
+  useEffect(() => {
+    setCronDraft(scheduler?.cron ?? '');
+    setReleaseResourceDraft(scheduler?.releaseResource ?? false);
+  }, [scheduler?.cron, scheduler?.releaseResource]);
   const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
     canEdit &&
     snapshot.phase === 'ready' &&
@@ -215,6 +224,41 @@ export const NotebookCoreAdapter = ({
               </button>
             ) : null}
           </>
+        ) : null}
+        {scheduler ? (
+          <label>
+            Scheduler
+            <input
+              aria-label="Cron expression"
+              disabled={!canEdit}
+              placeholder="Cron expression"
+              value={cronDraft}
+              onChange={event => setCronDraft(event.target.value)}
+            />
+            <input
+              aria-label="Release interpreter after schedule"
+              checked={releaseResourceDraft}
+              disabled={!canEdit}
+              type="checkbox"
+              onChange={event => setReleaseResourceDraft(event.target.checked)}
+            />
+            Release interpreter after schedule
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={() =>
+                onScheduleChange?.({
+                  cron: cronDraft.trim() || undefined,
+                  releaseResource: releaseResourceDraft
+                })
+              }
+            >
+              Save schedule
+            </button>
+          </label>
+        ) : null}
+        {collaborativeUsers !== undefined ? (
+          <span aria-label="Collaborators">Collaborators: {collaborativeUsers.length}</span>
         ) : null}
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
           Interpreter settings

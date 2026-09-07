@@ -41,6 +41,11 @@ export type NotebookRevision = Readonly<{
   time?: number;
 }>;
 
+export type NotebookSchedule = Readonly<{
+  cron?: string;
+  releaseResource: boolean;
+}>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
@@ -116,6 +121,9 @@ export type NotebookCoreRemoteProps = Readonly<{
   onRevisionSelect?: (revisionId: string) => void;
   onCheckpointNotebook?: (message: string) => void;
   onSetNotebookRevision?: () => void;
+  scheduler?: NotebookSchedule;
+  onScheduleChange?: (schedule: NotebookSchedule) => void;
+  collaborativeUsers?: readonly string[];
   onExtensionChange?: (extension: 'interpreter' | 'permissions' | 'revisions' | 'hide') => void;
   onNoteFormsChange?: (params: NotebookFormParams) => void;
   onParagraphResultConfigChange?: (
