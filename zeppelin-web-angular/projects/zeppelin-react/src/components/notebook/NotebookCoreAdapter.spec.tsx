@@ -95,6 +95,31 @@ describe('NotebookCoreAdapter', () => {
     expect(title.value).toBe('Remote title');
   });
 
+  it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
+    const onParagraphTextChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python\nprint("original")', status: 'READY' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onParagraphTextChange={onParagraphTextChange} />);
+
+    const editor = screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: '%python\nprint("local")' } });
+    expect(editor.value).toBe('%python\nprint("local")');
+    expect(onParagraphTextChange).toHaveBeenCalledWith('paragraph-1', '%python\nprint("local")');
+
+    act(() => {
+      runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: '%python\nprint("remote")' });
+    });
+    expect(editor.value).toBe('%python\nprint("remote")');
+  });
+
   it('honors the host read-only capability for notebook mutations', () => {
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
