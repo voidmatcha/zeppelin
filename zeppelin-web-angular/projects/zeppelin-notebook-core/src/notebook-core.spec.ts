@@ -57,6 +57,7 @@ describe('notebook core runtime spike', () => {
       title: null,
       noteForms: {},
       noteParams: {},
+      lookAndFeel: 'default',
       paragraphs: [],
       error: null
     });
@@ -218,6 +219,7 @@ describe('notebook core runtime spike', () => {
       title: 'Runtime proof note',
       noteForms: {},
       noteParams: {},
+      lookAndFeel: 'default',
       paragraphs: [
         { id: 'p-1', text: '%md shared state', status: 'FINISHED', progress: 0, isDirty: false },
         { id: 'p-2', text: '%spark 1 + 1', status: 'READY', progress: 0, isDirty: false }
@@ -684,5 +686,25 @@ describe('notebook core runtime spike', () => {
 
     runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
     expect(runtime.port.getSnapshot().revisions).toBeUndefined();
+  });
+
+  it('owns the notebook look and feel and resets it for the next route', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      lookAndFeel: 'simple',
+      paragraphs: []
+    });
+    expect(runtime.port.getSnapshot().lookAndFeel).toBe('simple');
+
+    runtime.apply({ type: 'look-and-feel-updated', lookAndFeel: 'report' });
+    expect(runtime.port.getSnapshot().lookAndFeel).toBe('report');
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    expect(runtime.port.getSnapshot().lookAndFeel).toBe('default');
   });
 });
