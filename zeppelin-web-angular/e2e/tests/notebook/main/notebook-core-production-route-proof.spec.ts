@@ -299,7 +299,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
         data: {
           paragraphId: (await getParagraphHostIds(page))[0],
           index: expect.any(Number),
-          data: expect.any(String)
+          data: expect.any(String),
+          outputSequence: expect.any(Number)
         }
       });
       await expect(keyboardPage.getParagraphStatus(0)).toHaveText('FINISHED', { timeout: 60000 });
@@ -393,6 +394,72 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId);
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' })).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
+  test('recovers active React output from an authoritative snapshot after reconnecting', async ({ context, page }) => {
+    const sentOperations = observeSentOperations(page);
+    const receivedOperations = observeReceivedOperations(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const marker = `react_output_recovery_${stamp}`;
+    const markerFirst = `${marker}_first`;
+    const markerSecond = `${marker}_second`;
+    const code = `%python\nimport time\nprint("${markerFirst}")\ntime.sleep(5)\nprint("${markerSecond}")`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactOutputRecovery_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const paragraphResult = reactNotebook.getByTestId('react-notebook-core-results');
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      await editor.fill(code);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
+
+      await reactNotebook.getByRole('button', { name: 'Run', exact: true }).click();
+      await expect(paragraphResult).toContainText(markerFirst, { timeout: coldInterpreterExecutionTimeout });
+
+      const snapshotCountBeforeOffline = receivedOperations.filter(
+        operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT'
+      ).length;
+      await context.setOffline(true);
+      await page.waitForFunction(() => navigator.onLine === false);
+      await context.setOffline(false);
+
+      await expect
+        .poll(() => sentOperations.filter(operation => operation === 'GET_PARAGRAPH_OUTPUT').length, { timeout: 30000 })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT').length, {
+          timeout: 30000
+        })
+        .toBeGreaterThan(snapshotCountBeforeOffline);
+      const snapshot = receivedOperations.find(
+        operation =>
+          operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT' &&
+          typeof operation.data === 'object' &&
+          operation.data !== null &&
+          JSON.stringify(operation.data).includes(markerFirst)
+      );
+      expect(snapshot).toMatchObject({
+        data: {
+          paragraphId: (await getPersistedParagraph(page, noteId, 0)).id,
+          outputSequence: expect.any(Number)
+        }
+      });
+      await expect(paragraphResult).toContainText(markerSecond, { timeout: coldInterpreterExecutionTimeout });
     } finally {
       await context.setOffline(false);
       if (noteId) {

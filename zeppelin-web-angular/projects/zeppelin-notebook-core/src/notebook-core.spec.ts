@@ -98,6 +98,64 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first second' }]);
   });
 
+  it('ignores duplicate output frames and accepts an authoritative output snapshot after a gap', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Sequenced output',
+      paragraphs: [{ id: 'p-1', text: '%python', status: 'RUNNING' }]
+    });
+
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-updated',
+        paragraphId: 'p-1',
+        index: 0,
+        result: { type: 'TEXT', data: 'first' },
+        outputSequence: 1
+      })
+    ).toBe(true);
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-appended',
+        paragraphId: 'p-1',
+        index: 0,
+        data: ' duplicate',
+        outputSequence: 1
+      })
+    ).toBe(false);
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-snapshotted',
+        paragraphId: 'p-1',
+        results: [{ type: 'TEXT', data: 'first recovered' }],
+        outputSequence: 3
+      })
+    ).toBe(true);
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-appended',
+        paragraphId: 'p-1',
+        index: 0,
+        data: ' stale',
+        outputSequence: 2
+      })
+    ).toBe(false);
+    expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first recovered' }]);
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-snapshotted',
+        paragraphId: 'p-1',
+        results: [{ type: 'TEXT', data: 'stale snapshot' }],
+        outputSequence: 2
+      })
+    ).toBe(false);
+    expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first recovered' }]);
+  });
+
   it('preserves server result configuration without sharing mutable graph state', () => {
     const runtime = createNotebookCore({ noteId: 'note-a' });
     const graph = { mode: 'lineChart', setting: { lineChart: { smooth: true } } };

@@ -87,6 +87,9 @@ export class NotebookCoreRouteAdapter {
   private readonly runtime;
   private readonly diffMatchPatch = new DiffMatchPatch();
   private readonly paragraphViewsById = new Map<string, LoadedParagraph>();
+  private readonly outputSequences = new Map<string, number>();
+  private readonly outputRecoveryRequested = new Set<string>();
+  private readonly outputSequencesExpectedFromStart = new Set<string>();
 
   constructor(private readonly messageService: MessageService) {
     this.runtime = createNotebookCore({ dispatchCommand: command => this.dispatchCommand(command) });
@@ -125,6 +128,15 @@ export class NotebookCoreRouteAdapter {
       this.replaceParagraphViews(previousParagraphViews);
       return null;
     }
+    this.outputSequences.clear();
+    this.outputRecoveryRequested.clear();
+    this.outputSequencesExpectedFromStart.clear();
+    for (const paragraph of note.paragraphs) {
+      const status = normalizeParagraphStatus(paragraph.status);
+      if (status === 'PENDING' || status === 'RUNNING') {
+        this.messageService.getParagraphOutput(note.id, paragraph.id);
+      }
+    }
     return this.selectParagraphViews();
   }
 
@@ -153,6 +165,9 @@ export class NotebookCoreRouteAdapter {
       }
       return null;
     }
+    this.outputSequences.delete(paragraphId);
+    this.outputRecoveryRequested.delete(paragraphId);
+    this.outputSequencesExpectedFromStart.delete(paragraphId);
     return this.selectParagraphViews();
   }
 
@@ -214,6 +229,11 @@ export class NotebookCoreRouteAdapter {
   }
 
   acceptParagraphStatus(paragraphId: string, status: string): void {
+    if (normalizeParagraphStatus(status) === 'PENDING') {
+      this.outputSequences.delete(paragraphId);
+      this.outputRecoveryRequested.delete(paragraphId);
+      this.outputSequencesExpectedFromStart.add(paragraphId);
+    }
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId,
@@ -225,12 +245,48 @@ export class NotebookCoreRouteAdapter {
     this.runtime.apply({ type: 'paragraph-progressed', paragraphId, progress });
   }
 
-  acceptParagraphOutputUpdate(paragraphId: string, index: number, type: string, data: string): void {
-    this.runtime.apply({ type: 'paragraph-output-updated', paragraphId, index, result: { type, data } });
+  acceptParagraphOutputUpdate(
+    paragraphId: string,
+    index: number,
+    type: string,
+    data: string,
+    outputSequence?: number
+  ): void {
+    if (!this.acceptOutputSequence(paragraphId, outputSequence)) {
+      return;
+    }
+    this.runtime.apply({
+      type: 'paragraph-output-updated',
+      paragraphId,
+      index,
+      result: { type, data },
+      outputSequence
+    });
   }
 
-  acceptParagraphOutputAppend(paragraphId: string, index: number, data: string): void {
-    this.runtime.apply({ type: 'paragraph-output-appended', paragraphId, index, data });
+  acceptParagraphOutputAppend(paragraphId: string, index: number, data: string, outputSequence?: number): void {
+    if (!this.acceptOutputSequence(paragraphId, outputSequence)) {
+      return;
+    }
+    this.runtime.apply({ type: 'paragraph-output-appended', paragraphId, index, data, outputSequence });
+  }
+
+  acceptParagraphOutputSnapshot(
+    paragraphId: string,
+    results: readonly Readonly<{ type: string; data: string }>[],
+    outputSequence: number
+  ): void {
+    if (!Number.isSafeInteger(outputSequence) || outputSequence < 0) {
+      return;
+    }
+    const previousSequence = this.outputSequences.get(paragraphId);
+    if (previousSequence !== undefined && outputSequence < previousSequence) {
+      return;
+    }
+    this.outputSequences.set(paragraphId, outputSequence);
+    this.outputRecoveryRequested.delete(paragraphId);
+    this.outputSequencesExpectedFromStart.delete(paragraphId);
+    this.runtime.apply({ type: 'paragraph-output-snapshotted', paragraphId, results, outputSequence });
   }
 
   acceptNoteUpdated(title: string): void {
@@ -393,5 +449,32 @@ export class NotebookCoreRouteAdapter {
     for (const paragraph of paragraphs) {
       this.paragraphViewsById.set(paragraph.id, paragraph);
     }
+  }
+
+  private acceptOutputSequence(paragraphId: string, outputSequence: number | undefined): boolean {
+    if (outputSequence === undefined) {
+      return true;
+    }
+    if (!Number.isSafeInteger(outputSequence) || outputSequence < 1) {
+      return false;
+    }
+    const previousSequence = this.outputSequences.get(paragraphId);
+    const expectsFirstSequence = this.outputSequencesExpectedFromStart.has(paragraphId);
+    if (
+      (expectsFirstSequence && outputSequence !== 1) ||
+      (previousSequence !== undefined && outputSequence > previousSequence + 1)
+    ) {
+      if (!this.outputRecoveryRequested.has(paragraphId)) {
+        this.outputRecoveryRequested.add(paragraphId);
+        this.messageService.getParagraphOutput(this.port.getSnapshot().noteId, paragraphId);
+      }
+      return false;
+    }
+    if (previousSequence !== undefined && outputSequence <= previousSequence) {
+      return false;
+    }
+    this.outputSequences.set(paragraphId, outputSequence);
+    this.outputSequencesExpectedFromStart.delete(paragraphId);
+    return true;
   }
 }
