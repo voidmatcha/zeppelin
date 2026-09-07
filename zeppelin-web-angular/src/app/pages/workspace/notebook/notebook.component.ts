@@ -53,7 +53,7 @@ import {
   ThemeService,
   TicketService
 } from '@zeppelin/services';
-import { NoteCreateComponent } from '@zeppelin/share';
+import { NoteCreateComponent, ShortcutComponent } from '@zeppelin/share';
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
 import type { NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
@@ -599,6 +599,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       canDeleteNotebook: !this.viewOnly,
       isTrashedNotebook: this.note ? this.noteStatusService.isTrash(this.note) : false,
       onDeleteNotebook: () => this.deleteReactNotebook(),
+      lookAndFeel: this.note?.config.looknfeel,
+      onLookAndFeelChange: lookAndFeel => this.setReactLookAndFeel(lookAndFeel),
+      onShowShortcut: () => this.showReactShortcut(),
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
@@ -690,6 +693,22 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         }
         this.router.navigate(['/']);
       }
+    });
+  }
+
+  private setReactLookAndFeel(lookAndFeel: 'report' | 'default' | 'simple'): void {
+    if (!this.note || this.revisionView) {
+      return;
+    }
+    this.note.config.looknfeel = lookAndFeel;
+    this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
+  }
+
+  private showReactShortcut(): void {
+    this.nzModalService.info({
+      nzTitle: 'Shortcut Info',
+      nzWidth: '600px',
+      nzContent: ShortcutComponent
     });
   }
 

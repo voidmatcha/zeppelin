@@ -238,6 +238,36 @@ describe('NotebookCoreAdapter', () => {
     expect(onDeleteNotebook).toHaveBeenCalledTimes(1);
   });
 
+  it('delegates shortcut and look-and-feel controls to the host', () => {
+    const onShowShortcut = vi.fn();
+    const onLookAndFeelChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+
+    render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        lookAndFeel="simple"
+        onShowShortcut={onShowShortcut}
+        onLookAndFeelChange={onLookAndFeelChange}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Notebook look and feel' }), {
+      target: { value: 'report' }
+    });
+
+    expect(onShowShortcut).toHaveBeenCalledTimes(1);
+    expect(onLookAndFeelChange).toHaveBeenCalledWith('report');
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });

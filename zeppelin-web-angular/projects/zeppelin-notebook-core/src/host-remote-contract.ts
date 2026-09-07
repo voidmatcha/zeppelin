@@ -101,6 +101,9 @@ export type NotebookCoreRemoteProps = Readonly<{
   canDeleteNotebook?: boolean;
   isTrashedNotebook?: boolean;
   onDeleteNotebook?: () => void;
+  lookAndFeel?: 'report' | 'default' | 'simple';
+  onLookAndFeelChange?: (lookAndFeel: 'report' | 'default' | 'simple') => void;
+  onShowShortcut?: () => void;
   onExtensionChange?: (extension: 'interpreter' | 'permissions' | 'revisions' | 'hide') => void;
   onNoteFormsChange?: (params: NotebookFormParams) => void;
   onParagraphResultConfigChange?: (

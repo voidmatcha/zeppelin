@@ -338,32 +338,34 @@
       </nz-space-compact>
     }
   </div>
-  <div class="setting">
-    <nz-space-compact nzSize="small">
-      @if (!revisionView) {
-        <button nz-button nzNoAnimation (click)="showShortCut()">
-          <i nz-icon nzType="info-circle" nzTheme="outline"></i>
+  @if (!reactNotebook) {
+    <div class="setting">
+      <nz-space-compact nzSize="small">
+        @if (!revisionView) {
+          <button nz-button nzNoAnimation (click)="showShortCut()">
+            <i nz-icon nzType="info-circle" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!revisionView) {
+          <button nz-button nzNoAnimation (click)="toggleExtension('interpreter')">
+            <i nz-icon nzType="setting" [nzTheme]="activatedExtension === 'interpreter' ? 'fill' : 'outline'"></i>
+          </button>
+        }
+        <button nz-button nzNoAnimation (click)="togglePermissions()">
+          <i nz-icon nzType="lock" [nzTheme]="activatedExtension === 'permissions' ? 'fill' : 'outline'"></i>
         </button>
-      }
-      @if (!revisionView) {
-        <button nz-button nzNoAnimation (click)="toggleExtension('interpreter')">
-          <i nz-icon nzType="setting" [nzTheme]="activatedExtension === 'interpreter' ? 'fill' : 'outline'"></i>
+        <button [nzDropdownMenu]="menu" nz-button nzNoAnimation nzSize="small" nz-dropdown nzTrigger="click">
+          {{ note.config.looknfeel }}
+          <i nz-icon nzType="down"></i>
         </button>
-      }
-      <button nz-button nzNoAnimation (click)="togglePermissions()">
-        <i nz-icon nzType="lock" [nzTheme]="activatedExtension === 'permissions' ? 'fill' : 'outline'"></i>
-      </button>
-      <button [nzDropdownMenu]="menu" nz-button nzNoAnimation nzSize="small" nz-dropdown nzTrigger="click">
-        {{ note.config.looknfeel }}
-        <i nz-icon nzType="down"></i>
-      </button>
-      <nz-dropdown-menu #menu="nzDropdownMenu">
-        <ul nz-menu>
-          @for (lf of lfOption; track lf) {
-            <li nz-menu-item (click)="setLookAndFeel(lf)">{{ lf }}</li>
-          }
-        </ul>
-      </nz-dropdown-menu>
-    </nz-space-compact>
-  </div>
+        <nz-dropdown-menu #menu="nzDropdownMenu">
+          <ul nz-menu>
+            @for (lf of lfOption; track lf) {
+              <li nz-menu-item (click)="setLookAndFeel(lf)">{{ lf }}</li>
+            }
+          </ul>
+        </nz-dropdown-menu>
+      </nz-space-compact>
+    </div>
+  }
 </div>
