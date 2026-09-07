@@ -17,6 +17,7 @@ import { createRoot, Root } from 'react-dom/client';
 
 import { ReactErrorBoundary } from '../paragraph/ReactErrorBoundary';
 import { SingleResultRenderer } from '../../templates/SingleResultRenderer';
+import { NotebookMonacoEditor } from './NotebookMonacoEditor';
 
 export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
   Readonly<{
@@ -182,12 +183,11 @@ export const NotebookCoreAdapter = ({
                 <strong>Paragraph {index + 1}</strong>
                 <span>{paragraph.status}</span>
               </header>
-              <textarea
-                aria-label={`Paragraph ${index + 1} editor`}
+              <NotebookMonacoEditor
+                ariaLabel={`Paragraph ${index + 1} editor`}
                 disabled={!canEdit || paragraph.status === 'RUNNING'}
                 value={paragraphDrafts[paragraph.id] ?? paragraph.text}
-                onChange={event => {
-                  const text = event.target.value;
+                onChange={text => {
                   setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
                   onParagraphTextChange?.(paragraph.id, text);
                 }}
