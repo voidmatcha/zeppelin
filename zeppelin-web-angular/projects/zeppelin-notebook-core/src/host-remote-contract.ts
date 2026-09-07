@@ -84,6 +84,7 @@ export type NotebookCoreSnapshot = Readonly<{
   scheduler?: NotebookSchedule;
   revisions?: readonly NotebookRevision[];
   lookAndFeel?: NotebookLookAndFeel;
+  personalizedMode?: boolean;
   paragraphs: readonly NotebookParagraphSnapshot[];
   error: string | null;
 }>;
