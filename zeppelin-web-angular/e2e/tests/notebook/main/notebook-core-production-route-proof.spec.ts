@@ -472,6 +472,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'play-circle' })
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('button', { name: 'Run all' })).toBeVisible();
+      await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill('%python');
+      await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
+      await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
 
       await reactNotebook.getByRole('button', { name: 'Clone notebook' }).click();
       await expect(page.getByRole('dialog').locator('.ant-modal-title')).toHaveText('Clone Note');
