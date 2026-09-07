@@ -42,6 +42,9 @@ export const NotebookCoreAdapter = ({
   canDeleteNotebook = false,
   isTrashedNotebook = false,
   onDeleteNotebook,
+  lookAndFeel = 'default',
+  onLookAndFeelChange,
+  onShowShortcut,
   onExtensionChange,
   onNoteFormsChange,
   readOnly = false
@@ -161,6 +164,22 @@ export const NotebookCoreAdapter = ({
             {isTrashedNotebook ? 'Delete notebook permanently' : 'Move notebook to trash'}
           </button>
         ) : null}
+        <button type="button" disabled={!canEdit} onClick={onShowShortcut}>
+          Keyboard shortcuts
+        </button>
+        <label>
+          Look and feel
+          <select
+            aria-label="Notebook look and feel"
+            disabled={!canEdit}
+            value={lookAndFeel}
+            onChange={event => onLookAndFeelChange?.(event.target.value as typeof lookAndFeel)}
+          >
+            <option value="default">default</option>
+            <option value="simple">simple</option>
+            <option value="report">report</option>
+          </select>
+        </label>
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
           Interpreter settings
         </button>

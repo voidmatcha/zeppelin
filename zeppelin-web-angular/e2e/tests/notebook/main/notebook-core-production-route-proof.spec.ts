@@ -464,6 +464,10 @@ test.describe('Notebook Core production route feasibility proof', () => {
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('button', { name: 'Run all' })).toBeVisible();
       await expect(page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'delete' })).toHaveCount(0);
+      await expect(
+        page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'info-circle' })
+      ).toHaveCount(0);
+      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
       await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill('%python');
       await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
       await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
