@@ -39,6 +39,9 @@ export const NotebookCoreAdapter = ({
   canTogglePersonalizedMode: hostCanTogglePersonalizedMode = false,
   personalizedMode = false,
   onTogglePersonalizedMode,
+  canDeleteNotebook = false,
+  isTrashedNotebook = false,
+  onDeleteNotebook,
   onExtensionChange,
   onNoteFormsChange,
   readOnly = false
@@ -151,6 +154,11 @@ export const NotebookCoreAdapter = ({
         {canTogglePersonalizedMode ? (
           <button type="button" onClick={onTogglePersonalizedMode}>
             {personalizedMode ? 'Switch to collaboration mode' : 'Switch to personal mode'}
+          </button>
+        ) : null}
+        {canDeleteNotebook ? (
+          <button type="button" disabled={hasRunningParagraph} onClick={onDeleteNotebook}>
+            {isTrashedNotebook ? 'Delete notebook permanently' : 'Move notebook to trash'}
           </button>
         ) : null}
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>

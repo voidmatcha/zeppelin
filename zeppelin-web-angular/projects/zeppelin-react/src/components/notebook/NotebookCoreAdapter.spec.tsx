@@ -217,6 +217,27 @@ describe('NotebookCoreAdapter', () => {
     expect(onTogglePersonalizedMode).toHaveBeenCalledTimes(1);
   });
 
+  it('delegates deletion to the host only when the host grants that capability', () => {
+    const onDeleteNotebook = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+
+    const view = render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(view.queryByRole('button', { name: 'Move notebook to trash' })).toBeNull();
+    view.unmount();
+
+    render(<NotebookCoreAdapter core={runtime.port} canDeleteNotebook onDeleteNotebook={onDeleteNotebook} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Move notebook to trash' }));
+    expect(onDeleteNotebook).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
