@@ -550,7 +550,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       core: this.notebookCoreRouteAdapter.port,
       expectedCore: this.notebookCoreRouteAdapter.port,
       readOnly: this.viewOnly,
-      onParagraphTextChange: (paragraphId, text) => this.updateCoreParagraphText({ paragraphId, text }),
+      onParagraphTextChange: (paragraphId, text) =>
+        this.notebookCoreRouteAdapter.updateParagraphText(paragraphId, text),
       onParagraphInsert: index => this.insertCoreParagraph(index),
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
