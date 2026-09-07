@@ -35,6 +35,12 @@ export type NotebookDynamicForms = Readonly<Record<string, NotebookDynamicForm>>
 
 export type NotebookFormParams = Readonly<Record<string, NotebookFormValue>>;
 
+export type NotebookRevision = Readonly<{
+  id?: string;
+  message: string;
+  time?: number;
+}>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
@@ -104,6 +110,12 @@ export type NotebookCoreRemoteProps = Readonly<{
   lookAndFeel?: 'report' | 'default' | 'simple';
   onLookAndFeelChange?: (lookAndFeel: 'report' | 'default' | 'simple') => void;
   onShowShortcut?: () => void;
+  revisions?: readonly NotebookRevision[];
+  currentRevision?: string;
+  revisionView?: boolean;
+  onRevisionSelect?: (revisionId: string) => void;
+  onCheckpointNotebook?: (message: string) => void;
+  onSetNotebookRevision?: () => void;
   onExtensionChange?: (extension: 'interpreter' | 'permissions' | 'revisions' | 'hide') => void;
   onNoteFormsChange?: (params: NotebookFormParams) => void;
   onParagraphResultConfigChange?: (
