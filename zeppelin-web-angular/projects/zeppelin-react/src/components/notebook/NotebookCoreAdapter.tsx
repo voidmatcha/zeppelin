@@ -54,6 +54,12 @@ export const NotebookCoreAdapter = ({
     type: type as DatasetType,
     data
   });
+  const canRenderResult = (type: string): boolean =>
+    type === DatasetType.TABLE ||
+    type === DatasetType.HTML ||
+    type === DatasetType.TEXT ||
+    type === DatasetType.IMG ||
+    type === DatasetType.ANGULAR;
 
   return (
     <section
@@ -224,7 +230,11 @@ export const NotebookCoreAdapter = ({
                 <div data-testid="react-notebook-core-results">
                   {paragraph.results.map((result, resultIndex) => (
                     <div key={resultIndex} data-testid="react-notebook-core-result">
-                      <SingleResultRenderer index={resultIndex} result={toRenderedResult(result.type, result.data)} />
+                      {canRenderResult(result.type) ? (
+                        <SingleResultRenderer index={resultIndex} result={toRenderedResult(result.type, result.data)} />
+                      ) : (
+                        <pre>{result.data}</pre>
+                      )}
                     </div>
                   ))}
                 </div>
