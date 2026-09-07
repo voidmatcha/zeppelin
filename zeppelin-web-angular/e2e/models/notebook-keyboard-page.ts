@@ -65,7 +65,7 @@ export class NotebookKeyboardPage extends BasePage {
       '.dropdown-menu.search-code, .search-widget, .find-widget, [role="dialog"]:has-text("Find")'
     );
     this.modal = page.locator('.ant-modal, .modal-dialog, .ant-modal-confirm');
-    this.okButtons = page.locator(
+    this.okButtons = this.modal.locator(
       'button:has-text("OK"), button:has-text("Ok"), button:has-text("Okay"), button:has-text("Confirm")'
     );
   }
