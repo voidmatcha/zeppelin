@@ -155,6 +155,19 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().scheduler).toBeUndefined();
   });
 
+  it('maps the existing look-and-feel configuration into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.config = { looknfeel: 'simple' };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.port.getSnapshot().lookAndFeel).toBe('simple');
+
+    adapter.acceptLookAndFeel('report');
+    expect(adapter.port.getSnapshot().lookAndFeel).toBe('report');
+  });
+
   it('maps the existing revision list into the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();

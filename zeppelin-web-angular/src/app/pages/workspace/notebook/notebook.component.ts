@@ -712,6 +712,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       return;
     }
     this.note.config.looknfeel = lookAndFeel;
+    this.notebookCoreRouteAdapter.acceptLookAndFeel(lookAndFeel);
     this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
   }
 

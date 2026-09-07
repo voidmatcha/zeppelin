@@ -46,6 +46,8 @@ export type NotebookSchedule = Readonly<{
   releaseResource: boolean;
 }>;
 
+export type NotebookLookAndFeel = 'report' | 'default' | 'simple';
+
 export type NotebookPermissions = Readonly<{
   readers: readonly string[];
   owners: readonly string[];
@@ -81,6 +83,7 @@ export type NotebookCoreSnapshot = Readonly<{
   collaborativeUsers?: readonly string[];
   scheduler?: NotebookSchedule;
   revisions?: readonly NotebookRevision[];
+  lookAndFeel?: NotebookLookAndFeel;
   paragraphs: readonly NotebookParagraphSnapshot[];
   error: string | null;
 }>;
@@ -123,8 +126,8 @@ export type NotebookCoreRemoteProps = Readonly<{
   canDeleteNotebook?: boolean;
   isTrashedNotebook?: boolean;
   onDeleteNotebook?: () => void;
-  lookAndFeel?: 'report' | 'default' | 'simple';
-  onLookAndFeelChange?: (lookAndFeel: 'report' | 'default' | 'simple') => void;
+  lookAndFeel?: NotebookLookAndFeel;
+  onLookAndFeelChange?: (lookAndFeel: NotebookLookAndFeel) => void;
   onShowShortcut?: () => void;
   revisions?: readonly NotebookRevision[];
   currentRevision?: string;

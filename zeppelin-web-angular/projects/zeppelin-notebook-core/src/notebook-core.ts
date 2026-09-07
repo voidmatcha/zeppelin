@@ -17,6 +17,7 @@ import type {
   NotebookCoreSnapshotListener,
   NotebookDynamicForms,
   NotebookFormParams,
+  NotebookLookAndFeel,
   NotebookParagraphInput,
   NotebookParagraphResult,
   NotebookParagraphResultConfigs,
@@ -37,6 +38,7 @@ export type NotebookCoreEvent =
       noteForms?: NotebookDynamicForms;
       noteParams?: NotebookFormParams;
       scheduler?: NotebookSchedule;
+      lookAndFeel?: NotebookLookAndFeel;
       paragraphs: readonly NotebookParagraphInput[];
     }>
   | Readonly<{ type: 'paragraph-added'; index: number; paragraph: NotebookParagraphInput }>
@@ -63,6 +65,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'permissions-updated'; permissions: NotebookPermissions }>
   | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
   | Readonly<{ type: 'schedule-updated'; scheduler: NotebookSchedule | null }>
+  | Readonly<{ type: 'look-and-feel-updated'; lookAndFeel: NotebookLookAndFeel }>
   | Readonly<{ type: 'revisions-updated'; revisions: readonly NotebookRevision[] }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
@@ -100,6 +103,7 @@ type NotebookCoreState = Readonly<{
   permissions: NotebookPermissions | null;
   collaborativeUsers: readonly string[] | null;
   scheduler: NotebookSchedule | null;
+  lookAndFeel: NotebookLookAndFeel;
   revisions: readonly NotebookRevision[];
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
@@ -215,6 +219,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     ...(state.collaborativeUsers ? { collaborativeUsers: state.collaborativeUsers } : {}),
     ...(state.scheduler ? { scheduler: state.scheduler } : {}),
     ...(state.revisions.length > 0 ? { revisions: state.revisions } : {}),
+    lookAndFeel: state.lookAndFeel,
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
@@ -256,6 +261,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     permissions: null,
     collaborativeUsers: null,
     scheduler: null,
+    lookAndFeel: 'default',
     revisions: Object.freeze([]),
     ...emptyParagraphState(),
     error: null
@@ -293,6 +299,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         permissions: null,
         collaborativeUsers: null,
         scheduler: null,
+        lookAndFeel: 'default',
         revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: null
@@ -308,6 +315,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         permissions: null,
         collaborativeUsers: null,
         scheduler: null,
+        lookAndFeel: 'default',
         revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: null
@@ -324,6 +332,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         noteForms: freezeNoteForms(event.noteForms),
         noteParams: freezeNoteParams(event.noteParams),
         scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null,
+        lookAndFeel: event.lookAndFeel ?? 'default',
         ...toParagraphState(event.paragraphs),
         error: null
       });
@@ -606,6 +615,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       return freezeState({ ...state, version, scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null });
+    case 'look-and-feel-updated':
+      if (state.phase !== 'ready' || state.lookAndFeel === event.lookAndFeel) {
+        return state;
+      }
+      return freezeState({ ...state, version, lookAndFeel: event.lookAndFeel });
     case 'revisions-updated':
       if (state.phase !== 'ready') {
         return state;
@@ -625,6 +639,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         permissions: null,
         collaborativeUsers: null,
         scheduler: null,
+        lookAndFeel: 'default',
         revisions: Object.freeze([]),
         ...emptyParagraphState(),
         error: event.error

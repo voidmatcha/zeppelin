@@ -136,6 +136,7 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Notebook',
+      lookAndFeel: 'simple',
       paragraphs: []
     });
     runtime.apply({ type: 'collaboration-updated', users: ['alice', 'bob'] });
@@ -311,7 +312,6 @@ describe('NotebookCoreAdapter', () => {
     render(
       <NotebookCoreAdapter
         core={runtime.port}
-        lookAndFeel="simple"
         onShowShortcut={onShowShortcut}
         onLookAndFeelChange={onLookAndFeelChange}
       />
