@@ -189,6 +189,7 @@ export const NotebookCoreAdapter = ({
               <NotebookMonacoEditor
                 ariaLabel={`Paragraph ${index + 1} editor`}
                 disabled={!canEdit || paragraph.status === 'RUNNING'}
+                language={paragraph.language}
                 value={paragraphDrafts[paragraph.id] ?? paragraph.text}
                 onChange={text => {
                   setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));

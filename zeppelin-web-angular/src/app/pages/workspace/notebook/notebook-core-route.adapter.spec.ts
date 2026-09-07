@@ -67,6 +67,17 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0].resultConfigs).toEqual({ '0': { graph: { mode: 'lineChart' } } });
   });
 
+  it('maps the existing paragraph editor language into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.paragraphs[0].config.editorSetting!.language = 'sql';
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].language).toBe('sql');
+  });
+
   it('maps a progress event into the Core paragraph snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote('RUNNING');
