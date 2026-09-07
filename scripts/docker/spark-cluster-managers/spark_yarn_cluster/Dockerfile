@@ -29,7 +29,7 @@ ENV HADOOP_VERSION=${HADOOP_VERSION} \
     HADOOP_YARN_HOME=/usr/local/hadoop \
     HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop \
     YARN_CONF_DIR=/usr/local/hadoop/etc/hadoop \
-    PATH=${PATH}:/usr/local/hadoop/bin
+    PATH=${PATH}:${SPARK_HOME}/bin:/usr/local/hadoop/bin
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -42,14 +42,26 @@ RUN apt-get update \
     && mkdir -p /run/sshd /root/.ssh
 
 # hadoop
-RUN case "$TARGETARCH" in \
+RUN BUILD_ARCH="$TARGETARCH" \
+    && if [ -z "$BUILD_ARCH" ]; then \
+         case "$(uname -m)" in \
+           x86_64) BUILD_ARCH=amd64 ;; \
+           aarch64|arm64) BUILD_ARCH=arm64 ;; \
+         esac; \
+       fi \
+    && case "$BUILD_ARCH" in \
       amd64) HADOOP_ARCHIVE="hadoop-$HADOOP_VERSION.tar.gz" ;; \
       arm64) HADOOP_ARCHIVE="hadoop-$HADOOP_VERSION-aarch64.tar.gz" ;; \
-      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+      *) echo "Unsupported architecture: ${BUILD_ARCH:-$(uname -m)}" >&2; exit 1 ;; \
     esac \
-    && HADOOP_URL="https://archive.apache.org/dist/hadoop/common/hadoop-$HADOOP_VERSION/$HADOOP_ARCHIVE" \
-    && curl -fL "$HADOOP_URL" -o "/tmp/$HADOOP_ARCHIVE" \
-    && curl -fL "$HADOOP_URL.sha512" -o "/tmp/$HADOOP_ARCHIVE.sha512" \
+    && HADOOP_PATH="hadoop/common/hadoop-$HADOOP_VERSION/$HADOOP_ARCHIVE" \
+    && HADOOP_URL="https://downloads.apache.org/$HADOOP_PATH" \
+    && HADOOP_ARCHIVE_URL="https://archive.apache.org/dist/$HADOOP_PATH" \
+    && CURL_OPTS="-fL --retry 3 --retry-delay 5 --connect-timeout 30 --speed-limit 1024 --speed-time 60" \
+    && { curl $CURL_OPTS "$HADOOP_URL" -o "/tmp/$HADOOP_ARCHIVE" \
+         || curl $CURL_OPTS "$HADOOP_ARCHIVE_URL" -o "/tmp/$HADOOP_ARCHIVE"; } \
+    && { curl $CURL_OPTS "$HADOOP_ARCHIVE_URL.sha512" -o "/tmp/$HADOOP_ARCHIVE.sha512" \
+         || curl $CURL_OPTS "$HADOOP_URL.sha512" -o "/tmp/$HADOOP_ARCHIVE.sha512"; } \
     && HADOOP_SHA512="$(sed -n 's/^SHA512 ([^)]*) = \([[:xdigit:]]\{128\}\)$/\1/p' "/tmp/$HADOOP_ARCHIVE.sha512")" \
     && test -n "$HADOOP_SHA512" \
     && echo "$HADOOP_SHA512  /tmp/$HADOOP_ARCHIVE" | sha512sum -c - \

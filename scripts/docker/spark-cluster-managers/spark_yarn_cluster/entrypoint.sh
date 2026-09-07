@@ -31,15 +31,13 @@ for cp in ${ACP_URLS//,/ }; do
 done
 cd - > /dev/null
 
-cp "$SPARK_HOME/conf/metrics.properties.template" "$SPARK_HOME/conf/metrics.properties" || true
-
 # start hadoop
 service ssh start
 "$HADOOP_PREFIX/sbin/start-dfs.sh"
 "$HADOOP_PREFIX/sbin/start-yarn.sh"
 
-"$HADOOP_PREFIX/bin/hdfs" dfsadmin -safemode leave \
-  && "$HADOOP_PREFIX/bin/hdfs" dfs -mkdir -p /spark
+"$HADOOP_PREFIX/bin/hdfs" dfsadmin -safemode leave
+"$HADOOP_PREFIX/bin/hdfs" dfs -mkdir -p /spark
 if ! "$HADOOP_PREFIX/bin/hdfs" dfs -test -e /spark/.jars-upload-complete; then
   "$HADOOP_PREFIX/bin/hdfs" dfs -rm -r -f /spark/jars
   "$HADOOP_PREFIX/bin/hdfs" dfs -put "$SPARK_HOME/jars" /spark
