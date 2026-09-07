@@ -598,6 +598,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onRevisionSelect: revisionId => this.selectReactRevision(revisionId),
       onCheckpointNotebook: message => this.note && this.messageService.checkpointNote(this.note.id, message),
       onSetNotebookRevision: () => this.setReactNotebookRevision(),
+      scheduler: this.note?.config.isZeppelinNotebookCronEnable
+        ? {
+            cron: this.note.config.cron,
+            releaseResource: Boolean(this.note.config.releaseresource)
+          }
+        : undefined,
+      onScheduleChange: schedule => this.setReactSchedule(schedule),
+      collaborativeUsers: this.collaborativeMode ? this.collaborativeModeUsers : undefined,
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
@@ -699,6 +707,27 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
     this.note.config.looknfeel = lookAndFeel;
     this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
+  }
+
+  private setReactSchedule(schedule: { cron?: string; releaseResource: boolean }): void {
+    if (!this.note || this.viewOnly || this.revisionView || this.noteStatusService.isTrash(this.note)) {
+      return;
+    }
+    if (schedule.cron) {
+      if (!this.note.config.cronExecutingUser) {
+        this.note.config.cronExecutingUser = this.ticketService.ticket.principal;
+      }
+      if (!this.note.config.cronExecutingRoles) {
+        this.note.config.cronExecutingRoles = this.ticketService.ticket.roles;
+      }
+    } else {
+      this.note.config.cronExecutingUser = '';
+      this.note.config.cronExecutingRoles = '';
+    }
+    this.note.config.cron = schedule.cron;
+    this.note.config.releaseresource = schedule.releaseResource;
+    this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
+    this.refreshCoreProofReactProps();
   }
 
   private showReactShortcut(): void {

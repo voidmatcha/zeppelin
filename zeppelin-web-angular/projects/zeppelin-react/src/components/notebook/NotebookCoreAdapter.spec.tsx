@@ -323,6 +323,36 @@ describe('NotebookCoreAdapter', () => {
     expect(onSetNotebookRevision).toHaveBeenCalledTimes(1);
   });
 
+  it('delegates scheduler configuration and shows host collaboration state', () => {
+    const onScheduleChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+
+    render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        collaborativeUsers={[]}
+        scheduler={{ cron: '0 0/5 * * * ?', releaseResource: false }}
+        onScheduleChange={onScheduleChange}
+      />
+    );
+
+    expect(screen.getByLabelText('Collaborators').textContent).toBe('Collaborators: 0');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Cron expression' }), {
+      target: { value: '0 0 0/1 * * ?' }
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Release interpreter after schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(onScheduleChange).toHaveBeenCalledWith({ cron: '0 0 0/1 * * ?', releaseResource: true });
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });

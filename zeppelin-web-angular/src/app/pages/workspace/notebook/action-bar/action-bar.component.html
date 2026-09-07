@@ -267,7 +267,7 @@
         }
       </nz-space-compact>
     }
-    @if (collaborativeMode) {
+    @if (collaborativeMode && !reactNotebook) {
       <nz-space-compact nzSize="small">
         <button
           nz-button
@@ -280,7 +280,7 @@
         </button>
       </nz-space-compact>
     }
-    @if (note.config.isZeppelinNotebookCronEnable && !viewOnly) {
+    @if (note.config.isZeppelinNotebookCronEnable && !viewOnly && !reactNotebook) {
       <nz-space-compact nzSize="small">
         <button
           nz-button
