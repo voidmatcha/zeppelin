@@ -445,7 +445,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('opens existing notebook extensions from React controls', async ({ page }) => {
+  test('opens existing notebook extensions and revision controls from React', async ({ page }) => {
+    const sentOperations = observeSentOperations(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -468,6 +469,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'info-circle' })
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
+      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' })).toHaveValue('Head');
       await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill('%python');
       await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
       await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
@@ -488,6 +490,11 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await reactNotebook.getByRole('button', { name: 'Revisions' }).click();
       await expect(page.locator('zeppelin-notebook-revisions-comparator')).toBeVisible();
+
+      await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React route checkpoint');
+      await reactNotebook.getByRole('button', { name: 'Checkpoint' }).click();
+      await expect.poll(() => sentOperations.filter(operation => operation === 'CHECKPOINT_NOTE').length).toBe(1);
+      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' }).locator('option')).toHaveCount(2);
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);

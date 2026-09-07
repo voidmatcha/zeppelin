@@ -357,6 +357,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         this.currentRevision = 'Head';
       }
     }
+    this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
   }
 
@@ -587,6 +588,16 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       lookAndFeel: this.note?.config.looknfeel,
       onLookAndFeelChange: lookAndFeel => this.setReactLookAndFeel(lookAndFeel),
       onShowShortcut: () => this.showReactShortcut(),
+      revisions: this.noteRevisions.map(revision => ({
+        id: revision.id,
+        message: revision.message,
+        time: revision.time
+      })),
+      currentRevision: this.activatedRoute.snapshot.params.revisionId ?? 'Head',
+      revisionView: this.revisionView,
+      onRevisionSelect: revisionId => this.selectReactRevision(revisionId),
+      onCheckpointNotebook: message => this.note && this.messageService.checkpointNote(this.note.id, message),
+      onSetNotebookRevision: () => this.setReactNotebookRevision(),
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
@@ -613,6 +624,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (this.activatedExtension === 'interpreter' && this.note) {
       this.messageService.getInterpreterBindings(this.note.id);
     }
+    this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
   }
 
@@ -694,6 +706,29 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       nzTitle: 'Shortcut Info',
       nzWidth: '600px',
       nzContent: ShortcutComponent
+    });
+  }
+
+  private selectReactRevision(revisionId: string): void {
+    if (!this.note) {
+      return;
+    }
+    if (revisionId === 'Head') {
+      this.router.navigate(['/notebook', this.note.id]).then();
+      return;
+    }
+    this.router.navigate(['/notebook', this.note.id, 'revision', revisionId]).then();
+  }
+
+  private setReactNotebookRevision(): void {
+    const revisionId = this.activatedRoute.snapshot.params.revisionId;
+    if (!this.note || !revisionId) {
+      return;
+    }
+    this.nzModalService.confirm({
+      nzTitle: 'Set revision',
+      nzContent: 'Set notebook head to current revision?',
+      nzOnOk: () => this.messageService.setNoteRevision(this.note!.id, revisionId)
     });
   }
 
