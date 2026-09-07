@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-import { editor } from 'monaco-editor';
+import { editor, KeyCode, KeyMod } from 'monaco-editor';
 import { useEffect, useRef } from 'react';
 
 export type NotebookMonacoEditorProps = Readonly<{
@@ -20,17 +20,25 @@ export type NotebookMonacoEditorProps = Readonly<{
   disabled: boolean;
   value: string;
   onChange: (value: string) => void;
+  onRun?: () => void;
 }>;
 
-export const NotebookMonacoEditor = ({ ariaLabel, disabled, value, onChange }: NotebookMonacoEditorProps) => {
+export const NotebookMonacoEditor = ({ ariaLabel, disabled, value, onChange, onRun }: NotebookMonacoEditorProps) => {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<editor.IStandaloneCodeEditor | null>(null);
   const initialOptions = useRef({ ariaLabel, disabled, value });
   const onChangeRef = useRef(onChange);
+  const onRunRef = useRef(onRun);
+  const disabledRef = useRef(disabled);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onRunRef.current = onRun;
+    disabledRef.current = disabled;
+  }, [onRun, disabled]);
 
   useEffect(() => {
     if (!host.current) {
@@ -66,6 +74,24 @@ export const NotebookMonacoEditor = ({ ariaLabel, disabled, value, onChange }: N
   useEffect(() => {
     instance.current?.updateOptions({ ariaLabel, readOnly: disabled });
   }, [ariaLabel, disabled]);
+
+  useEffect(() => {
+    const nextInstance = instance.current;
+    if (!nextInstance) {
+      return;
+    }
+    const action = nextInstance.addAction({
+      id: 'zeppelin-notebook-run-paragraph',
+      keybindings: [KeyMod.Shift | KeyCode.Enter],
+      label: 'Run paragraph',
+      run: () => {
+        if (!disabledRef.current) {
+          onRunRef.current?.();
+        }
+      }
+    });
+    return () => action.dispose();
+  }, []);
 
   return <div className="zeppelin-react-notebook-editor" ref={host} />;
 };
