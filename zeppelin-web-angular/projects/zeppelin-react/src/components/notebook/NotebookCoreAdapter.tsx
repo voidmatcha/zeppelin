@@ -36,6 +36,9 @@ export const NotebookCoreAdapter = ({
   onCloneNotebook,
   onExportNotebook,
   onReloadNotebook,
+  canTogglePersonalizedMode: hostCanTogglePersonalizedMode = false,
+  personalizedMode = false,
+  onTogglePersonalizedMode,
   onExtensionChange,
   onNoteFormsChange,
   readOnly = false
@@ -64,6 +67,7 @@ export const NotebookCoreAdapter = ({
   const hasRunningParagraph = snapshot.paragraphs.some(
     paragraph => paragraph.status === 'PENDING' || paragraph.status === 'RUNNING'
   );
+  const canTogglePersonalizedMode = hostCanTogglePersonalizedMode && !hasRunningParagraph;
 
   const dispatch = (
     type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph',
@@ -138,6 +142,11 @@ export const NotebookCoreAdapter = ({
         <button type="button" onClick={onExportNotebook}>
           Export notebook
         </button>
+        {canTogglePersonalizedMode ? (
+          <button type="button" onClick={onTogglePersonalizedMode}>
+            {personalizedMode ? 'Switch to collaboration mode' : 'Switch to personal mode'}
+          </button>
+        ) : null}
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
           Interpreter settings
         </button>
