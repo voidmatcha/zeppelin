@@ -98,6 +98,9 @@ export type NotebookCoreRemoteProps = Readonly<{
   canTogglePersonalizedMode?: boolean;
   personalizedMode?: boolean;
   onTogglePersonalizedMode?: () => void;
+  canDeleteNotebook?: boolean;
+  isTrashedNotebook?: boolean;
+  onDeleteNotebook?: () => void;
   onExtensionChange?: (extension: 'interpreter' | 'permissions' | 'revisions' | 'hide') => void;
   onNoteFormsChange?: (params: NotebookFormParams) => void;
   onParagraphResultConfigChange?: (
