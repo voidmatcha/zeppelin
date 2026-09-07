@@ -72,6 +72,7 @@ export type NotebookCoreCommand =
   | Readonly<{ type: 'cancel-paragraph'; paragraphId: string }>
   | Readonly<{ type: 'run-all-paragraphs' }>
   | Readonly<{ type: 'cancel-all-paragraphs' }>
+  | Readonly<{ type: 'clear-all-paragraph-output' }>
   | Readonly<{ type: 'commit-paragraph'; paragraphId: string }>
   | Readonly<{ type: 'patch-paragraph'; paragraphId: string; patch: string }>;
 

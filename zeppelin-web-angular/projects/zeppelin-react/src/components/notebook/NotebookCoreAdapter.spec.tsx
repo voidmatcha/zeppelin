@@ -93,6 +93,9 @@ describe('NotebookCoreAdapter', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run all' }));
     expect(dispatchCommand).toHaveBeenLastCalledWith({ type: 'run-all-paragraphs' });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all output' }));
+    expect(dispatchCommand).toHaveBeenLastCalledWith({ type: 'clear-all-paragraph-output' });
+
     act(() => {
       runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', status: 'RUNNING' });
     });
@@ -115,6 +118,7 @@ describe('NotebookCoreAdapter', () => {
 
     expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Run all' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Clear all output' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('keeps a local title draft until a Core title update arrives', () => {
