@@ -69,6 +69,32 @@ describe('NotebookCoreAdapter', () => {
     expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('keeps a local title draft until a Core title update arrives', () => {
+    const onNotebookTitleChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Original title',
+      paragraphs: []
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onNotebookTitleChange={onNotebookTitleChange} />);
+
+    const title = screen.getByRole('textbox', { name: 'Notebook title' }) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: 'Local title' } });
+    fireEvent.blur(title);
+    expect(title.value).toBe('Local title');
+    expect(onNotebookTitleChange).toHaveBeenCalledWith('Local title');
+
+    act(() => {
+      runtime.apply({ type: 'note-updated', title: 'Remote title' });
+    });
+    expect(title.value).toBe('Remote title');
+  });
+
   it('honors the host read-only capability for notebook mutations', () => {
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
