@@ -142,6 +142,19 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     });
   });
 
+  it('maps the existing scheduler configuration into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.config = { isZeppelinNotebookCronEnable: true, cron: '0 0/5 * * * ?', releaseresource: true };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.port.getSnapshot().scheduler).toEqual({ cron: '0 0/5 * * * ?', releaseResource: true });
+
+    adapter.acceptSchedule(null);
+    expect(adapter.port.getSnapshot().scheduler).toBeUndefined();
+  });
+
   it('commits an updated result configuration through the existing paragraph contract', () => {
     const commitParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);

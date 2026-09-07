@@ -729,6 +729,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
     this.note.config.cron = schedule.cron;
     this.note.config.releaseresource = schedule.releaseResource;
+    this.notebookCoreRouteAdapter.acceptSchedule(schedule.cron ? schedule : null);
     this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
     this.refreshCoreProofReactProps();
   }

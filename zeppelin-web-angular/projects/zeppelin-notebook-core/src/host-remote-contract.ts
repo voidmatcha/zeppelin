@@ -79,6 +79,7 @@ export type NotebookCoreSnapshot = Readonly<{
   noteParams: NotebookFormParams;
   permissions?: NotebookPermissions;
   collaborativeUsers?: readonly string[];
+  scheduler?: NotebookSchedule;
   paragraphs: readonly NotebookParagraphSnapshot[];
   error: string | null;
 }>;

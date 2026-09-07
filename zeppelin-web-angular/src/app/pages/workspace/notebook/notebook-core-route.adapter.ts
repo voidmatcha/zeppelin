@@ -20,7 +20,8 @@ import {
   type NotebookDynamicForms,
   type NotebookFormParams,
   type NotebookParagraphStatus,
-  type NotebookPermissions
+  type NotebookPermissions,
+  type NotebookSchedule
 } from '@zeppelin/notebook-core';
 import type { Note, ParagraphConfigResult } from '@zeppelin/sdk';
 import { MessageService } from '@zeppelin/services';
@@ -64,6 +65,14 @@ const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   resultConfigs: paragraph.config?.results
 });
 
+const toNotebookSchedule = (note: LoadedNote): NotebookSchedule | undefined =>
+  note.config?.isZeppelinNotebookCronEnable
+    ? {
+        cron: note.config?.cron,
+        releaseResource: Boolean(note.config?.releaseresource)
+      }
+    : undefined;
+
 @Injectable()
 export class NotebookCoreRouteAdapter {
   readonly port: NotebookCorePort;
@@ -96,6 +105,7 @@ export class NotebookCoreRouteAdapter {
       title: note.name,
       noteForms: note.noteForms as NotebookDynamicForms | undefined,
       noteParams: note.noteParams as NotebookFormParams | undefined,
+      scheduler: toNotebookSchedule(note),
       paragraphs: note.paragraphs.map(toParagraphSnapshot)
     });
     if (!accepted) {
@@ -224,6 +234,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptCollaborativeModeStatus(users: readonly string[] | null): void {
     this.runtime.apply({ type: 'collaboration-updated', users });
+  }
+
+  acceptSchedule(schedule: NotebookSchedule | null): void {
+    this.runtime.apply({ type: 'schedule-updated', scheduler: schedule });
   }
 
   updateParagraphResultConfig(paragraphId: string, resultIndex: number, resultConfig: ParagraphConfigResult): boolean {

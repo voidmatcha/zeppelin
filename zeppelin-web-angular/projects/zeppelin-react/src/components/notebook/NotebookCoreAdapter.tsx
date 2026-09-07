@@ -60,13 +60,14 @@ export const NotebookCoreAdapter = ({
   readOnly = false
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
+  const coreScheduler = snapshot.scheduler ?? scheduler;
   const hostTheme = useHostThemeMode();
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
   const [searchTerm, setSearchTerm] = useState('');
   const [checkpointMessage, setCheckpointMessage] = useState('');
-  const [cronDraft, setCronDraft] = useState(scheduler?.cron ?? '');
-  const [releaseResourceDraft, setReleaseResourceDraft] = useState(scheduler?.releaseResource ?? false);
+  const [cronDraft, setCronDraft] = useState(coreScheduler?.cron ?? '');
+  const [releaseResourceDraft, setReleaseResourceDraft] = useState(coreScheduler?.releaseResource ?? false);
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
@@ -80,9 +81,9 @@ export const NotebookCoreAdapter = ({
     setParagraphDrafts(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text])));
   }, [snapshot.noteId, snapshot.paragraphs]);
   useEffect(() => {
-    setCronDraft(scheduler?.cron ?? '');
-    setReleaseResourceDraft(scheduler?.releaseResource ?? false);
-  }, [scheduler?.cron, scheduler?.releaseResource]);
+    setCronDraft(coreScheduler?.cron ?? '');
+    setReleaseResourceDraft(coreScheduler?.releaseResource ?? false);
+  }, [coreScheduler?.cron, coreScheduler?.releaseResource]);
   const canRun = (paragraph: (typeof snapshot.paragraphs)[number]): boolean =>
     canEdit &&
     snapshot.phase === 'ready' &&
@@ -233,7 +234,7 @@ export const NotebookCoreAdapter = ({
             ) : null}
           </>
         ) : null}
-        {scheduler ? (
+        {coreScheduler ? (
           <label>
             Scheduler
             <input
