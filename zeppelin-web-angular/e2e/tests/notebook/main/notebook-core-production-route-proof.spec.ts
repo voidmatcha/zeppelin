@@ -85,6 +85,7 @@ const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
 };
 
 const notebookWriteOperations = new Set(['PATCH_PARAGRAPH', 'COMMIT_PARAGRAPH', 'RUN_PARAGRAPH']);
+const coldInterpreterExecutionTimeout = 90000;
 
 test.describe('Notebook Core production route feasibility proof', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
@@ -352,7 +353,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
       await page.getByRole('button', { name: 'Run', exact: true }).click();
-      await expect(reactNotebook.getByTestId('react-notebook-core-results')).toContainText(marker, { timeout: 30000 });
+      await expect(reactNotebook.getByTestId('react-notebook-core-results')).toContainText(marker, {
+        timeout: coldInterpreterExecutionTimeout
+      });
       await expect(reactNotebook.getByRole('article', { name: 'Paragraph 1' })).toContainText('FINISHED', {
         timeout: 60000
       });
