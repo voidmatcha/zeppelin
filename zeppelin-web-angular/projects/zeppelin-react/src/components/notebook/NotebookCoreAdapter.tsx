@@ -252,7 +252,12 @@ export const NotebookCoreAdapter = ({
                         <SingleResultRenderer
                           config={paragraph.resultConfigs as ParagraphConfigResults | undefined}
                           index={resultIndex}
-                          onConfigChange={config => onParagraphResultConfigChange?.(paragraph.id, resultIndex, config)}
+                          modeChangeDisabled={!canEdit}
+                          onConfigChange={
+                            canEdit
+                              ? config => onParagraphResultConfigChange?.(paragraph.id, resultIndex, config)
+                              : undefined
+                          }
                           result={toRenderedResult(result.type, result.data)}
                         />
                       ) : (

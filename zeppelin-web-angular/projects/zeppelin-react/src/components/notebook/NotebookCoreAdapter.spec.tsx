@@ -163,7 +163,14 @@ describe('NotebookCoreAdapter', () => {
         }
       },
       noteParams: { region: 'us-east-1' },
-      paragraphs: [{ id: 'paragraph-1', text: '%python\nprint(1)', status: 'READY' }]
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          text: '%python\nprint(1)',
+          status: 'READY',
+          results: [{ type: 'TABLE', data: 'name\tvalue\nZeppelin\t1' }]
+        }
+      ]
     });
 
     render(<NotebookCoreAdapter core={runtime.port} readOnly />);
@@ -174,6 +181,7 @@ describe('NotebookCoreAdapter', () => {
     expect((screen.getByRole('button', { name: 'Add below' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /Line Chart$/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('renders note forms and sends changed values through the host callback', () => {
