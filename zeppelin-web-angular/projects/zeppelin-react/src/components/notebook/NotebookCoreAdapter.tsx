@@ -57,6 +57,7 @@ export const NotebookCoreAdapter = ({
   onRevisionSelect,
   onCheckpointNotebook,
   onSetNotebookRevision,
+  onRevisionCompare,
   scheduler,
   onScheduleChange,
   collaborativeUsers,
@@ -85,6 +86,12 @@ export const NotebookCoreAdapter = ({
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [firstRevisionId, setFirstRevisionId] = useState('');
+  const [secondRevisionId, setSecondRevisionId] = useState('');
+  const [revisionComparison, setRevisionComparison] = useState<Awaited<ReturnType<NonNullable<typeof onRevisionCompare>>> | null>(null);
+  const [revisionComparisonError, setRevisionComparisonError] = useState<string | null>(null);
+  const [comparingRevisions, setComparingRevisions] = useState(false);
   const [permissionDraft, setPermissionDraft] = useState<NotebookPermissions | null>(snapshot.permissions ?? null);
   const [permissionSaveError, setPermissionSaveError] = useState<string | null>(null);
   const [savingPermissions, setSavingPermissions] = useState(false);
@@ -163,6 +170,20 @@ export const NotebookCoreAdapter = ({
       setPermissionSaveError('Unable to save permissions. Please try again.');
     } finally {
       setSavingPermissions(false);
+    }
+  };
+  const compareRevisions = async (): Promise<void> => {
+    if (!firstRevisionId || !secondRevisionId || !onRevisionCompare || firstRevisionId === secondRevisionId) {
+      return;
+    }
+    setComparingRevisions(true);
+    setRevisionComparisonError(null);
+    try {
+      setRevisionComparison(await onRevisionCompare(firstRevisionId, secondRevisionId));
+    } catch {
+      setRevisionComparisonError('Unable to compare revisions. Please try again.');
+    } finally {
+      setComparingRevisions(false);
     }
   };
 
@@ -332,6 +353,7 @@ export const NotebookCoreAdapter = ({
           type="button"
           onClick={() => {
             setPermissionsOpen(false);
+            setRevisionsOpen(false);
             onExtensionChange?.('interpreter');
           }}
         >
@@ -353,6 +375,9 @@ export const NotebookCoreAdapter = ({
           type="button"
           onClick={() => {
             setPermissionsOpen(false);
+            setRevisionsOpen(open => !open);
+            setRevisionComparison(null);
+            setRevisionComparisonError(null);
             onExtensionChange?.('revisions');
           }}
         >
@@ -390,6 +415,43 @@ export const NotebookCoreAdapter = ({
           >
             Cancel permissions
           </button>
+        </section>
+      ) : null}
+      {revisionsOpen ? (
+        <section aria-label="Notebook revision comparison">
+          <h2>Compare revisions</h2>
+          <label>
+            First revision
+            <select aria-label="First revision" value={firstRevisionId} onChange={event => setFirstRevisionId(event.target.value)}>
+              <option value="">Choose...</option>
+              {coreRevisions.map(revision => <option key={revision.id} value={revision.id ?? ''}>{revision.message}</option>)}
+            </select>
+          </label>
+          <label>
+            Second revision
+            <select aria-label="Second revision" value={secondRevisionId} onChange={event => setSecondRevisionId(event.target.value)}>
+              <option value="">Choose...</option>
+              {coreRevisions.map(revision => <option key={revision.id} value={revision.id ?? ''}>{revision.message}</option>)}
+            </select>
+          </label>
+          <button type="button" disabled={comparingRevisions || !firstRevisionId || firstRevisionId === secondRevisionId} onClick={() => void compareRevisions()}>
+            Compare revisions
+          </button>
+          {revisionComparisonError ? <p role="alert">{revisionComparisonError}</p> : null}
+          {revisionComparison ? (
+            <section aria-label="Revision comparison results">
+              {revisionComparison.secondParagraphs.map(paragraph => {
+                const firstParagraph = revisionComparison.firstParagraphs.find(candidate => candidate.id === paragraph.id);
+                return (
+                  <article key={paragraph.id} aria-label={`Revision paragraph ${paragraph.id}`}>
+                    <h3>{paragraph.title ?? paragraph.id}</h3>
+                    <pre>{firstParagraph?.text ?? ''}</pre>
+                    <pre>{paragraph.text}</pre>
+                  </article>
+                );
+              })}
+            </section>
+          ) : null}
         </section>
       ) : null}
       <nav aria-label="Notebook outline">

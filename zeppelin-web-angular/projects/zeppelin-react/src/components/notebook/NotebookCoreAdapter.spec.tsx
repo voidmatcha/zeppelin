@@ -287,6 +287,42 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.queryByRole('region', { name: 'Notebook permissions' })).toBeNull();
   });
 
+  it('compares revisions through the host without a React WebSocket client', async () => {
+    const onRevisionCompare = vi.fn(async () => ({
+      firstRevisionId: 'revision-1',
+      secondRevisionId: 'revision-2',
+      firstParagraphs: [{ id: 'paragraph-1', text: 'before' }],
+      secondParagraphs: [{ id: 'paragraph-1', text: 'after' }]
+    }));
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: []
+    });
+    runtime.apply({
+      type: 'revisions-updated',
+      revisions: [
+        { id: 'revision-1', message: 'First revision' },
+        { id: 'revision-2', message: 'Second revision' }
+      ]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onRevisionCompare={onRevisionCompare} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Revisions' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'First revision' }), { target: { value: 'revision-1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Second revision' }), { target: { value: 'revision-2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Compare revisions' }));
+
+    await act(async () => undefined);
+    expect(onRevisionCompare).toHaveBeenCalledWith('revision-1', 'revision-2');
+    expect(screen.getByRole('region', { name: 'Revision comparison results' }).textContent).toContain('before');
+    expect(screen.getByRole('region', { name: 'Revision comparison results' }).textContent).toContain('after');
+  });
+
   it('exposes the personalized-mode switch only when the host grants that capability', () => {
     const onTogglePersonalizedMode = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });

@@ -55,6 +55,19 @@ export type NotebookPermissions = Readonly<{
   runners: readonly string[];
 }>;
 
+export type NotebookRevisionParagraph = Readonly<{
+  id: string;
+  text: string;
+  title?: string;
+}>;
+
+export type NotebookRevisionComparison = Readonly<{
+  firstRevisionId: string;
+  secondRevisionId: string;
+  firstParagraphs: readonly NotebookRevisionParagraph[];
+  secondParagraphs: readonly NotebookRevisionParagraph[];
+}>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
@@ -138,6 +151,7 @@ export type NotebookCoreRemoteProps = Readonly<{
   onRevisionSelect?: (revisionId: string) => void;
   onCheckpointNotebook?: (message: string) => void;
   onSetNotebookRevision?: () => void;
+  onRevisionCompare?: (firstRevisionId: string, secondRevisionId: string) => Promise<NotebookRevisionComparison>;
   scheduler?: NotebookSchedule;
   onScheduleChange?: (schedule: NotebookSchedule) => void;
   collaborativeUsers?: readonly string[];
