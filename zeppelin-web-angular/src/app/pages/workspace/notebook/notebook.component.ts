@@ -826,6 +826,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         if (!connected) {
           return;
         }
+        this.notebookCoreRouteAdapter.reloadCurrentRoute();
         this.requestCurrentNote();
         this.cdr.markForCheck();
         const { noteId } = params;

@@ -56,6 +56,22 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     );
   });
 
+  it('clears the current snapshot before requesting a reconnect snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.reloadCurrentRoute();
+
+    expect(adapter.port.getSnapshot()).toMatchObject({
+      noteId: note.id,
+      phase: 'loading',
+      title: null,
+      paragraphs: []
+    });
+  });
+
   it('maps Core notebook-wide execution and cancellation to existing SDK messages', () => {
     const runAllParagraphs = vi.fn();
     const cancelAllParagraphs = vi.fn();
