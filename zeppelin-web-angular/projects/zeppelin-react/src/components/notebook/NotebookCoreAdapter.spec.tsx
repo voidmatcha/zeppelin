@@ -42,9 +42,31 @@ vi.mock('./NotebookMonacoEditor', () => ({
   )
 }));
 
-import { NotebookCoreAdapter } from './NotebookCoreAdapter';
+import { mount, NotebookCoreAdapter } from './NotebookCoreAdapter';
 
 describe('NotebookCoreAdapter', () => {
+  it('mounts inside the host theme provider', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1', dispatchCommand: () => true });
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+    document.documentElement.setAttribute('data-theme', 'dark');
+
+    let handle: ReturnType<typeof mount>;
+    act(() => {
+      handle = mount(element, { core: runtime.port });
+    });
+
+    expect(element.querySelector('[data-testid="notebook-core-react-adapter"]')?.getAttribute('data-host-theme')).toBe(
+      'dark'
+    );
+
+    act(() => {
+      handle.unmount();
+    });
+    element.remove();
+    document.documentElement.removeAttribute('data-theme');
+  });
+
   it('projects the shared Core snapshot and dispatches a run command through its Port', () => {
     const dispatchCommand = vi.fn(() => true);
     const runtime = createNotebookCore({ noteId: 'note-1', dispatchCommand });
