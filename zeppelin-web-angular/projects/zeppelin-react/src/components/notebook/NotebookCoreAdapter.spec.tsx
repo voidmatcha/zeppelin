@@ -149,6 +149,21 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.queryByLabelText('Collaborators')).toBeNull();
   });
 
+  it('reads notebook permissions from the shared Core snapshot', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'note-loaded', noteId: 'note-1', revisionId: null, title: 'Notebook', paragraphs: [] });
+    runtime.apply({
+      type: 'permissions-updated',
+      permissions: { readers: [], owners: ['owner'], writers: [], runners: [] }
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(screen.getByRole('region', { name: 'React Notebook' }).getAttribute('data-permission-owner-count')).toBe(
+      '1'
+    );
+  });
+
   it('disables execution for revision snapshots', () => {
     const runtime = createNotebookCore({ noteId: 'note-1', revisionId: 'revision-1' });
     runtime.apply({ type: 'load-started' });

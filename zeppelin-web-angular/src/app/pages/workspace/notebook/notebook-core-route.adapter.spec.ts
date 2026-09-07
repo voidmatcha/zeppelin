@@ -126,6 +126,22 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().collaborativeUsers).toBeUndefined();
   });
 
+  it('maps the existing permissions response into the Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptPermissions({ readers: ['reader'], owners: ['owner'], writers: ['writer'], runners: ['runner'] });
+
+    expect(adapter.port.getSnapshot().permissions).toEqual({
+      readers: ['reader'],
+      owners: ['owner'],
+      writers: ['writer'],
+      runners: ['runner']
+    });
+  });
+
   it('commits an updated result configuration through the existing paragraph contract', () => {
     const commitParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);

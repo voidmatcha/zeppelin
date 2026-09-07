@@ -19,7 +19,8 @@ import {
   type NotebookCoreSnapshot,
   type NotebookDynamicForms,
   type NotebookFormParams,
-  type NotebookParagraphStatus
+  type NotebookParagraphStatus,
+  type NotebookPermissions
 } from '@zeppelin/notebook-core';
 import type { Note, ParagraphConfigResult } from '@zeppelin/sdk';
 import { MessageService } from '@zeppelin/services';
@@ -215,6 +216,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptNoteForms(noteForms: NotebookDynamicForms, noteParams: NotebookFormParams): void {
     this.runtime.apply({ type: 'note-forms-updated', noteForms, noteParams });
+  }
+
+  acceptPermissions(permissions: NotebookPermissions): void {
+    this.runtime.apply({ type: 'permissions-updated', permissions });
   }
 
   acceptCollaborativeModeStatus(users: readonly string[] | null): void {

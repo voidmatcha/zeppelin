@@ -46,6 +46,13 @@ export type NotebookSchedule = Readonly<{
   releaseResource: boolean;
 }>;
 
+export type NotebookPermissions = Readonly<{
+  readers: readonly string[];
+  owners: readonly string[];
+  writers: readonly string[];
+  runners: readonly string[];
+}>;
+
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
@@ -70,6 +77,7 @@ export type NotebookCoreSnapshot = Readonly<{
   title: string | null;
   noteForms: NotebookDynamicForms;
   noteParams: NotebookFormParams;
+  permissions?: NotebookPermissions;
   collaborativeUsers?: readonly string[];
   paragraphs: readonly NotebookParagraphSnapshot[];
   error: string | null;
