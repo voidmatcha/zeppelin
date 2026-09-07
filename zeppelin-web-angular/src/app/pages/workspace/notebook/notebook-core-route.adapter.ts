@@ -114,6 +114,7 @@ export class NotebookCoreRouteAdapter {
       noteParams: note.noteParams as NotebookFormParams | undefined,
       scheduler: toNotebookSchedule(note),
       lookAndFeel: toNotebookLookAndFeel(note),
+      personalizedMode: note.config?.personalizedMode === 'true',
       paragraphs: note.paragraphs.map(toParagraphSnapshot)
     });
     if (!accepted) {
@@ -250,6 +251,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptLookAndFeel(lookAndFeel: NotebookLookAndFeel): void {
     this.runtime.apply({ type: 'look-and-feel-updated', lookAndFeel });
+  }
+
+  acceptPersonalizedMode(personalizedMode: boolean): void {
+    this.runtime.apply({ type: 'personalized-mode-updated', personalizedMode });
   }
 
   acceptRevisions(revisions: readonly NotebookRevision[]): void {

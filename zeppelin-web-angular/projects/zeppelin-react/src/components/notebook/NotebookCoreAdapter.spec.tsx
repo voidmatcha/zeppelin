@@ -256,6 +256,7 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Notebook',
+      personalizedMode: true,
       paragraphs: []
     });
 
@@ -267,7 +268,6 @@ describe('NotebookCoreAdapter', () => {
       <NotebookCoreAdapter
         core={runtime.port}
         canTogglePersonalizedMode
-        personalizedMode
         onTogglePersonalizedMode={onTogglePersonalizedMode}
       />
     );
