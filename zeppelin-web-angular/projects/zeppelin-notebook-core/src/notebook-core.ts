@@ -15,6 +15,8 @@ import type {
   NotebookCorePort,
   NotebookCoreSnapshot,
   NotebookCoreSnapshotListener,
+  NotebookDynamicForms,
+  NotebookFormParams,
   NotebookParagraphInput,
   NotebookParagraphResult,
   NotebookParagraphSnapshot
@@ -28,6 +30,8 @@ export type NotebookCoreEvent =
       noteId: string;
       revisionId: string | null;
       title: string;
+      noteForms?: NotebookDynamicForms;
+      noteParams?: NotebookFormParams;
       paragraphs: readonly NotebookParagraphInput[];
     }>
   | Readonly<{ type: 'paragraph-added'; index: number; paragraph: NotebookParagraphInput }>
@@ -47,6 +51,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'paragraph-run-requested'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-run-rejected'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
+  | Readonly<{ type: 'note-forms-updated'; noteForms: NotebookDynamicForms; noteParams: NotebookFormParams }>
   | Readonly<{ type: 'load-failed'; noteId: string; revisionId: string | null; error: string }>;
 
 export type NotebookCoreRuntime = Readonly<{
@@ -78,6 +83,8 @@ type NotebookCoreState = Readonly<{
   revisionId: string | null;
   phase: NotebookCoreSnapshot['phase'];
   title: string | null;
+  noteForms: NotebookDynamicForms;
+  noteParams: NotebookFormParams;
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
   error: string | null;
@@ -91,6 +98,29 @@ type NotebookParagraphState = Readonly<{
 }>;
 
 const freezeParagraph = (paragraph: NotebookParagraphState): NotebookParagraphState => Object.freeze({ ...paragraph });
+
+const freezeFormValue = (value: NotebookFormParams[string]): NotebookFormParams[string] =>
+  Array.isArray(value) ? Object.freeze([...value]) : value;
+
+const freezeNoteForms = (forms: NotebookDynamicForms = {}): NotebookDynamicForms =>
+  Object.freeze(
+    Object.entries(forms).reduce<Record<string, (typeof forms)[string]>>((result, [name, form]) => {
+      result[name] = Object.freeze({
+        ...form,
+        defaultValue: freezeFormValue(form.defaultValue),
+        ...(form.options ? { options: Object.freeze(form.options.map(option => Object.freeze({ ...option }))) } : {})
+      });
+      return result;
+    }, {})
+  );
+
+const freezeNoteParams = (params: NotebookFormParams = {}): NotebookFormParams =>
+  Object.freeze(
+    Object.entries(params).reduce<Record<string, NotebookFormParams[string]>>((result, [name, value]) => {
+      result[name] = freezeFormValue(value);
+      return result;
+    }, {})
+  );
 
 const freezeParagraphSnapshot = (
   paragraph: NotebookParagraphInput,
@@ -120,6 +150,8 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     revisionId: state.revisionId,
     phase: state.phase,
     title: state.title,
+    noteForms: state.noteForms,
+    noteParams: state.noteParams,
     paragraphs: Object.freeze(state.paragraphOrder.map(paragraphId => state.paragraphsById[paragraphId].snapshot)),
     error: state.error
   });
@@ -156,6 +188,8 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     revisionId: route.revisionId ?? null,
     phase: 'idle',
     title: null,
+    noteForms: freezeNoteForms(),
+    noteParams: freezeNoteParams(),
     ...emptyParagraphState(),
     error: null
   });
@@ -187,6 +221,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         revisionId: event.revisionId,
         phase: 'idle',
         title: null,
+        noteForms: freezeNoteForms(),
+        noteParams: freezeNoteParams(),
         ...emptyParagraphState(),
         error: null
       });
@@ -196,6 +232,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         phase: 'loading',
         title: null,
+        noteForms: freezeNoteForms(),
+        noteParams: freezeNoteParams(),
         ...emptyParagraphState(),
         error: null
       });
@@ -208,6 +246,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         phase: 'ready',
         title: event.title,
+        noteForms: freezeNoteForms(event.noteForms),
+        noteParams: freezeNoteParams(event.noteParams),
         ...toParagraphState(event.paragraphs),
         error: null
       });
@@ -432,6 +472,16 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       return freezeState({ ...state, version, title: event.title });
+    case 'note-forms-updated':
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      return freezeState({
+        ...state,
+        version,
+        noteForms: freezeNoteForms(event.noteForms),
+        noteParams: freezeNoteParams(event.noteParams)
+      });
     case 'load-failed':
       if (event.noteId !== state.noteId || event.revisionId !== state.revisionId) {
         return state;
@@ -441,6 +491,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         phase: 'error',
         title: null,
+        noteForms: freezeNoteForms(),
+        noteParams: freezeNoteParams(),
         ...emptyParagraphState(),
         error: event.error
       });
