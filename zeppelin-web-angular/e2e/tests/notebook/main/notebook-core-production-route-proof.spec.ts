@@ -337,6 +337,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
+      await expect(page.locator('zeppelin-notebook-action-bar')).toHaveCount(1);
+      await expect(page.locator('zeppelin-notebook-sidebar')).toHaveCount(1);
 
       const title = page.getByRole('textbox', { name: 'Notebook title' });
       await title.fill(renamedTitle);
