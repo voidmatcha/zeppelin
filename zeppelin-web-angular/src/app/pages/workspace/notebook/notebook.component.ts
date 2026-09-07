@@ -451,6 +451,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   getPermissions(note: Exclude<Note['note'], undefined>) {
     this.securityService.getPermissions(note.id).subscribe(data => {
       this.permissions = data;
+      this.notebookCoreRouteAdapter.acceptPermissions(data);
       this.isOwner = !(
         this.permissions.owners.length && this.permissions.owners.indexOf(this.ticketService.ticket.principal) < 0
       );
