@@ -635,6 +635,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onSetNotebookRevision: () => this.setReactNotebookRevision(),
       onRevisionCompare: (firstRevisionId, secondRevisionId) =>
         this.compareReactRevisions(firstRevisionId, secondRevisionId),
+      interpreterBindings: this.interpreterBindings.map(binding => ({
+        id: binding.id,
+        name: binding.name,
+        selected: binding.selected
+      })),
+      onInterpreterBindingsChange: bindingIds => this.saveReactInterpreterBindings(bindingIds),
       scheduler: this.note?.config.isZeppelinNotebookCronEnable
         ? {
             cron: this.note.config.cron,
@@ -762,6 +768,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       firstParagraphs: paragraphs(first),
       secondParagraphs: paragraphs(second)
     };
+  }
+
+  private saveReactInterpreterBindings(bindingIds: readonly string[]): void {
+    if (!this.note) {
+      return;
+    }
+    this.messageService.saveInterpreterBindings(this.note.id, [...bindingIds]);
+    this.messageService.getInterpreterBindings(this.note.id);
   }
 
   private cloneReactNotebook(): void {
