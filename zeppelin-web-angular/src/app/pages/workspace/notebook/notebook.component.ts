@@ -268,6 +268,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   getCollaborativeModeStatus(data: MessageReceiveDataTypeMap[OP.COLLABORATIVE_MODE_STATUS]) {
     this.collaborativeMode = Boolean(data.status);
     this.collaborativeModeUsers = data.users;
+    this.notebookCoreRouteAdapter.acceptCollaborativeModeStatus(
+      this.collaborativeMode ? this.collaborativeModeUsers : null
+    );
     this.cdr.markForCheck();
   }
 
@@ -620,7 +623,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
           }
         : undefined,
       onScheduleChange: schedule => this.setReactSchedule(schedule),
-      collaborativeUsers: this.collaborativeMode ? this.collaborativeModeUsers : undefined,
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(

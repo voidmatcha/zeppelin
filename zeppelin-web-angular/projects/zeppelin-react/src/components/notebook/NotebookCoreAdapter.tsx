@@ -264,8 +264,10 @@ export const NotebookCoreAdapter = ({
             </button>
           </label>
         ) : null}
-        {collaborativeUsers !== undefined ? (
-          <span aria-label="Collaborators">Collaborators: {collaborativeUsers.length}</span>
+        {snapshot.collaborativeUsers !== undefined || collaborativeUsers !== undefined ? (
+          <span aria-label="Collaborators">
+            Collaborators: {(snapshot.collaborativeUsers ?? collaborativeUsers ?? []).length}
+          </span>
         ) : null}
         <button type="button" onClick={() => onExtensionChange?.('interpreter')}>
           Interpreter settings

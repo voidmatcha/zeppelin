@@ -70,6 +70,7 @@ export type NotebookCoreSnapshot = Readonly<{
   title: string | null;
   noteForms: NotebookDynamicForms;
   noteParams: NotebookFormParams;
+  collaborativeUsers?: readonly string[];
   paragraphs: readonly NotebookParagraphSnapshot[];
   error: string | null;
 }>;
