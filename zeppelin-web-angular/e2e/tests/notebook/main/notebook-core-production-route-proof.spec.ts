@@ -415,6 +415,44 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('runs all paragraphs from the React notebook through the existing socket operation', async ({ page }) => {
+    const sentOperations = observeSentOperations(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const marker = `react_run_all_${stamp}`;
+    const code = `%python\nprint("${marker}")`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactRunAll_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await editor.fill(code);
+      await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
+
+      await reactNotebook.getByRole('button', { name: 'Run all', exact: true }).click();
+      await expect(reactNotebook).toHaveAttribute('data-command-accepted', 'true');
+      await expect.poll(() => sentOperations.filter(operation => operation === 'RUN_ALL_PARAGRAPHS').length).toBe(1);
+      await expect(reactNotebook.getByTestId('react-notebook-core-results')).toContainText(marker, {
+        timeout: coldInterpreterExecutionTimeout
+      });
+      await expect(reactNotebook.getByRole('article', { name: 'Paragraph 1' })).toContainText('FINISHED', {
+        timeout: 60000
+      });
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('persists a React table visualization mode through the existing paragraph contract', async ({ page }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
