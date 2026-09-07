@@ -12,6 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# DEPRECATED: Apache Mesos moved to the Apache Attic and Spark removed Mesos
+# support in 4.0.0. This example is unmaintained and no longer builds: CentOS 7
+# reached end of life and its package mirrors were decommissioned.
 FROM centos:centos7
 
 ENV SPARK_PROFILE 2.4

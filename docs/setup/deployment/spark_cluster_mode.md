@@ -24,8 +24,8 @@ limitations under the License.
 <div id="toc"></div>
 
 ## Overview
-[Apache Spark](http://spark.apache.org/) has supported three cluster manager types([Standalone](http://spark.apache.org/docs/latest/spark-standalone.html), [Apache Mesos](http://spark.apache.org/docs/latest/running-on-mesos.html) and [Hadoop YARN](http://spark.apache.org/docs/latest/running-on-yarn.html)) so far.
-This document will guide you how you can build and configure the environment on 3 types of Spark cluster manager with Apache Zeppelin using [Docker](https://www.docker.com/) scripts.
+[Apache Spark](http://spark.apache.org/) has supported three cluster manager types([Standalone](https://spark.apache.org/docs/latest/spark-standalone.html), [Apache Mesos](https://spark.apache.org/docs/3.5.8/running-on-mesos.html) and [Hadoop YARN](https://spark.apache.org/docs/latest/running-on-yarn.html)) so far. Mesos support was removed in Spark 4.0.0.
+This document will guide you how you can build and configure the environment on the standalone and YARN cluster managers with Apache Zeppelin using [Docker](https://www.docker.com/) scripts. The Mesos example is kept for historical reference only.
 So [install docker](https://docs.docker.com/engine/installation/) on the machine first.
 
 ## Spark standalone mode
@@ -59,6 +59,8 @@ spark_standalone bash;
 ```
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
+
+The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_standalone bash -c "ps -ef"`. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Hadoop and Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
 
 ### 3. Configure Spark interpreter in Zeppelin
 Set Spark master as `spark://<hostname>:7077` in Zeppelin **Interpreters** setting page.
@@ -122,6 +124,8 @@ docker run -it \
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
 
+The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_yarn bash -c "ps -ef"`. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Hadoop and Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
+
 ### 3. Verify running Spark on YARN.
 
 You can simply verify the processes of Spark and YARN are running well in Docker with below command.
@@ -152,7 +156,12 @@ After running a single paragraph with Spark interpreter in Zeppelin, browse `htt
 
 
 ## Spark on Mesos mode
-You can simply set up [Spark on Mesos](http://spark.apache.org/docs/latest/running-on-mesos.html) docker environment with below steps.
+
+> **Deprecated.** Apache Mesos moved to the [Apache Attic](https://attic.apache.org/projects/mesos.html) and Spark removed Mesos support in 4.0.0.
+> The `spark_mesos` example below is unmaintained and no longer builds: it is based on CentOS 7, whose package mirrors were decommissioned at end of life.
+> Use the standalone or YARN examples above instead.
+
+The steps below are kept for historical reference. They describe how the [Spark on Mesos](https://spark.apache.org/docs/3.5.8/running-on-mesos.html) docker environment used to be set up.
 
 
 ### 1. Build Docker file
