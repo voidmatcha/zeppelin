@@ -115,4 +115,20 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByTestId('react-notebook-core-results').textContent).toContain('answer');
     expect(screen.getByTestId('react-notebook-core-result').querySelector('pre')).not.toBeNull();
   });
+
+  it('preserves unsupported Core output instead of dropping it', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Unknown result notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python', status: 'FINISHED', results: [{ type: 'NETWORK', data: 'graph' }] }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+
+    expect(screen.getByTestId('react-notebook-core-result').textContent).toContain('graph');
+  });
 });
