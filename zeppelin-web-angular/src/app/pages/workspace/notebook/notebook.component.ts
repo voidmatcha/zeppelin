@@ -340,6 +340,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.note.info = data.info;
     this.notebookCoreRouteAdapter.acceptNoteUpdated(data.name);
     this.initializeLookAndFeel(this.note);
+    this.notebookCoreRouteAdapter.acceptPersonalizedMode(this.note.config.personalizedMode === 'true');
     this.cdr.markForCheck();
   }
 
