@@ -31,6 +31,19 @@ for cp in ${ACP_URLS//,/ }; do
 done
 cd - > /dev/null
 
+# generate ssh keys at runtime so the image does not ship a shared private key
+if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+  ssh-keygen -A
+fi
+if [ ! -f /root/.ssh/id_rsa ]; then
+  ssh-keygen -q -N "" -t rsa -f /root/.ssh/id_rsa
+fi
+if [ ! -f /root/.ssh/authorized_keys ]; then
+  cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+fi
+chmod 700 /root/.ssh
+chmod 600 /root/.ssh/authorized_keys
+
 # start hadoop
 service ssh start
 "$HADOOP_PREFIX/sbin/start-dfs.sh"

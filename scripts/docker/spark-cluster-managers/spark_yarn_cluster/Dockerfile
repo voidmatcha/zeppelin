@@ -39,6 +39,7 @@ RUN apt-get update \
       procps \
       rsync \
     && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/ssh/ssh_host_* \
     && mkdir -p /run/sshd /root/.ssh
 
 # hadoop
@@ -85,11 +86,7 @@ RUN mkdir /data/
 RUN chmod 777 /data/
 RUN $HADOOP_PREFIX/bin/hdfs namenode -format
 
-# passwordless ssh
-RUN ssh-keygen -A
-RUN ssh-keygen -q -N "" -t rsa -f /root/.ssh/id_rsa
-RUN cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
-
+# passwordless ssh (keys are generated at runtime by entrypoint.sh)
 COPY ssh_config /root/.ssh/config
 RUN chmod 600 /root/.ssh/config
 RUN chown root:root /root/.ssh/config
