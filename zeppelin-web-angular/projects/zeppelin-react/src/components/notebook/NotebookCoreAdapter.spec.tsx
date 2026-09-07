@@ -20,18 +20,21 @@ vi.mock('./NotebookMonacoEditor', () => ({
     ariaLabel,
     disabled,
     language,
+    searchTerm,
     onChange,
     value
   }: {
     ariaLabel: string;
     disabled: boolean;
     language?: string;
+    searchTerm?: string;
     onChange: (value: string) => void;
     value: string;
   }) => (
     <textarea
       aria-label={ariaLabel}
       data-language={language}
+      data-search-term={searchTerm}
       disabled={disabled}
       onChange={event => onChange(event.target.value)}
       value={value}
@@ -237,6 +240,22 @@ describe('NotebookCoreAdapter', () => {
       runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: '%python\nprint("remote")' });
     });
     expect(editor.value).toBe('%python\nprint("remote")');
+  });
+
+  it('passes a React notebook search term to every Monaco editor', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%python\nprint("needle")', status: 'READY' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search notebook' }), { target: { value: 'needle' } });
+    expect(screen.getByRole('textbox', { name: 'Paragraph 1 editor' }).getAttribute('data-search-term')).toBe('needle');
   });
 
   it('honors the host read-only capability for notebook mutations', () => {
