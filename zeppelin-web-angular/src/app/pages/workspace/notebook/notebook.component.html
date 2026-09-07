@@ -70,7 +70,9 @@
         @if (
           activatedExtension !== 'hide' &&
           permissions &&
-          (!useReactNotebook || reactNotebookFailed || activatedExtension !== 'permissions')
+          (!useReactNotebook ||
+            reactNotebookFailed ||
+            (activatedExtension !== 'permissions' && activatedExtension !== 'revisions'))
         ) {
           <div class="extension-area">
             @switch (activatedExtension) {

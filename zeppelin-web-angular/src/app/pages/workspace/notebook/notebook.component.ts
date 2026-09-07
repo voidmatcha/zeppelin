@@ -24,7 +24,7 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { isNil } from 'lodash';
 import { combineLatest, firstValueFrom, Subject } from 'rxjs';
-import { distinctUntilChanged, distinctUntilKeyChanged, startWith, takeUntil } from 'rxjs/operators';
+import { distinctUntilChanged, distinctUntilKeyChanged, filter, startWith, take, takeUntil } from 'rxjs/operators';
 
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NzModalService } from 'ng-zorro-antd/modal';
@@ -37,6 +37,7 @@ import {
   type InterpreterBindingItem,
   type MessageReceiveDataTypeMap,
   type Note,
+  type NoteRevisionForCompareReceived,
   type ParagraphConfigResult,
   type ReceivedMessage,
   type RevisionListItem
@@ -56,7 +57,13 @@ import {
 import { NoteCreateComponent, ShortcutComponent } from '@zeppelin/share';
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
-import type { NotebookCoreRemoteProps, NotebookCoreSnapshot, NotebookPermissions } from '@zeppelin/notebook-core';
+import type {
+  NotebookCoreRemoteProps,
+  NotebookCoreSnapshot,
+  NotebookPermissions,
+  NotebookRevisionComparison,
+  NotebookRevisionParagraph
+} from '@zeppelin/notebook-core';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
 
@@ -626,6 +633,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onRevisionSelect: revisionId => this.selectReactRevision(revisionId),
       onCheckpointNotebook: message => this.note && this.messageService.checkpointNote(this.note.id, message),
       onSetNotebookRevision: () => this.setReactNotebookRevision(),
+      onRevisionCompare: (firstRevisionId, secondRevisionId) =>
+        this.compareReactRevisions(firstRevisionId, secondRevisionId),
       scheduler: this.note?.config.isZeppelinNotebookCronEnable
         ? {
             cron: this.note.config.cron,
@@ -720,6 +729,39 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.acceptPermissions(updated);
     this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
+  }
+
+  private async compareReactRevisions(
+    firstRevisionId: string,
+    secondRevisionId: string
+  ): Promise<NotebookRevisionComparison> {
+    if (!this.note) {
+      throw new Error('Notebook is not loaded.');
+    }
+    const receiveRevision = (position: 'first' | 'second') =>
+      firstValueFrom(
+        this.messageService.receive(OP.NOTE_REVISION_FOR_COMPARE).pipe(
+          filter((data: NoteRevisionForCompareReceived) => data.position === position),
+          take(1)
+        )
+      );
+    const firstResponse = receiveRevision('first');
+    const secondResponse = receiveRevision('second');
+    this.messageService.noteRevisionForCompare(this.note.id, firstRevisionId, 'first');
+    this.messageService.noteRevisionForCompare(this.note.id, secondRevisionId, 'second');
+    const [first, second] = await Promise.all([firstResponse, secondResponse]);
+    const paragraphs = (response: NoteRevisionForCompareReceived): readonly NotebookRevisionParagraph[] =>
+      (response.note?.paragraphs ?? []).map(paragraph => ({
+        id: paragraph.id,
+        text: paragraph.text ?? '',
+        ...(paragraph.title ? { title: paragraph.title } : {})
+      }));
+    return {
+      firstRevisionId,
+      secondRevisionId,
+      firstParagraphs: paragraphs(first),
+      secondParagraphs: paragraphs(second)
+    };
   }
 
   private cloneReactNotebook(): void {
