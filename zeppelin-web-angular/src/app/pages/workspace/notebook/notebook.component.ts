@@ -23,7 +23,7 @@ import {
 import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { isNil } from 'lodash';
-import { combineLatest, Subject } from 'rxjs';
+import { combineLatest, firstValueFrom, Subject } from 'rxjs';
 import { distinctUntilChanged, distinctUntilKeyChanged, startWith, takeUntil } from 'rxjs/operators';
 
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
@@ -56,7 +56,7 @@ import {
 import { NoteCreateComponent, ShortcutComponent } from '@zeppelin/share';
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
-import type { NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import type { NotebookCoreRemoteProps, NotebookCoreSnapshot, NotebookPermissions } from '@zeppelin/notebook-core';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
 
@@ -591,6 +591,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       readOnly: this.viewOnly,
       canEdit: this.canCurrentUserWrite(),
       canRun: this.canCurrentUserRun(),
+      canManagePermissions: this.isOwner && !this.viewOnly,
+      onPermissionsChange: permissions => this.saveReactPermissions(permissions),
       onParagraphTextChange: (paragraphId, text) =>
         this.notebookCoreRouteAdapter.updateParagraphText(paragraphId, text),
       onParagraphInsert: index => this.insertCoreParagraph(index),
@@ -698,6 +700,24 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (this.activatedExtension === 'interpreter' && this.note) {
       this.messageService.getInterpreterBindings(this.note.id);
     }
+    this.refreshCoreProofReactProps();
+    this.cdr.markForCheck();
+  }
+
+  private async saveReactPermissions(permissions: NotebookPermissions): Promise<void> {
+    if (!this.note) {
+      return;
+    }
+    const updated = await firstValueFrom(
+      this.securityService.setPermissions(this.note.id, {
+        readers: [...permissions.readers],
+        owners: [...permissions.owners],
+        writers: [...permissions.writers],
+        runners: [...permissions.runners]
+      })
+    );
+    this.permissions = updated;
+    this.notebookCoreRouteAdapter.acceptPermissions(updated);
     this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
   }

@@ -604,9 +604,11 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(page.locator('zeppelin-notebook-interpreter-binding')).toBeVisible();
 
       await reactNotebook.getByRole('button', { name: 'Permissions' }).click();
-      await expect(page.locator('zeppelin-notebook-permissions')).toBeVisible();
+      await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toBeVisible();
+      await expect(page.locator('zeppelin-notebook-permissions')).toHaveCount(0);
 
       await reactNotebook.getByRole('button', { name: 'Revisions' }).click();
+      await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toHaveCount(0);
       await expect(page.locator('zeppelin-notebook-revisions-comparator')).toBeVisible();
 
       await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React route checkpoint');
