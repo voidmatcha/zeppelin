@@ -48,6 +48,7 @@ const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
   text: paragraph.text ?? '',
   status: normalizeParagraphStatus(paragraph.status),
+  progress: 0,
   results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
   resultConfigs: paragraph.config?.results
 });
@@ -183,6 +184,10 @@ export class NotebookCoreRouteAdapter {
       paragraphId,
       status: normalizeParagraphStatus(status)
     });
+  }
+
+  acceptParagraphProgress(paragraphId: string, progress: number): void {
+    this.runtime.apply({ type: 'paragraph-progressed', paragraphId, progress });
   }
 
   acceptParagraphOutputUpdate(paragraphId: string, index: number, type: string, data: string): void {

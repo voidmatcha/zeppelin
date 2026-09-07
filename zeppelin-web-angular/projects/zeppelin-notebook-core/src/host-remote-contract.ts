@@ -39,12 +39,14 @@ export type NotebookParagraphSnapshot = Readonly<{
   id: string;
   text: string;
   status: NotebookParagraphStatus;
+  progress: number;
   isDirty: boolean;
   results?: readonly NotebookParagraphResult[];
   resultConfigs?: NotebookParagraphResultConfigs;
 }>;
 
-export type NotebookParagraphInput = Omit<NotebookParagraphSnapshot, 'isDirty'>;
+export type NotebookParagraphInput = Omit<NotebookParagraphSnapshot, 'isDirty' | 'progress'> &
+  Readonly<{ progress?: number }>;
 
 export type NotebookCorePhase = 'idle' | 'loading' | 'ready' | 'error';
 

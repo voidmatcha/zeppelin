@@ -183,6 +183,9 @@ export const NotebookCoreAdapter = ({
                 <strong>Paragraph {index + 1}</strong>
                 <span>{paragraph.status}</span>
               </header>
+              {paragraph.status === 'RUNNING' ? (
+                <progress aria-label={`Paragraph ${index + 1} progress`} max={100} value={paragraph.progress} />
+              ) : null}
               <NotebookMonacoEditor
                 ariaLabel={`Paragraph ${index + 1} editor`}
                 disabled={!canEdit || paragraph.status === 'RUNNING'}
