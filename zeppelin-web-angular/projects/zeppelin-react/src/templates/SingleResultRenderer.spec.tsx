@@ -12,10 +12,11 @@
 
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { DatasetType, ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import type { NotebookParagraphResult, NotebookParagraphResultConfigs } from '@zeppelin/notebook-core';
+import { DatasetType } from '@zeppelin/sdk';
 import { SingleResultRenderer } from './SingleResultRenderer';
 
-const result = (type: DatasetType, data: string): ParagraphIResultsMsgItem => ({ type, data });
+const result = (type: DatasetType, data: string): NotebookParagraphResult => ({ type, data });
 
 const TABLE_DATA = 'name\tage\nalice\t30';
 
@@ -23,7 +24,7 @@ const TABLE_DATA = 'name\tage\nalice\t30';
 const configs = {
   0: { graph: { mode: 'table' } },
   1: { graph: { mode: 'multiBarChart' } }
-} as unknown as ParagraphConfigResults;
+} as unknown as NotebookParagraphResultConfigs;
 
 describe('SingleResultRenderer', () => {
   it('renders TEXT as text, leaving markup in it literal', () => {

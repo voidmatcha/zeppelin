@@ -579,7 +579,12 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
       return () => listeners.delete(listener);
     },
     dispatch: command => {
-      if (command.type === 'cancel-paragraph' || command.type === 'patch-paragraph') {
+      if (
+        command.type === 'cancel-paragraph' ||
+        command.type === 'patch-paragraph' ||
+        command.type === 'run-all-paragraphs' ||
+        command.type === 'cancel-all-paragraphs'
+      ) {
         return route.dispatchCommand?.(command) ?? false;
       }
       const requestedEvent =
