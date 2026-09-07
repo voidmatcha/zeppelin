@@ -11,15 +11,17 @@
 -->
 
 <div class="bar" [class.simple]="looknfeel !== 'default'">
-  <div class="title" role="heading" aria-level="1" data-testid="notebook-title">
-    <zeppelin-elastic-input
-      nz-tooltip
-      [nzTooltipTitle]="note.path"
-      [readonly]="revisionView"
-      [value]="note.name"
-      (valueUpdate)="updateNoteName($event)"
-    ></zeppelin-elastic-input>
-  </div>
+  @if (!reactNotebook) {
+    <div class="title" role="heading" aria-level="1" data-testid="notebook-title">
+      <zeppelin-elastic-input
+        nz-tooltip
+        [nzTooltipTitle]="note.path"
+        [readonly]="revisionView"
+        [value]="note.name"
+        (valueUpdate)="updateNoteName($event)"
+      ></zeppelin-elastic-input>
+    </div>
+  }
   <div class="control">
     <nz-space-compact nzSize="small">
       <button
