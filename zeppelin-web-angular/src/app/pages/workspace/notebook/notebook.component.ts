@@ -662,6 +662,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
             releaseResource: Boolean(this.note.config.releaseresource)
           }
         : undefined,
+      canSchedule: Boolean(this.note?.config.isZeppelinNotebookCronEnable) && !this.viewOnly && !this.revisionView,
       onScheduleChange: schedule => this.setReactSchedule(schedule),
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>

@@ -524,6 +524,19 @@ describe('NotebookCoreAdapter', () => {
     expect(onScheduleChange).toHaveBeenCalledWith({ cron: '0 0 0/1 * * ?', releaseResource: true });
   });
 
+  it('allows a host-enabled scheduler to be configured before it has a cron expression', () => {
+    const onScheduleChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'note-loaded', noteId: 'note-1', revisionId: null, title: 'Notebook', paragraphs: [] });
+
+    render(<NotebookCoreAdapter core={runtime.port} canSchedule onScheduleChange={onScheduleChange} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Cron expression' }), { target: { value: '0 0/5 * * * ?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+
+    expect(onScheduleChange).toHaveBeenCalledWith({ cron: '0 0/5 * * * ?', releaseResource: false });
+  });
+
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
     const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
