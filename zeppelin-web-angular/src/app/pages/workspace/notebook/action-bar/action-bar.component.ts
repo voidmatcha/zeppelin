@@ -55,6 +55,7 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
   @Input() collaborativeMode = false;
   @Input() collaborativeModeUsers: string[] = [];
   @Input() revisionView = false;
+  @Input() reactNotebook = false;
   @Input() activatedExtension: 'interpreter' | 'permissions' | 'revisions' | 'hide' = 'hide';
   @Output() readonly activatedExtensionChange = new EventEmitter<
     'interpreter' | 'permissions' | 'revisions' | 'hide'

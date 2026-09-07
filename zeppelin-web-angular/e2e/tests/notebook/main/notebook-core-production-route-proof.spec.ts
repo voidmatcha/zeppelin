@@ -370,6 +370,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
       await expect(page.locator('zeppelin-notebook-action-bar')).toHaveCount(1);
+      await expect(page.getByTestId('notebook-title')).toHaveCount(0);
       await expect(page.locator('zeppelin-notebook-sidebar')).toHaveCount(0);
 
       const title = page.getByRole('textbox', { name: 'Notebook title' });
