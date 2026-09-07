@@ -221,7 +221,6 @@ export class Message {
       })
     );
   }
-  }
 
   shortCircuit(message: WebSocketMessage<MessageReceiveDataTypeMap>) {
     this.received$.next(this.interceptReceived(message));
