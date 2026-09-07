@@ -460,6 +460,10 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
+      await reactNotebook.getByRole('button', { name: 'Clone notebook' }).click();
+      await expect(page.getByRole('dialog').locator('.ant-modal-title')).toHaveText('Clone Note');
+      await page.keyboard.press('Escape');
+
       await reactNotebook.getByRole('button', { name: 'Interpreter settings' }).click();
       await expect(page.locator('zeppelin-notebook-interpreter-binding')).toBeVisible();
 

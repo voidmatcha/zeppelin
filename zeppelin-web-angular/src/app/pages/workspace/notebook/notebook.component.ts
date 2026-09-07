@@ -27,6 +27,7 @@ import { combineLatest, Subject } from 'rxjs';
 import { distinctUntilChanged, distinctUntilKeyChanged, startWith, takeUntil } from 'rxjs/operators';
 
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
+import { NzModalService } from 'ng-zorro-antd/modal';
 
 import { MessageListener, MessageListenersManager } from '@zeppelin/core';
 import { Permissions } from '@zeppelin/interfaces';
@@ -42,14 +43,17 @@ import {
 } from '@zeppelin/sdk';
 import {
   MessageService,
+  ConfigurationService,
   NgZService,
   NoteStatusService,
   NoteVarShareService,
   ReactFeatureService,
   SecurityService,
+  SaveAsService,
   ThemeService,
   TicketService
 } from '@zeppelin/services';
+import { NoteCreateComponent } from '@zeppelin/share';
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
 import type { NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
@@ -541,6 +545,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private router: Router,
     private titleService: Title,
     private themeService: ThemeService,
+    private configurationService: ConfigurationService,
+    private saveAsService: SaveAsService,
+    private nzModalService: NzModalService,
     private reactFeature: ReactFeatureService,
     private notebookCoreRouteAdapter: NotebookCoreRouteAdapter
   ) {
@@ -563,6 +570,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
       onNotebookTitleChange: title => this.renameCoreNotebook(title),
+      onCloneNotebook: () => this.cloneReactNotebook(),
+      onExportNotebook: () => this.exportReactNotebook(),
       onReloadNotebook: () => this.note && this.messageService.reloadNote(this.note.id),
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
@@ -591,6 +600,35 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       this.messageService.getInterpreterBindings(this.note.id);
     }
     this.cdr.markForCheck();
+  }
+
+  private cloneReactNotebook(): void {
+    if (!this.note) {
+      return;
+    }
+    this.nzModalService.create({
+      nzTitle: 'Clone Note',
+      nzContent: NoteCreateComponent,
+      nzData: { cloneNote: this.note },
+      nzFooter: null
+    });
+  }
+
+  private async exportReactNotebook(): Promise<void> {
+    if (!this.note) {
+      return;
+    }
+    const sizeLimit = await this.configurationService.fetchWsMaxMessageSize();
+    const jsonContent = JSON.stringify(this.note);
+    if (jsonContent.length > sizeLimit) {
+      this.nzModalService.confirm({
+        nzTitle: `Note size exceeds importable limit (${sizeLimit})`,
+        nzContent: 'Do you still want to export this note?',
+        nzOnOk: () => this.saveAsService.saveAs(jsonContent, this.note!.name, 'zpln')
+      });
+      return;
+    }
+    this.saveAsService.saveAs(jsonContent, this.note.name, 'zpln');
   }
 
   ngOnInit() {
