@@ -581,6 +581,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       ),
       personalizedMode: this.note?.config.personalizedMode === 'true',
       onTogglePersonalizedMode: () => this.toggleReactPersonalizedMode(),
+      canDeleteNotebook: !this.viewOnly,
+      isTrashedNotebook: this.note ? this.noteStatusService.isTrash(this.note) : false,
+      onDeleteNotebook: () => this.deleteReactNotebook(),
       onExtensionChange: extension => this.setReactExtension(extension),
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
@@ -653,6 +656,24 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
             ? 'false'
             : 'true';
         this.messageService.updatePersonalizedMode(this.note!.id, this.note!.config.personalizedMode);
+      }
+    });
+  }
+
+  private deleteReactNotebook(): void {
+    if (!this.note) {
+      return;
+    }
+    const isTrash = this.noteStatusService.isTrash(this.note);
+    this.nzModalService.confirm({
+      nzTitle: isTrash ? 'Remove this note permanently?' : 'Move this note to trash?',
+      nzOnOk: () => {
+        if (isTrash) {
+          this.messageService.deleteNote(this.note!.id);
+        } else {
+          this.messageService.moveNoteToTrash(this.note!.id);
+        }
+        this.router.navigate(['/']);
       }
     });
   }

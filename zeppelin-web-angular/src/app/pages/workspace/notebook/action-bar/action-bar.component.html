@@ -241,7 +241,7 @@
         </div>
       </nz-dropdown-menu>
     </nz-space-compact>
-    @if (!viewOnly) {
+    @if (!reactNotebook && !viewOnly) {
       <nz-space-compact nzSize="small">
         @if (isTrash) {
           <button

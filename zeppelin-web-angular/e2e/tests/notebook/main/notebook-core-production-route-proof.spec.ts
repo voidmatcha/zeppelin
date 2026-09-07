@@ -463,12 +463,17 @@ test.describe('Notebook Core production route feasibility proof', () => {
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'play-circle' })
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('button', { name: 'Run all' })).toBeVisible();
+      await expect(page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'delete' })).toHaveCount(0);
       await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill('%python');
       await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
       await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
 
       await reactNotebook.getByRole('button', { name: 'Clone notebook' }).click();
       await expect(page.getByRole('dialog').locator('.ant-modal-title')).toHaveText('Clone Note');
+      await page.keyboard.press('Escape');
+
+      await reactNotebook.getByRole('button', { name: 'Move notebook to trash' }).click();
+      await expect(page.getByRole('dialog').getByText('Move this note to trash?', { exact: true })).toBeVisible();
       await page.keyboard.press('Escape');
 
       await reactNotebook.getByRole('button', { name: 'Interpreter settings' }).click();
