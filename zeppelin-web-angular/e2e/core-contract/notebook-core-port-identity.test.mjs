@@ -55,6 +55,8 @@ test('React remote receives the exact host-owned NotebookCorePort object', async
       revisionId: 'revision-from-angular-host',
       phase: 'idle',
       title: null,
+      noteForms: {},
+      noteParams: {},
       paragraphs: [],
       error: null
     },
