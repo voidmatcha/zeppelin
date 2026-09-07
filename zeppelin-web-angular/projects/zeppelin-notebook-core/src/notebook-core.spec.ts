@@ -661,4 +661,28 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
     expect(runtime.port.getSnapshot().scheduler).toBeUndefined();
   });
+
+  it('owns a frozen revision list and clears it when the route changes', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'note-loaded', noteId: 'note-a', revisionId: null, title: 'Note A', paragraphs: [] });
+
+    runtime.apply({
+      type: 'revisions-updated',
+      revisions: [
+        { id: 'Head', message: 'Head' },
+        { id: 'revision-1', message: 'First checkpoint', time: 1 }
+      ]
+    });
+    const revisions = runtime.port.getSnapshot().revisions;
+    expect(revisions).toEqual([
+      { id: 'Head', message: 'Head' },
+      { id: 'revision-1', message: 'First checkpoint', time: 1 }
+    ]);
+    expect(Object.isFrozen(revisions)).toBe(true);
+    expect(Object.isFrozen(revisions![0])).toBe(true);
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    expect(runtime.port.getSnapshot().revisions).toBeUndefined();
+  });
 });

@@ -374,6 +374,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         this.currentRevision = 'Head';
       }
     }
+    this.notebookCoreRouteAdapter.acceptRevisions(
+      this.noteRevisions.map(revision => ({ id: revision.id, message: revision.message, time: revision.time }))
+    );
     this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
   }
