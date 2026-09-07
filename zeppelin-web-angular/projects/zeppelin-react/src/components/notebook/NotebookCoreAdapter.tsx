@@ -191,6 +191,7 @@ export const NotebookCoreAdapter = ({
                   setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
                   onParagraphTextChange?.(paragraph.id, text);
                 }}
+                onRun={() => dispatch('run-paragraph', paragraph.id)}
               />
               <div>
                 <button type="button" disabled={!canEdit} onClick={() => onParagraphInsert?.(index)}>
