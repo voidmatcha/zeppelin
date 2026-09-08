@@ -104,6 +104,7 @@
         @for (result of results; track trackByIndexFn(i); let i = $index) {
           <zeppelin-notebook-paragraph-result
             [id]="paragraph.id"
+            [style.display]="isResultHidden(i) ? 'none' : null"
             [currentCol]="paragraph.config.colWidth"
             [config]="configs[i]"
             [isPending]="paragraph.status === 'PENDING'"

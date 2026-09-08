@@ -26,7 +26,7 @@ import {
   ParagraphIResultsMsgItem
 } from '@zeppelin/sdk';
 
-import * as DiffMatchPatch from 'diff-match-patch';
+import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { isEmpty, isEqual } from 'lodash';
 
 import { MessageListener, MessageListenersManager } from '../message-listener/message-listener';
@@ -71,6 +71,15 @@ export abstract class ParagraphBase extends MessageListenersManager {
     protected cdr: ChangeDetectorRef
   ) {
     super(messageService);
+  }
+
+  protected abstract get currentNoteId(): string | null | undefined;
+
+  isResultHidden(index: number): boolean {
+    const active =
+      this.paragraph?.status === ParagraphStatus.PENDING || this.paragraph?.status === ParagraphStatus.RUNNING;
+    // Empty live slots retain their server indexes and renderer state until data arrives.
+    return active && this.results[index]?.data === '';
   }
 
   abstract changeColWidth(needCommit: boolean, updateResult?: boolean): void;
@@ -121,25 +130,25 @@ export abstract class ParagraphBase extends MessageListenersManager {
 
   @MessageListener(OP.PARAGRAPH_APPEND_OUTPUT)
   onParagraphAppendOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_APPEND_OUTPUT]) {
-    if (data.paragraphId !== this.paragraph?.id) {
+    if (this.revisionView || data.noteId !== this.currentNoteId || data.paragraphId !== this.paragraph?.id) {
       return;
     }
     this.initializeOutputState();
     const result = this.outputState.append(data.index, data.data);
     if (result) {
-      this.applyStreamingResult(data.index, result);
+      this.applyStreamingResult(data.index);
     }
   }
 
   @MessageListener(OP.PARAGRAPH_UPDATE_OUTPUT)
   onParagraphUpdateOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_UPDATE_OUTPUT]) {
-    if (data.paragraphId !== this.paragraph?.id) {
+    if (this.revisionView || data.noteId !== this.currentNoteId || data.paragraphId !== this.paragraph?.id) {
       return;
     }
     this.initializeOutputState();
     const result = this.outputState.update(data.index, data.type, data.data);
     if (result) {
-      this.applyStreamingResult(data.index, result);
+      this.applyStreamingResult(data.index);
     }
   }
 
@@ -147,16 +156,25 @@ export abstract class ParagraphBase extends MessageListenersManager {
   paragraphData(data: MessageReceiveDataTypeMap[OP.PARAGRAPH]) {
     const oldPara = this.paragraph;
     if (!oldPara) {
-      throw new Error('paragraph is not defined');
+      return;
     }
     const newPara = data.paragraph;
+    if (this.revisionView || (data.noteId != null && data.noteId !== this.currentNoteId) || newPara.id !== oldPara.id) {
+      return;
+    }
     if (!newPara.results) {
       newPara.results = {};
     }
     const oldRunActive = oldPara.status === ParagraphStatus.PENDING || oldPara.status === ParagraphStatus.RUNNING;
     const newRunActive = newPara.status === ParagraphStatus.PENDING || newPara.status === ParagraphStatus.RUNNING;
-    if (newRunActive && (!oldRunActive || newPara.dateStarted !== oldPara.dateStarted)) {
+    const runChanged =
+      newPara.dateStarted != null && oldPara.dateStarted != null && newPara.dateStarted !== oldPara.dateStarted;
+    if (newRunActive && (!oldRunActive || runChanged)) {
       this.outputState.reset();
+    }
+    // Close the stream before publishing the terminal snapshot.
+    if (isTerminalParagraphStatus(newPara.status)) {
+      this.outputState.finish(newPara.results?.msg);
     }
     if (this.isUpdateRequired(oldPara, newPara)) {
       this.updateParagraph(oldPara, newPara, () => {
@@ -174,9 +192,6 @@ export abstract class ParagraphBase extends MessageListenersManager {
         this.cdr.markForCheck();
       });
       this.cdr.markForCheck();
-    }
-    if (isTerminalParagraphStatus(newPara.status)) {
-      this.outputState.finish(newPara.results?.msg);
     }
   }
 
@@ -229,18 +244,23 @@ export abstract class ParagraphBase extends MessageListenersManager {
     }
   }
 
-  private applyStreamingResult(index: number, result: ParagraphIResultsMsgItem): void {
+  private applyStreamingResult(index: number): void {
     if (!this.paragraph) {
       return;
     }
+    const previousLength = this.results.length;
     const results = this.outputState.snapshot();
     if (!this.paragraph.results) {
       this.paragraph.results = {};
     }
     this.paragraph.results.msg = results;
     this.results = results;
-    const config = this.paragraph.config.results?.[index] ?? { graph: new GraphConfig() };
-    this.updateParagraphResult(index, config, result);
+    results.forEach((visibleResult, visibleIndex) => {
+      if (visibleIndex === index || visibleIndex >= previousLength) {
+        const config = this.paragraph!.config.results?.[visibleIndex] ?? { graph: new GraphConfig() };
+        this.updateParagraphResult(visibleIndex, config, visibleResult);
+      }
+    });
     this.cdr.markForCheck();
   }
 
@@ -279,7 +299,7 @@ export abstract class ParagraphBase extends MessageListenersManager {
       (newPara.dateCreated !== oldPara.dateCreated ||
         newPara.text !== oldPara.text ||
         newPara.dateFinished !== oldPara.dateFinished ||
-        newPara.dateStarted !== oldPara.dateStarted ||
+        (newPara.dateStarted != null && newPara.dateStarted !== oldPara.dateStarted) ||
         newPara.dateUpdated !== oldPara.dateUpdated ||
         newPara.status !== oldPara.status ||
         newPara.jobName !== oldPara.jobName ||
@@ -328,7 +348,10 @@ export abstract class ParagraphBase extends MessageListenersManager {
     this.paragraph.dateUpdated = newPara.dateUpdated;
     this.paragraph.dateCreated = newPara.dateCreated;
     this.paragraph.dateFinished = newPara.dateFinished;
-    this.paragraph.dateStarted = newPara.dateStarted;
+    // Status-only snapshots can omit the start time of the current run.
+    if (newPara.dateStarted != null) {
+      this.paragraph.dateStarted = newPara.dateStarted;
+    }
     this.paragraph.errorMessage = newPara.errorMessage;
     this.paragraph.jobName = newPara.jobName;
     this.paragraph.title = newPara.title;
@@ -418,5 +441,16 @@ export abstract class ParagraphBase extends MessageListenersManager {
       throw new Error('paragraph is not defined');
     }
     this.messageService.cancelParagraph(this.paragraph.id);
+  }
+  protected setParagraphSnapshot(paragraph: ParagraphItem | undefined): void {
+    this.paragraph = paragraph;
+    this.results = [];
+    this.configs = {};
+    if (paragraph) {
+      this.setResults(paragraph);
+    }
+    const terminal = isTerminalParagraphStatus(paragraph?.status);
+    this.outputState.reset(this.results, terminal);
+    this.cdr.markForCheck();
   }
 }

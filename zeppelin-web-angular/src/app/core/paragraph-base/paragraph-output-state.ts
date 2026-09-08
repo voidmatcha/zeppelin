@@ -67,6 +67,12 @@ export class ParagraphOutputState {
   }
 
   snapshot(): ParagraphIResultsMsgItem[] {
-    return [...this.results];
+    // Keep server indexes stable: a later slot cannot be rendered before missing
+    // earlier slots acquire their types. Retain those later slots for subsequent updates.
+    let length = 0;
+    while (this.results[length]) {
+      length++;
+    }
+    return this.results.slice(0, length);
   }
 }
