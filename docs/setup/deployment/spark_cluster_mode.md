@@ -122,6 +122,13 @@ docker run -it \
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
 
+On startup, the example reuses the HDFS Spark jar cache when the completion marker
+exists and the jar filenames match the installed Spark distribution. A failed
+listing stops startup without deleting the cache. Otherwise, startup removes the
+marker, uploads the jars, and writes an empty marker after the upload succeeds.
+This check does not verify jar contents or HDFS block health, or provide persistence
+across container recreation.
+
 ### 3. Verify running Spark on YARN.
 
 You can simply verify the processes of Spark and YARN are running well in Docker with below command.
