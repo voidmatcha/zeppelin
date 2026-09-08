@@ -46,6 +46,116 @@ fi
 chmod 700 /root/.ssh
 chmod 600 /root/.ssh/authorized_keys
 
+# format on first start only. Doing this at build time put the metadata in the
+# image, where a volume mounted on /data would shadow it. Both properties may
+# name several comma separated directories, each optionally with a file: URI
+# scheme, so walk them instead of treating the value as one path.
+normalize_storage_dir() {
+  local _dir="$1"
+  # Trim separators' whitespace without changing spaces inside a directory name.
+  _dir="${_dir#"${_dir%%[![:space:]]*}"}"
+  _dir="${_dir%"${_dir##*[![:space:]]}"}"
+  # Hadoop decodes URI escapes; shell file checks do not. Refuse these before
+  # deciding whether metadata is absent rather than inspecting the wrong path.
+  case "$_dir" in
+    file:*%*)
+      echo "Percent-encoded storage URIs are not supported: $_dir. Use an unescaped local absolute path instead." >&2
+      return 1
+      ;;
+  esac
+  case "$_dir" in
+    file:///*) _dir="${_dir#file://}" ;;
+    file://*) echo "Unsupported storage URI authority: $_dir" >&2; return 1 ;;
+    file:/*) _dir="${_dir#file:}" ;;
+  esac
+  case "$_dir" in
+    ""|/*) ;;
+    *) echo "Storage directories must use local absolute paths: $_dir" >&2; return 1 ;;
+  esac
+  printf '%s' "$_dir"
+}
+
+first_dir_with_version() {
+  local _candidate
+  local -a _directories
+  IFS=',' read -r -a _directories <<< "$1"
+  for _candidate in "${_directories[@]}"; do
+    _candidate="$(normalize_storage_dir "$_candidate")" || return
+    [ -n "$_candidate" ] || continue
+    if [ -f "$_candidate/current/VERSION" ]; then
+      printf '%s' "$_candidate"
+      return 0
+    fi
+  done
+  return 0
+}
+
+first_dir_half_formatted() {
+  local _candidate
+  local -a _directories
+  IFS=',' read -r -a _directories <<< "$1"
+  for _candidate in "${_directories[@]}"; do
+    _candidate="$(normalize_storage_dir "$_candidate")" || return
+    [ -n "$_candidate" ] || continue
+    if [ -d "$_candidate/current" ] && [ ! -f "$_candidate/current/VERSION" ]; then
+      printf '%s' "$_candidate"
+      return 0
+    fi
+  done
+  return 0
+}
+
+first_dir_with_data() {
+  local _candidate _contents
+  local -a _directories
+  IFS=',' read -r -a _directories <<< "$1"
+  for _candidate in "${_directories[@]}"; do
+    # Hadoop StorageLocation accepts a leading [TYPE], e.g. [DISK]/data/hdfs.
+    # Inspect the backing path, not a literal directory containing that token.
+    _candidate="${_candidate#"${_candidate%%[![:space:]]*}"}"
+    case "$_candidate" in
+      \[*\]*) _candidate="${_candidate#*]}" ;;
+    esac
+    _candidate="$(normalize_storage_dir "$_candidate")" || return
+    [ -n "$_candidate" ] && [ -d "$_candidate" ] || continue
+    # VERSION can be missing while the block pool still contains recoverable
+    # data. Ignore only Hadoop's lock file, never the remaining storage files.
+    _contents="$(find -H "$_candidate" -type f ! -name in_use.lock -print -quit)" || return
+    if [ -n "$_contents" ]; then
+      printf '%s' "$_candidate"
+      return 0
+    fi
+  done
+  return 0
+}
+
+NAME_DIRS="$("$HADOOP_HOME/bin/hdfs" getconf -confKey dfs.namenode.name.dir)"
+DATA_DIRS="$("$HADOOP_HOME/bin/hdfs" getconf -confKey dfs.datanode.data.dir)"
+NAME_DIR_WITH_VERSION="$(first_dir_with_version "$NAME_DIRS")"
+if [ -z "$NAME_DIR_WITH_VERSION" ]; then
+  # A "current" without VERSION is a half-written format. Hadoop refuses to
+  # format over it in non-interactive mode, so say what to do rather than
+  # letting the namenode fail with "NameNode is not formatted" on every boot.
+  HALF_FORMATTED="$(first_dir_half_formatted "$NAME_DIRS")"
+  if [ -n "$HALF_FORMATTED" ]; then
+    echo "$HALF_FORMATTED/current exists but has no VERSION file, so an earlier format did not finish." >&2
+    echo "Remove $HALF_FORMATTED to start over; anything already in HDFS is lost with it." >&2
+    exit 1
+  fi
+  # Datanode blocks without namenode metadata cannot be turned back into files:
+  # formatting mints a new namespace and block pool, so the old blocks would be
+  # orphaned even though the datanode would happily register. Refuse instead of
+  # silently starting an empty filesystem on top of somebody's data.
+  DATA_DIR_WITH_DATA="$(first_dir_with_data "$DATA_DIRS")"
+  if [ -n "$DATA_DIR_WITH_DATA" ]; then
+    echo "$DATA_DIR_WITH_DATA holds datanode storage files but no namenode metadata was found." >&2
+    echo "Formatting would create an empty filesystem and orphan those blocks." >&2
+    echo "Remove the datanode directory to start fresh, or restore the namenode metadata." >&2
+    exit 1
+  fi
+  "$HADOOP_HOME/bin/hdfs" namenode -format -nonInteractive
+fi
+
 # start hadoop
 service ssh start
 "$HADOOP_HOME/sbin/start-dfs.sh"
