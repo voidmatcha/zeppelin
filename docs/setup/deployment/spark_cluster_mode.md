@@ -51,7 +51,6 @@ docker build -t "spark_standalone" .
 docker run -it \
 -p 8080:8080 \
 -p 7077:7077 \
--p 8888:8888 \
 -p 8081:8081 \
 -h sparkmaster \
 --name spark_standalone \
@@ -100,9 +99,7 @@ docker build -t "spark_yarn" .
 
 ```bash
 docker run -it \
- -p 5000:5000 \
  -p 9000:9000 \
- -p 9001:9001 \
  -p 8088:8088 \
  -p 8042:8042 \
  -p 8030:8030 \
@@ -111,7 +108,6 @@ docker run -it \
  -p 8033:8033 \
  -p 8080:8080 \
  -p 7077:7077 \
- -p 8888:8888 \
  -p 8081:8081 \
  -p 50010:50010 \
  -p 50075:50075 \

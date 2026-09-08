@@ -36,7 +36,6 @@ RUN apt-get update \
       curl \
       openssh-server \
       procps \
-      rsync \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/ssh/ssh_host_* \
     && mkdir -p /run/sshd /root/.ssh
@@ -72,9 +71,6 @@ RUN BUILD_ARCH="$TARGETARCH" \
 RUN printf '\nexport JAVA_HOME=%s\nexport HADOOP_HOME=/usr/local/hadoop\nexport HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop\nexport HDFS_NAMENODE_USER=root\nexport HDFS_DATANODE_USER=root\nexport HDFS_SECONDARYNAMENODE_USER=root\nexport YARN_RESOURCEMANAGER_USER=root\nexport YARN_NODEMANAGER_USER=root\n' "$JAVA_HOME" \
     >> $HADOOP_HOME/etc/hadoop/hadoop-env.sh
 
-RUN mkdir $HADOOP_HOME/input
-RUN cp $HADOOP_HOME/etc/hadoop/*.xml $HADOOP_HOME/input
-
 # hadoop configurations
 COPY hdfs_conf/core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
 COPY hdfs_conf/hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
@@ -104,11 +100,11 @@ RUN chmod 700 /etc/entrypoint.sh
 
 # Hdfs ports
 EXPOSE 50010 50020 50075 9868 9870
-# Mapred ports
-EXPOSE 9000 9001
+# HDFS namenode rpc
+EXPOSE 9000
 #Yarn ports
 EXPOSE 8030 8031 8032 8033 8040 8042 8088
 #spark
-EXPOSE 8080 7077 8888 8081
+EXPOSE 8080 7077 8081
 
 ENTRYPOINT ["/etc/entrypoint.sh"]
