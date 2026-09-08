@@ -51,7 +51,6 @@ docker build -t "spark_standalone" .
 docker run -it \
 -p 8080:8080 \
 -p 7077:7077 \
--p 8888:8888 \
 -p 8081:8081 \
 -h sparkmaster \
 --name spark_standalone \
@@ -59,6 +58,8 @@ spark_standalone bash;
 ```
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
+
+The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_standalone bash -c "ps -ef"`. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
 
 ### 3. Configure Spark interpreter in Zeppelin
 Set Spark master as `spark://<hostname>:7077` in Zeppelin **Interpreters** setting page.
@@ -98,9 +99,7 @@ docker build -t "spark_yarn" .
 
 ```bash
 docker run -it \
- -p 5000:5000 \
  -p 9000:9000 \
- -p 9001:9001 \
  -p 8088:8088 \
  -p 8042:8042 \
  -p 8030:8030 \
@@ -109,7 +108,6 @@ docker run -it \
  -p 8033:8033 \
  -p 8080:8080 \
  -p 7077:7077 \
- -p 8888:8888 \
  -p 8081:8081 \
  -p 50010:50010 \
  -p 50075:50075 \
@@ -121,6 +119,14 @@ docker run -it \
 ```
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
+
+The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_yarn bash -c "ps -ef"`. On the first start the container uploads the Spark jars to HDFS, so wait for `hdfs dfs -test -e /spark/.jars-upload-complete` to succeed before submitting; a submit that races the upload fails with a `Failed to download resource ..._COPYING_` diagnostic.
+
+Startup checks the Spark release string, HDFS block health, and jar filenames before reusing uploaded jars. If the image's `RELEASE` file cannot be read or its first line is empty, startup stops without replacing uploaded jars. If listing or reading an existing upload marker fails, startup preserves the jar cache and reports the error. A successfully listed directory with no marker still triggers an upload. It does not compare jar contents with the image. If a custom image changes jar contents without changing the release string or filenames, remove `/spark/.jars-upload-complete` to force replacement on the next start. The marker records a completed upload; on subsequent starts its existence is not a cluster readiness check. DataNode registration is checked up to 30 times, with two-second waits after failed checks; Hadoop command execution time adds to that delay.
+
+The default configuration does not provide HDFS persistence across container recreations.
+
+Pass `-d` instead of a command to keep the container running in the background. `docker stop` exits immediately and Docker terminates the Hadoop and Spark daemons rather than shutting them down gracefully. Use this as a development example, not as a backup or production durability mechanism.
 
 ### 3. Verify running Spark on YARN.
 
@@ -143,6 +149,8 @@ export SPARK_HOME=[your_spark_home_path]
 `HADOOP_CONF_DIR`(Hadoop configuration path) is defined in `/scripts/docker/spark-cluster-managers/spark_yarn_cluster/hdfs_conf`.
 
 Don't forget to set Spark `spark.master` as `yarn` and `spark.submit.deployMode` as `client` in Zeppelin **Interpreters** setting page.
+
+Also set `spark.yarn.jars` to `hdfs://sparkmaster:9000/spark/jars/*`. The container uploads `$SPARK_HOME/jars` to that HDFS path on startup, and without this property Spark packs and uploads its own jars on every submit. Use it only when the Spark you point `SPARK_HOME` at is the same version the container ships, since the jars come from the container. If a submit fails with `ClassNotFoundException: org.apache.spark.deploy.yarn.ExecutorLauncher`, check that `/spark/jars` still exists in HDFS.
 
 ### 5. Run Zeppelin with Spark interpreter
 After running a single paragraph with Spark interpreter in Zeppelin, browse `http://<hostname>:8088/cluster/apps` and check Zeppelin application is running well or not.
