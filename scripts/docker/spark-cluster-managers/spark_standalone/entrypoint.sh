@@ -14,18 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -euo pipefail
+
 export SPARK_MASTER_PORT=7077
 
-# run spark 
-cd $SPARK_HOME/sbin
+# run spark
+cd "$SPARK_HOME/sbin"
 ./start-master.sh
-./start-worker.sh spark://`hostname`:$SPARK_MASTER_PORT
+./start-worker.sh "spark://$(hostname):$SPARK_MASTER_PORT"
 
-CMD=${1:-"exit 0"}
-if [[ "$CMD" == "-d" ]];
-then
-	service ssh stop
-	/usr/sbin/sshd -D -d
+if [ "${1:-}" = "-d" ]; then
+  # keep the container in the foreground. An sshd nobody could log into used to
+  # serve this purpose. Stay in bash so the trap still runs on "docker stop".
+  trap 'exit 0' TERM INT
+  tail -f /dev/null &
+  wait $!
+elif [ "$#" -eq 0 ]; then
+  exit 0
 else
-	/bin/bash -c "$*"
+  exec "$@"
 fi

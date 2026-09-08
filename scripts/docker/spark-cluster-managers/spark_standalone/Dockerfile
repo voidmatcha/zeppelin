@@ -19,13 +19,13 @@ FROM apache/spark:${SPARK_VERSION}-scala${SCALA_VERSION}-java${JAVA_VERSION}-pyt
 
 USER root
 
+ENV PATH=${PATH}:${SPARK_HOME}/bin
+
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates \
-      openssh-server \
       procps \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /run/sshd
+    && rm -rf /var/lib/apt/lists/*
 
 # update boot script
 COPY entrypoint.sh /etc/entrypoint.sh
@@ -33,6 +33,6 @@ RUN chown root:root /etc/entrypoint.sh
 RUN chmod 700 /etc/entrypoint.sh
 
 #spark
-EXPOSE 8080 7077 8888 8081
+EXPOSE 8080 7077 8081
 
 ENTRYPOINT ["/etc/entrypoint.sh"]

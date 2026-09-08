@@ -21,13 +21,13 @@ limitations under the License.
   </property>
 
   <property>
-    <name>dfs.data.dir</name>
+    <name>dfs.datanode.data.dir</name>
     <value>/data/hdfs</value>
     <final>true</final>
   </property>
 
   <property>
-    <name>dfs.permissions</name>
+    <name>dfs.permissions.enabled</name>
     <value>false</value>
   </property>
 
