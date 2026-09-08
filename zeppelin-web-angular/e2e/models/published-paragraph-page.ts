@@ -16,6 +16,8 @@ import { BasePage } from './base-page';
 
 export class PublishedParagraphPage extends BasePage {
   readonly confirmationModal: Locator;
+  readonly textOutput: Locator;
+  readonly chartCanvas: Locator;
   readonly angularRenderer: Locator;
   readonly reactWidget: Locator;
   readonly reactWidgetOrEmptyState: Locator;
@@ -30,6 +32,8 @@ export class PublishedParagraphPage extends BasePage {
     // The result count is 0 in both modes, so dynamic-forms is the discriminator: it renders only in Angular mode.
     this.angularRenderer = page.locator('zeppelin-notebook-paragraph-dynamic-forms');
     this.reactWidget = page.locator('[data-testid="react-published-paragraph"]');
+    this.textOutput = page.locator('zeppelin-publish-paragraph pre');
+    this.chartCanvas = this.reactWidget.locator('canvas');
     // Without paragraph data the remote mounts an <Empty>, so tests that only assert "React took over" accept either.
     this.reactWidgetOrEmptyState = this.reactWidget.or(page.locator('.ant-alert'));
   }

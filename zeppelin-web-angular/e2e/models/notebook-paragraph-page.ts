@@ -25,6 +25,7 @@ export class NotebookParagraphPage extends BasePage {
   readonly runButton: Locator;
   readonly settingsDropdown: Locator;
   readonly status: Locator;
+  readonly clearOutputOption: Locator;
   readonly cancelButton: Locator;
   readonly exportDropdownTrigger: Locator;
   readonly exportMenu: Locator;
@@ -52,6 +53,7 @@ export class NotebookParagraphPage extends BasePage {
       .locator('zeppelin-notebook-paragraph-control a[nz-dropdown]')
       .first();
     this.status = this.controlPanel.locator('.status');
+    this.clearOutputOption = page.getByText('Clear output', { exact: true });
     // The control renders the cancel icon only while the paragraph is PENDING or RUNNING.
     this.cancelButton = this.controlPanel.locator('.cancel-para');
     // The export controls render only for a TABLE result.

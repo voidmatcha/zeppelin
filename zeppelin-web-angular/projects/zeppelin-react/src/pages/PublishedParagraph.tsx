@@ -21,11 +21,12 @@ const RESULT_FONT_FAMILY = "'Lucida Console', Consolas, Monaco, 'Andale Mono', '
 export interface PublishedParagraphProps {
   paragraphId: string;
   results?: ParagraphIResultsMsgItem[];
+  hiddenResults?: boolean[];
   config?: ParagraphConfigResults;
   onError?: (error: unknown) => void;
 }
 
-export const PublishedParagraph = ({ results, config }: PublishedParagraphProps) => (
+export const PublishedParagraph = ({ results, config, hiddenResults }: PublishedParagraphProps) => (
   // The empty state is inside the provider too: antd's Empty illustration is
   // themed, so leaving it outside would leak a light widget into a dark page.
   <ZeppelinThemeProvider token={{ fontFamily: RESULT_FONT_FAMILY }}>
@@ -34,7 +35,7 @@ export const PublishedParagraph = ({ results, config }: PublishedParagraphProps)
     ) : (
       <div data-testid="react-published-paragraph">
         {results.map((result, index) => (
-          <div key={index}>
+          <div key={index} style={{ display: hiddenResults?.[index] ? 'none' : undefined }}>
             <SingleResultRenderer result={result} index={index} config={config} />
           </div>
         ))}
@@ -61,6 +62,7 @@ export const mount = (element: HTMLElement, initialProps?: PublishedParagraphPro
         <PublishedParagraph
           paragraphId={props?.paragraphId || 'demo-paragraph'}
           results={props?.results}
+          hiddenResults={props?.hiddenResults}
           config={props?.config}
         />
       </ReactErrorBoundary>
