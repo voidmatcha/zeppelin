@@ -120,7 +120,9 @@ docker run -it \
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
 
-The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_yarn bash -c "ps -ef"`. On the first start the container uploads the Spark jars to HDFS, so wait for `hdfs dfs -test -e /spark/.jars-upload-complete` to succeed before submitting; a submit that races the upload fails with a `Failed to download resource ..._COPYING_` diagnostic. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Hadoop and Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
+The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_yarn bash -c "ps -ef"`. On the first start the container uploads the Spark jars to HDFS, so wait for `hdfs dfs -test -e /spark/.jars-upload-complete` to succeed before submitting; a submit that races the upload fails with a `Failed to download resource ..._COPYING_` diagnostic.
+
+Add `-v <volume>:/data` to keep HDFS across container recreations. The namenode metadata and the datanode blocks both live under `/data` and only make sense together. Losing the metadata stops the container, because formatting would mint a new namespace that cannot read the surviving blocks; volumes written before the metadata moved under `/data` therefore cannot be reused. Losing the blocks instead lets the container start and re-upload the Spark jars, but every other file is gone and the startup log warns about it. Only one container may use a volume at a time. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Hadoop and Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
 
 ### 3. Verify running Spark on YARN.
 
