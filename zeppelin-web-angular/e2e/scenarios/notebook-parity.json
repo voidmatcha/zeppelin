@@ -1,6 +1,6 @@
 {
   "$schema": "./notebook-parity.schema.json",
-  "reviewedCommit": "d5b57b12fd0c5e1d885767aabe06b242debf8300",
+  "reviewedCommit": "b127723fc7e46fc30b4c9a7c754e8fe984f722c0",
   "scenarios": [
     {
       "id": "NB-PARITY-001",
@@ -314,6 +314,72 @@
         {
           "path": "zeppelin-web-angular/e2e/models/notebook-keyboard-page.ts",
           "symbol": "NotebookKeyboardPage"
+        }
+      ]
+    },
+    {
+      "id": "NB-PARITY-012",
+      "name": "Streaming text output accumulates while a paragraph runs",
+      "area": "result",
+      "preconditions": [
+        "A disposable notebook is bound to the shell interpreter and the user can run its paragraph.",
+        "The standard notebook render path is active, without personalized or embedded output.",
+        "zeppelin.websocket.paragraph_status_progress.enable is true.",
+        "The shell paragraph prints first, second, and third on separate lines with delays of 3 and 5 seconds, both longer than the 100 ms append buffer interval."
+      ],
+      "action": "Run the shell paragraph and inspect its result while running and after completion.",
+      "observableOutcomes": [
+        {
+          "id": "NB-PARITY-012-OUTCOME-001",
+          "description": "The first line is visible while the paragraph status is RUNNING."
+        },
+        {
+          "id": "NB-PARITY-012-OUTCOME-002",
+          "description": "The first and second lines are visible together, in order, while the paragraph status is RUNNING."
+        },
+        {
+          "id": "NB-PARITY-012-OUTCOME-003",
+          "description": "After the paragraph reaches FINISHED, the complete result contains exactly the three expected lines in order, without missing or duplicated chunks."
+        }
+      ],
+      "interpreter": "sh",
+      "roleExpectations": {
+        "owner": "allow",
+        "writer": "allow",
+        "reader": "deny",
+        "runner": "allow"
+      },
+      "roleVerification": {
+        "owner": "unverified",
+        "writer": "unverified",
+        "reader": "unverified",
+        "runner": "unverified"
+      },
+      "coverage": {
+        "status": "covered",
+        "tests": [
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/paragraph/paragraph-functionality.spec.ts",
+            "tag": "@NB-PARITY-012"
+          }
+        ],
+        "issues": [],
+        "uncoveredOutcomes": []
+      },
+      "implementationEvidence": [
+        {
+          "path": "zeppelin-web-angular/src/app/core/paragraph-base/paragraph-base.ts",
+          "symbol": "onParagraphAppendOutput"
+        },
+        {
+          "path": "zeppelin-web-angular/src/app/core/paragraph-base/paragraph-base.ts",
+          "symbol": "onParagraphUpdateOutput"
+        }
+      ],
+      "verificationEvidence": [
+        {
+          "path": "zeppelin-web-angular/e2e/tests/notebook/paragraph/paragraph-functionality.spec.ts",
+          "symbol": "should accumulate interpreter output while the paragraph is running"
         }
       ]
     },

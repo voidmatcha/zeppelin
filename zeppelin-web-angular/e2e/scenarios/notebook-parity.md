@@ -16,7 +16,7 @@
 
 Schema: [notebook-parity.schema.json](./notebook-parity.schema.json)
 
-Scenario/Angular baseline commit: `d5b57b12fd0c5e1d885767aabe06b242debf8300`
+Scenario/Angular baseline commit: `b127723fc7e46fc30b4c9a7c754e8fe984f722c0`
 
 Scope note: This is a prioritized baseline, not a complete Notebook inventory. Before a React vertical slice is declared ready, add every affected behavior to this registry and classify its evidence.
 
@@ -31,6 +31,7 @@ Coverage note: `covered` mechanically means this registry points to a matching e
 | NB-PARITY-005 | shortcut | Shift+Enter executes a markdown paragraph | covered | owner: allow<br>writer: allow<br>reader: deny<br>runner: allow | zeppelin-web-angular/e2e/tests/notebook/keyboard/notebook-keyboard-shortcuts.spec.ts<br>@NB-PARITY-005 |  |
 | NB-PARITY-010 | editor | History inline completion can be dismissed without losing editor focus | covered | not-applicable | zeppelin-web-angular/e2e/tests/notebook/inline-completion.spec.ts<br>@NB-PARITY-010 |  |
 | NB-PARITY-011 | editor | The second Escape after inline completion dismissal blurs the editor | covered | not-applicable | zeppelin-web-angular/e2e/tests/notebook/inline-completion.spec.ts<br>@NB-PARITY-011 |  |
+| NB-PARITY-012 | result | Streaming text output accumulates while a paragraph runs | covered | owner: allow<br>writer: allow<br>reader: deny<br>runner: allow | zeppelin-web-angular/e2e/tests/notebook/paragraph/paragraph-functionality.spec.ts<br>@NB-PARITY-012 |  |
 | NB-PARITY-021 | result | Text and table result displays preserve output semantics after paragraph execution | partial | owner: allow<br>writer: allow<br>reader: deny<br>runner: allow | zeppelin-web-angular/e2e/tests/notebook/paragraph/paragraph-functionality.spec.ts<br>@NB-PARITY-021 | ZEPPELIN-6514, ZEPPELIN-6516 |
 | NB-PARITY-050 | persistence | Notebook editor persists the latest text after typing stops | gap | owner: allow<br>writer: allow<br>reader: deny<br>runner: not-applicable |  | ZEPPELIN-6661 |
 | NB-PARITY-051 | persistence | Notebook editor does not lose an edit made while a prior save is in flight | gap | owner: allow<br>writer: allow<br>reader: deny<br>runner: not-applicable |  | ZEPPELIN-6661 |
@@ -121,6 +122,18 @@ Coverage note: `covered` mechanically means this registry points to a matching e
 - Observable outcomes: NB-PARITY-011-OUTCOME-001: The first Escape keeps Monaco focused. NB-PARITY-011-OUTCOME-002: The second Escape blurs the Monaco input in Chromium.
 - Implementation evidence: not-applicable
 - Verification evidence: zeppelin-web-angular/e2e/tests/notebook/inline-completion.spec.ts (Inline completion); zeppelin-web-angular/e2e/models/notebook-keyboard-page.ts (NotebookKeyboardPage)
+
+### NB-PARITY-012 Streaming text output accumulates while a paragraph runs
+
+- Area: result
+- Coverage: covered
+- Interpreter: sh
+- Role verification: owner: unverified; writer: unverified; reader: unverified; runner: unverified
+- Preconditions: A disposable notebook is bound to the shell interpreter and the user can run its paragraph. The standard notebook render path is active, without personalized or embedded output. zeppelin.websocket.paragraph_status_progress.enable is true. The shell paragraph prints first, second, and third on separate lines with delays of 3 and 5 seconds, both longer than the 100 ms append buffer interval.
+- Action: Run the shell paragraph and inspect its result while running and after completion.
+- Observable outcomes: NB-PARITY-012-OUTCOME-001: The first line is visible while the paragraph status is RUNNING. NB-PARITY-012-OUTCOME-002: The first and second lines are visible together, in order, while the paragraph status is RUNNING. NB-PARITY-012-OUTCOME-003: After the paragraph reaches FINISHED, the complete result contains exactly the three expected lines in order, without missing or duplicated chunks.
+- Implementation evidence: zeppelin-web-angular/src/app/core/paragraph-base/paragraph-base.ts (onParagraphAppendOutput); zeppelin-web-angular/src/app/core/paragraph-base/paragraph-base.ts (onParagraphUpdateOutput)
+- Verification evidence: zeppelin-web-angular/e2e/tests/notebook/paragraph/paragraph-functionality.spec.ts (should accumulate interpreter output while the paragraph is running)
 
 ### NB-PARITY-021 Text and table result displays preserve output semantics after paragraph execution
 
