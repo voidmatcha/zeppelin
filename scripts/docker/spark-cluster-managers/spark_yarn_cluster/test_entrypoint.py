@@ -88,6 +88,12 @@ class EntrypointTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='zeppelin-entrypoint-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.name = self.root / 'name'
+        self.data = self.root / 'data'
+        (self.name / 'current').mkdir(parents=True)
+        (self.name / 'current/VERSION').touch()
+        (self.data / 'current').mkdir(parents=True)
+        (self.data / 'current/VERSION').touch()
         self.hadoop = self.root / 'hadoop'
         self.spark = self.root / 'spark'
         (self.spark / 'jars').mkdir(parents=True)
@@ -100,6 +106,8 @@ class EntrypointTest(unittest.TestCase):
         self.executable(self.root / 'bin/service', '#!/bin/sh\nexit 0\n')
         self.executable(self.root / 'bin/jps', '#!/bin/sh\necho "123 NameNode"\n')
         self.state = {
+            'dfs.namenode.name.dir': str(self.name),
+            'dfs.datanode.data.dir': str(self.data),
             'jar_directory': True,
             'jars': ['spark-core.jar', 'spark-yarn.jar'],
             'marker': 'Spark test release',
@@ -108,7 +116,7 @@ class EntrypointTest(unittest.TestCase):
         }
         source = Path(__file__).with_name('entrypoint.sh').read_text()
         # Exclude SSH-key setup and Spark launch, which use container-only paths.
-        source = source[source.index('# start hadoop'):]
+        source = source[source.index('# format on first start only.'):]
         self.script = 'set -euo pipefail\n' + source.split('# start spark\n')[0]
 
     @staticmethod
@@ -135,6 +143,62 @@ class EntrypointTest(unittest.TestCase):
         self.assertFalse(any(call[0] == 'namenode' or call[:2] in [['dfs', '-put'], ['dfs', '-rm']]
                              for call in self.calls), self.calls)
 
+    def test_empty_volume_is_formatted_and_uploaded(self):
+        for directory in [self.name, self.data]:
+            (directory / 'current/VERSION').unlink()
+            (directory / 'current').rmdir()
+        self.state['jar_directory'] = False
+        result = self.run_entrypoint()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls.count(['namenode', '-format', '-nonInteractive']), 1)
+        self.assertIn(['dfs', '-put', str(self.spark / 'jars'), '/spark'], self.calls)
+
+    def test_healthy_volume_paths(self):
+        for prefix in ['', 'file:', 'file://']:
+            with self.subTest(prefix=prefix):
+                self.state['dfs.namenode.name.dir'] = prefix + str(self.name)
+                self.state['dfs.datanode.data.dir'] = prefix + str(self.data)
+                result = self.run_entrypoint()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assert_no_upload_or_format()
+
+    def test_comma_entries_preserve_spaces_inside_paths(self):
+        renamed = self.root / 'name with spaces'
+        self.name.rename(renamed)
+        self.state['dfs.namenode.name.dir'] = ' ,  file:' + str(renamed) + ' , '
+        result = self.run_entrypoint()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_no_upload_or_format()
+
+    def test_uri_authority_is_rejected_before_formatting(self):
+        self.state['dfs.namenode.name.dir'] = 'file://remote/data/name'
+        result = self.run_entrypoint()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Unsupported storage URI authority', result.stderr)
+        self.assert_no_upload_or_format()
+
+    def test_remaining_blocks_without_either_version_prevent_format(self):
+        (self.name / 'current/VERSION').unlink()
+        (self.name / 'current').rmdir()
+        (self.data / 'current/VERSION').unlink()
+        block = self.data / 'current/BP-test/finalized/blk_1'
+        block.parent.mkdir(parents=True)
+        block.write_bytes(b'preserve this data')
+        result = self.run_entrypoint()
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_upload_or_format()
+        self.assertEqual(block.read_bytes(), b'preserve this data')
+
+    def test_encoded_storage_uri_is_rejected_before_formatting(self):
+        for key in ['dfs.namenode.name.dir', 'dfs.datanode.data.dir']:
+            with self.subTest(key=key):
+                self.state['dfs.namenode.name.dir'] = str(self.root / 'absent-name')
+                self.state['dfs.datanode.data.dir'] = str(self.data)
+                self.state[key] = 'file:' + str(self.root / 'storage%20space')
+                result = self.run_entrypoint()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Percent-encoded storage URIs are not supported', result.stderr)
+                self.assert_no_upload_or_format()
 
     def test_invalid_release_preserves_existing_cache(self):
         for release in ['', '\nSpark release\n', None]:
@@ -150,6 +214,34 @@ class EntrypointTest(unittest.TestCase):
                 self.assertIn('Cannot determine the Spark release', result.stderr)
                 self.assert_no_upload_or_format()
 
+    def test_half_formatted_name_directory_prevents_format(self):
+        (self.name / 'current/VERSION').unlink()
+        result = self.run_entrypoint()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('no VERSION', result.stderr)
+        self.assert_no_upload_or_format()
+
+    def test_typed_datanode_storage_prevents_format(self):
+        (self.name / 'current/VERSION').unlink()
+        (self.name / 'current').rmdir()
+        for path in [f'[DISK]{self.data}', f' [SSD]file:{self.data} ',
+                     f'[DISK] file://{self.data}']:
+            with self.subTest(path=path):
+                self.state['dfs.datanode.data.dir'] = path
+                result = self.run_entrypoint()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('holds datanode storage files', result.stderr)
+                self.assert_no_upload_or_format()
+
+    def test_unrecognized_storage_path_prevents_format(self):
+        (self.name / 'current/VERSION').unlink()
+        (self.name / 'current').rmdir()
+        for path in ['[DISK/data/hdfs', 'relative/path', '[DISK]file:///data/name%20space']:
+            with self.subTest(path=path):
+                self.state['dfs.datanode.data.dir'] = path
+                result = self.run_entrypoint()
+                self.assertNotEqual(result.returncode, 0)
+                self.assert_no_upload_or_format()
 
     def test_directory_probe_failure_preserves_cache(self):
         self.state['directory_probe_unavailable'] = True
