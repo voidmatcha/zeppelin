@@ -28,19 +28,26 @@ import org.mockito.InOrder;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -63,6 +70,177 @@ class AppendOutputRunnerTest {
     if (future != null) {
       future.cancel(true);
     }
+  }
+
+  @Test
+  void batchesKeepExecutionUsersSeparateIncludingDelimiterCharacters() {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    runner.appendBuffer("note", "para", 0, "a1", "alice:team");
+    runner.appendBuffer("note", "para", 0, "b1", "bob");
+    runner.appendBuffer("note", "para", 0, "a2", "alice:team");
+    runner.updateBuffer("note", "para", 0, InterpreterResult.Type.TEXT, "b2", "bob");
+    runner.updateAllBuffer("note", "para", Collections.emptyList(), "alice:team");
+
+    InOrder order = inOrder(listener);
+    order.verify(listener).onOutputAppendForUser("note", "para", 0, "a1a2", "alice:team");
+    order.verify(listener).onOutputAppendForUser("note", "para", 0, "b1", "bob");
+    order.verify(listener).onOutputUpdatedForUser(
+        "note", "para", 0, InterpreterResult.Type.TEXT, "b2", "bob");
+    order.verify(listener).onOutputClearForUser("note", "para", "alice:team");
+    order.verifyNoMoreInteractions();
+  }
+
+  @Test
+  void outputMutationCannotBeOvertakenByAnotherDrain() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    CountDownLatch clearing = new CountDownLatch(1);
+    CountDownLatch releaseClear = new CountDownLatch(1);
+    CountDownLatch nextDrainStarted = new CountDownLatch(1);
+    java.util.concurrent.ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Future<?> clear = executor.submit(() -> {
+        runner.runAfterOutput(() -> {
+          clearing.countDown();
+          try {
+            assertTrue(releaseClear.await(5, TimeUnit.SECONDS));
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+          }
+        });
+        return null;
+      });
+      assertTrue(clearing.await(5, TimeUnit.SECONDS));
+      runner.appendBuffer("note", "para", 0, "after clear");
+      java.util.concurrent.Future<?> drain = executor.submit(() -> {
+        nextDrainStarted.countDown();
+        runner.run();
+      });
+      assertTrue(nextDrainStarted.await(5, TimeUnit.SECONDS));
+      assertThrows(java.util.concurrent.TimeoutException.class,
+          () -> drain.get(100, TimeUnit.MILLISECONDS));
+      org.mockito.Mockito.verifyNoInteractions(listener);
+      releaseClear.countDown();
+      clear.get(5, TimeUnit.SECONDS);
+      drain.get(5, TimeUnit.SECONDS);
+      verify(listener).onOutputAppend("note", "para", 0, "after clear");
+    } finally {
+      releaseClear.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void failedOutputMutationPropagatesAndDoesNotStopLaterOutput() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    IOException failure = new IOException("clear failed");
+    assertEquals(failure, assertThrows(IOException.class,
+        () -> runner.runAfterOutput(() -> { throw failure; })));
+    runner.appendBuffer("note", "para", 0, "still flowing");
+    runner.run();
+    verify(listener).onOutputAppend("note", "para", 0, "still flowing");
+  }
+
+  @Test
+  void slowCheckpointPersistenceDoesNotBlockAnotherParagraphDrain() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    CountDownLatch saving = new CountDownLatch(1);
+    CountDownLatch releaseSave = new CountDownLatch(1);
+    org.mockito.Mockito.when(listener.prepareCheckpointOutput("note", "slow", null))
+        .thenReturn(() -> {
+          saving.countDown();
+          try {
+            assertTrue(releaseSave.await(5, TimeUnit.SECONDS));
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+          }
+        });
+    java.util.concurrent.ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Future<?> checkpoint = executor.submit(
+          () -> runner.checkpointOutput("note", "slow"));
+      assertTrue(saving.await(5, TimeUnit.SECONDS));
+      runner.updateBuffer("other-note", "healthy", 0, InterpreterResult.Type.TEXT, "new");
+      executor.submit(runner).get(2, TimeUnit.SECONDS);
+      verify(listener).onOutputUpdated(
+          "other-note", "healthy", 0, InterpreterResult.Type.TEXT, "new");
+      assertFalse(checkpoint.isDone());
+      releaseSave.countDown();
+      checkpoint.get(5, TimeUnit.SECONDS);
+    } finally {
+      releaseSave.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void scheduledDrainSurvivesFailedUpdate() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    CountDownLatch firstDelivered = new CountDownLatch(1);
+    CountDownLatch nextDelivered = new CountDownLatch(1);
+    doThrow(new NullPointerException("removed paragraph")).when(listener)
+        .onOutputUpdated("note", "removed", 0, InterpreterResult.Type.TEXT, "bad");
+    doAnswer(invocation -> {
+      firstDelivered.countDown();
+      return null;
+    }).when(listener).onOutputAppend("note", "healthy", 0, "first");
+    doAnswer(invocation -> {
+      nextDelivered.countDown();
+      return null;
+    }).when(listener).onOutputAppend("note", "healthy", 0, "next");
+    runner.updateBuffer("note", "removed", 0, InterpreterResult.Type.TEXT, "bad");
+    runner.appendBuffer("note", "healthy", 0, "first");
+    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+    ScheduledFuture<?> scheduled = executor.scheduleWithFixedDelay(
+        runner, 0, 10, TimeUnit.MILLISECONDS);
+    try {
+      assertTrue(firstDelivered.await(5, TimeUnit.SECONDS));
+      // Enqueued after the first batch was drained, requiring another scheduled execution.
+      runner.appendBuffer("note", "healthy", 0, "next");
+      assertTrue(nextDelivered.await(5, TimeUnit.SECONDS));
+      assertFalse(scheduled.isDone());
+    } finally {
+      scheduled.cancel(true);
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void failedAppendDoesNotDiscardOtherParagraphsOrUpdates() {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    doThrow(new IllegalStateException("failed append")).when(listener)
+        .onOutputAppend("note", "bad", 0, "bad");
+    runner.appendBuffer("note", "bad", 0, "bad");
+    runner.appendBuffer("note", "healthy", 0, "good");
+    runner.updateBuffer("note", "healthy", 0, InterpreterResult.Type.TEXT, "replacement");
+
+    runner.run();
+
+    InOrder order = inOrder(listener);
+    order.verify(listener).onOutputAppend("note", "healthy", 0, "good");
+    order.verify(listener).onOutputUpdated(
+        "note", "healthy", 0, InterpreterResult.Type.TEXT, "replacement");
+  }
+
+  @Test
+  void failedClearDoesNotDiscardLaterEvents() {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    doThrow(new IllegalStateException("failed clear")).when(listener)
+        .onOutputClear("note", "bad");
+    runner.updateAllBuffer("note", "bad", Collections.emptyList());
+    runner.updateBuffer("note", "healthy", 0, InterpreterResult.Type.TEXT, "good");
+
+    runner.run();
+
+    verify(listener).onOutputUpdated("note", "healthy", 0, InterpreterResult.Type.TEXT, "good");
   }
 
   @Test

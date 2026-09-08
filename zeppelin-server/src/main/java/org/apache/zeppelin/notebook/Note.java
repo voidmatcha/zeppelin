@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -105,6 +106,7 @@ public class Note implements JsonSerializable {
    */
   private transient final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(false);
   private transient boolean removed = false;
+  private transient final AtomicInteger paragraphExecutionAdmissions = new AtomicInteger();
   private transient InterpreterFactory interpreterFactory;
   private transient InterpreterSettingManager interpreterSettingManager;
   private transient ParagraphJobListener paragraphJobListener;
@@ -172,6 +174,43 @@ public class Note implements JsonSerializable {
   public boolean isPersonalizedMode() {
     Object v = getConfig().get("personalizedMode");
     return null != v && "true".equals(v);
+  }
+
+  /** Reserve execution before choosing a shared paragraph or a user's copy. */
+  public synchronized void beginParagraphExecution() {
+    paragraphExecutionAdmissions.incrementAndGet();
+  }
+
+  public synchronized void endParagraphExecution() {
+    paragraphExecutionAdmissions.decrementAndGet();
+  }
+
+  /** Caller holds this note's monitor until the mode transition is complete. */
+  public synchronized boolean canChangePersonalizedMode() {
+    return !isRunning() && !hasActiveExecution();
+  }
+
+  /** Nonblocking execution check for cache eviction; never acquires the note monitor. */
+  boolean hasActiveExecution() {
+    if (paragraphExecutionAdmissions.get() != 0) {
+      return true;
+    }
+    for (Paragraph paragraph : paragraphs.toArray(new Paragraph[0])) {
+      if (paragraph == null) {
+        continue;
+      }
+      Status status = paragraph.getStatus();
+      if (status.isRunning() || status.isPending()) {
+        return true;
+      }
+      for (Paragraph userParagraph : paragraph.getUserParagraphMap().values()) {
+        status = userParagraph.getStatus();
+        if (status.isRunning() || status.isPending()) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   public void setPersonalizedMode(Boolean value) {
@@ -513,9 +552,17 @@ public class Note implements JsonSerializable {
   }
 
   public void clearParagraphOutputFields(Paragraph p) {
+    clearParagraphOutputFields(p, false);
+  }
+
+  public void clearParagraphOutputFields(Paragraph p, boolean preserveOutputTypes) {
     p.setReturn(null, null);
     p.cleanRuntimeInfos();
-    p.cleanOutputBuffer();
+    if (preserveOutputTypes) {
+      p.clearOutputBufferData();
+    } else {
+      p.cleanOutputBuffer();
+    }
   }
 
   public Paragraph clearPersonalizedParagraphOutput(String paragraphId, String user) {
@@ -553,8 +600,20 @@ public class Note implements JsonSerializable {
    * Clear all paragraph output of note
    */
   public void clearAllParagraphOutput() {
-    for (Paragraph p : paragraphs) {
-      p.setReturn(null, null);
+    clearAllParagraphOutput(null);
+  }
+
+  public void clearAllParagraphOutput(String user) {
+    if (isPersonalizedMode() && user == null) {
+      return;
+    }
+    for (Paragraph paragraph : paragraphs) {
+      Paragraph target = isPersonalizedMode()
+          ? paragraph.getUserParagraph(user) : paragraph;
+      if (target != null) {
+        // Running interpreters may append again without repeating their result types.
+        clearParagraphOutputFields(target, true);
+      }
     }
   }
 
@@ -664,32 +723,53 @@ public class Note implements JsonSerializable {
                      boolean blocking,
                      boolean isolated,
                      Map<String, Object> params) throws Exception {
-    if (isRunning()) {
-      throw new Exception("Unable to run note:" + id + " because it is still in RUNNING state.");
-    }
-    setIsolatedMode(isolated);
-    setRunning(true);
-    setStartTime(DATE_TIME_FORMATTER.format(LocalDateTime.now()));
-    if (blocking) {
-      try {
-        runAllSync(authInfo, isolated, params);
-      } finally {
-        setRunning(false);
-        setIsolatedMode(false);
-        clearStartTime();
+    beginParagraphExecution();
+    boolean asynchronous = false;
+    try {
+      if (isRunning()) {
+        throw new Exception("Unable to run note:" + id + " because it is still in RUNNING state.");
       }
-    } else {
-      ExecutorFactory.singleton().getNoteJobExecutor().submit(() -> {
+      setIsolatedMode(isolated);
+      setRunning(true);
+      setStartTime(DATE_TIME_FORMATTER.format(LocalDateTime.now()));
+      if (blocking) {
         try {
           runAllSync(authInfo, isolated, params);
-        } catch (Exception e) {
-          LOGGER.warn("Fail to run note: {}", id, e);
         } finally {
           setRunning(false);
           setIsolatedMode(false);
           clearStartTime();
         }
-      });
+      } else {
+        try {
+          ExecutorFactory.singleton().getNoteJobExecutor().submit(() -> {
+            try {
+              runAllSync(authInfo, isolated, params);
+            } catch (Exception e) {
+              LOGGER.warn("Fail to run note: {}", id, e);
+            } finally {
+              try {
+                setRunning(false);
+                setIsolatedMode(false);
+                clearStartTime();
+              } finally {
+                endParagraphExecution();
+              }
+            }
+          });
+          asynchronous = true;
+        } catch (RuntimeException e) {
+          setRunning(false);
+          setIsolatedMode(false);
+          clearStartTime();
+          throw e;
+        }
+      }
+    } finally {
+      // A submitted asynchronous task owns the reservation until its completion callback.
+      if (!asynchronous) {
+        endParagraphExecution();
+      }
     }
   }
 
@@ -775,13 +855,17 @@ public class Note implements JsonSerializable {
                      String interpreterGroupId,
                      boolean blocking,
                      String ctxUser) {
-    Paragraph p = getParagraph(paragraphId);
-
-    if (isPersonalizedMode() && ctxUser != null)
-      p = p.getUserParagraph(ctxUser);
-
-    p.setListener(this.paragraphJobListener);
-    return p.execute(interpreterGroupId, blocking);
+    beginParagraphExecution();
+    try {
+      Paragraph p = getParagraph(paragraphId);
+      if (isPersonalizedMode() && ctxUser != null) {
+        p = p.getUserParagraph(ctxUser);
+      }
+      p.setListener(this.paragraphJobListener);
+      return p.execute(interpreterGroupId, blocking);
+    } finally {
+      endParagraphExecution();
+    }
   }
 
   /**

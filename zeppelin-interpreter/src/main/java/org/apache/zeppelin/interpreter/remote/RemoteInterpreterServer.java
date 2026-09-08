@@ -955,7 +955,12 @@ public class RemoteInterpreterServer extends Thread
   }
 
   private InterpreterContext convert(RemoteInterpreterContext ric) {
-    return convert(ric, createInterpreterOutput(ric.getNoteId(), ric.getParagraphId()));
+    AuthenticationInfo authenticationInfo = AuthenticationInfo.fromJson(ric.getAuthenticationInfo());
+    String mode = ric.getLocalProperties() == null ? null
+        : ric.getLocalProperties().get(InterpreterContext.OUTPUT_PERSONALIZED_MODE);
+    Boolean personalized = mode == null ? null : Boolean.valueOf(mode);
+    return convert(ric, createInterpreterOutput(ric.getNoteId(), ric.getParagraphId(),
+        authenticationInfo == null ? null : authenticationInfo.getUser(), personalized));
   }
 
   private InterpreterContext convert(RemoteInterpreterContext ric, InterpreterOutput output) {
@@ -983,12 +988,22 @@ public class RemoteInterpreterServer extends Thread
 
   protected InterpreterOutput createInterpreterOutput(final String noteId, final String
       paragraphId) {
+    return createInterpreterOutput(noteId, paragraphId, null);
+  }
+
+  protected InterpreterOutput createInterpreterOutput(
+      final String noteId, final String paragraphId, final String user) {
+    return createInterpreterOutput(noteId, paragraphId, user, null);
+  }
+
+  protected InterpreterOutput createInterpreterOutput(final String noteId, final String paragraphId,
+      final String user, final Boolean personalized) {
     return new InterpreterOutput(new InterpreterOutputListener() {
       @Override
       public void onUpdateAll(InterpreterOutput out) {
         try {
           intpEventClient.onInterpreterOutputUpdateAll(
-              noteId, paragraphId, out.toInterpreterResultMessage());
+              noteId, paragraphId, out.toInterpreterResultMessage(), user, personalized);
         } catch (IOException e) {
           LOGGER.error(e.getMessage(), e);
         }
@@ -999,7 +1014,7 @@ public class RemoteInterpreterServer extends Thread
         String output = new String(line);
         LOGGER.debug("Output Append: {}", output);
         intpEventClient.onInterpreterOutputAppend(
-            noteId, paragraphId, index, output);
+            noteId, paragraphId, index, output, user, personalized);
       }
 
       @Override
@@ -1009,7 +1024,7 @@ public class RemoteInterpreterServer extends Thread
           output = new String(out.toByteArray());
           LOGGER.debug("Output Update for index {}: {}", index, output);
           intpEventClient.onInterpreterOutputUpdate(
-              noteId, paragraphId, index, out.getType(), output);
+              noteId, paragraphId, index, out.getType(), output, user, personalized);
         } catch (IOException e) {
           LOGGER.error(e.getMessage(), e);
         }

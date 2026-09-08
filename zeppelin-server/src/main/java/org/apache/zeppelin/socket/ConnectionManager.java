@@ -345,6 +345,29 @@ public class ConnectionManager {
     }
   }
 
+  public void multicastToUserInNote(String noteId, String user, Message message) {
+    if (noteId == null || user == null) {
+      return;
+    }
+    Queue<NotebookSocket> userConnections = userSocketMap.get(user);
+    if (userConnections == null) {
+      return;
+    }
+    Set<NotebookSocket> noteConnections;
+    synchronized (noteSocketMap) {
+      Set<NotebookSocket> sockets = noteSocketMap.get(noteId);
+      if (sockets == null) {
+        return;
+      }
+      noteConnections = new HashSet<>(sockets);
+    }
+    for (NotebookSocket connection : new ArrayList<>(userConnections)) {
+      if (noteConnections.contains(connection)) {
+        unicast(message, connection);
+      }
+    }
+  }
+
   public void unicast(Message m, NotebookSocket conn) {
     try {
       conn.send(serializeMessage(m));
@@ -359,16 +382,9 @@ public class ConnectionManager {
       return;
     }
 
-    Queue<NotebookSocket> connections = userSocketMap.get(user);
-    if (connections == null) {
-      LOGGER.warn("Failed to send unicast. user {} that is not in connections map", user);
-      return;
-    }
-
-    for (NotebookSocket conn : connections) {
-      Message m = new Message(Message.OP.PARAGRAPH).withMsgId(msgId).put("paragraph", p);
-      unicast(m, conn);
-    }
+    multicastToUserInNote(note.getId(), user,
+        new Message(Message.OP.PARAGRAPH).withMsgId(msgId)
+            .put("noteId", note.getId()).put("paragraph", p));
   }
 
   public interface UserIterator {
@@ -404,20 +420,40 @@ public class ConnectionManager {
   }
 
   public void broadcastParagraph(Note note, Paragraph p) {
-    broadcastNoteForms(note);
-
-    if (note.isPersonalizedMode()) {
-      broadcastParagraphs(p.getUserParagraphMap());
-    } else {
-      broadcast(note.getId(), new Message(Message.OP.PARAGRAPH).put("paragraph", p));
+    synchronized (note) {
+      Paragraph master = note.getParagraph(p.getId());
+      if (master != p) {
+        if (master != null && note.isPersonalizedMode()) {
+          for (Entry<String, Paragraph> entry : master.getUserParagraphMap().entrySet()) {
+            if (entry.getValue() == p) {
+              multicastToUserInNote(note.getId(), entry.getKey(),
+                  new Message(Message.OP.PARAGRAPH)
+                      .put("noteId", note.getId()).put("paragraph", p));
+              break;
+            }
+          }
+        }
+        return;
+      }
+      broadcastNoteForms(note);
+      if (note.isPersonalizedMode()) {
+        broadcastParagraphs(p.getUserParagraphMap());
+      } else {
+        broadcast(note.getId(), new Message(Message.OP.PARAGRAPH)
+            .put("noteId", note.getId()).put("paragraph", p));
+      }
     }
   }
 
   public void broadcastParagraphs(Map<String, Paragraph> userParagraphMap) {
     if (null != userParagraphMap) {
       for (Entry<String, Paragraph> userParagraphEntry : userParagraphMap.entrySet()) {
-        multicastToUser(userParagraphEntry.getKey(),
-            new Message(Message.OP.PARAGRAPH).put("paragraph", userParagraphEntry.getValue()));
+        Paragraph paragraph = userParagraphEntry.getValue();
+        if (paragraph != null && paragraph.getNote() != null) {
+          String noteId = paragraph.getNote().getId();
+          multicastToUserInNote(noteId, userParagraphEntry.getKey(),
+              new Message(Message.OP.PARAGRAPH).put("noteId", noteId).put("paragraph", paragraph));
+        }
       }
     }
   }

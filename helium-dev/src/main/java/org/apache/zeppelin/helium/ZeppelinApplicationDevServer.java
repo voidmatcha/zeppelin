@@ -26,7 +26,6 @@ import org.apache.log4j.Level;
 import org.apache.log4j.PatternLayout;
 import org.apache.zeppelin.interpreter.*;
 import org.apache.zeppelin.interpreter.InterpreterResult.Code;
-import org.apache.zeppelin.interpreter.remote.RemoteInterpreterEventClient;
 import org.apache.zeppelin.resource.ResourceSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,6 @@ public class ZeppelinApplicationDevServer extends ZeppelinDevServer {
   private final String className;
   private final ResourceSet resourceSet;
   private Application app;
-  private InterpreterOutput out;
 
   public ZeppelinApplicationDevServer(final String className, ResourceSet resourceSet) throws
       Exception {
@@ -68,10 +66,17 @@ public class ZeppelinApplicationDevServer extends ZeppelinDevServer {
 
 
   @Override
-  public InterpreterResult interpret(String st, InterpreterContext context) {
-    if (app == null) {
+  public synchronized InterpreterResult interpret(String st, InterpreterContext context) {
+    if (app == null || app.context().out != context.out) {
       LOGGER.info("Create instance " + className);
       try {
+        if (app != null) {
+          Application previous = app;
+          app = null;
+          try (InterpreterOutput previousOutput = previous.context().out) {
+            previous.unload();
+          }
+        }
         Class<?> appClass = ClassLoader.getSystemClassLoader().loadClass(className);
         Constructor<?> constructor = appClass.getConstructor(ApplicationContext.class);
 
@@ -134,39 +139,4 @@ public class ZeppelinApplicationDevServer extends ZeppelinDevServer {
         interpreterContext.out);
   }
 
-  @Override
-  protected InterpreterOutput createInterpreterOutput(
-      final String noteId, final String paragraphId) {
-    if (out == null) {
-      final RemoteInterpreterEventClient eventClient = getIntpEventClient();
-      try {
-        out = new InterpreterOutput(new InterpreterOutputListener() {
-          @Override
-          public void onUpdateAll(InterpreterOutput out) {
-
-          }
-
-          @Override
-          public void onAppend(int index, InterpreterResultMessageOutput out, byte[] line) {
-            eventClient.onInterpreterOutputAppend(noteId, paragraphId, index, new String(line));
-          }
-
-          @Override
-          public void onUpdate(int index, InterpreterResultMessageOutput out) {
-            try {
-              eventClient.onInterpreterOutputUpdate(noteId, paragraphId,
-                  index, out.getType(), new String(out.toByteArray()));
-            } catch (IOException e) {
-              LOGGER.error(e.getMessage(), e);
-            }
-          }
-
-        }, this);
-      } catch (IOException e) {
-        return null;
-      }
-    }
-
-    return out;
-  }
 }

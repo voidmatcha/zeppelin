@@ -88,7 +88,10 @@ public class SingleRowStreamSqlJob extends AbstractStreamSqlJob {
       context.out.flush();
       // should checkpoint the html output, otherwise frontend won't display the output
       // after recovering.
-      context.getIntpEventClient().checkpointOutput(context.getNoteId(), context.getParagraphId());
+      context.getIntpEventClient().checkpointOutput(context.getNoteId(), context.getParagraphId(),
+          context.getAuthenticationInfo() == null ? null
+              : context.getAuthenticationInfo().getUser(),
+          context.getLocalProperties().get(InterpreterContext.OUTPUT_PERSONALIZED_MODE));
       isFirstRefresh = false;
     }
 

@@ -39,6 +39,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -129,6 +141,179 @@ class NoteManagerTest {
 
   private Note createNote(String notePath) {
     return new Note(notePath, "test", null, null, null, null, null, zConf, noteParser);
+  }
+
+  @Test
+  void asynchronousExecutionSurvivesEvictionAndExplicitReloadUntilCompletion() throws Exception {
+    ZeppelinConfiguration smallCache = spy(zConf);
+    doReturn(1).when(smallCache).getNoteCacheThreshold();
+    Map<String, String> saved = new ConcurrentHashMap<>();
+    InMemoryNotebookRepo repo = new InMemoryNotebookRepo() {
+      @Override
+      public void save(Note note, AuthenticationInfo subject) throws IOException {
+        super.save(note, subject);
+        // Repository loads must return a detached identity, as disk-backed repositories do.
+        saved.put(note.getId(), new com.google.gson.Gson().toJson(note, Note.class));
+      }
+
+      @Override
+      public Note get(String id, String path, AuthenticationInfo subject) throws IOException {
+        return NoteManagerTest.this.noteParser.fromJson(id, saved.get(id));
+      }
+    };
+    NoteManager manager = new NoteManager(repo, smallCache);
+    Note active = spy(createNote("/active"));
+    active.setPersonalizedMode(true);
+    active.setParagraphJobListener(mock(ParagraphJobListener.class));
+    manager.addNote(active, AuthenticationInfo.ANONYMOUS);
+    manager.saveNote(active);
+    Paragraph paragraph = spy(new Paragraph("async-paragraph", active, null));
+    active.getParagraphs().add(paragraph);
+    doReturn(null).when(paragraph).getBindedInterpreter();
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch finished = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      started.countDown();
+      assertTrue(release.await(5, TimeUnit.SECONDS));
+      return true;
+    }).when(active).run(anyString(), eq(true));
+    doAnswer(invocation -> {
+      invocation.callRealMethod();
+      if (!active.hasActiveExecution()) {
+        finished.countDown();
+      }
+      return null;
+    }).when(active).endParagraphExecution();
+    try {
+      manager.processNote(active.getId(), n -> {
+        try {
+          n.runAll(AuthenticationInfo.ANONYMOUS, false, false, Collections.emptyMap());
+        } catch (Exception e) {
+          throw new IOException(e);
+        }
+        return null;
+      });
+      assertTrue(started.await(5, TimeUnit.SECONDS));
+      Note pressure = createNote("/pressure");
+      pressure.beginParagraphExecution();
+      try {
+        manager.addNote(pressure, AuthenticationInfo.ANONYMOUS);
+        assertEquals(2, manager.getCacheSize(), "active executions may exceed the cache limit");
+      } finally {
+        pressure.endParagraphExecution();
+      }
+      assertSame(active, manager.processNote(active.getId(), n -> n));
+      assertSame(active, manager.processNote(active.getId(), true, n -> {
+        assertFalse(n.canChangePersonalizedMode());
+        return n;
+      }));
+      manager.reloadNotes();
+      assertSame(active, manager.processNote(active.getId(), true, n -> n));
+      assertNull(manager.processNote("missing", true, n -> n));
+    } finally {
+      release.countDown();
+    }
+    assertTrue(finished.await(5, TimeUnit.SECONDS));
+    Note reloaded = manager.processNote(active.getId(), true, n -> n);
+    assertNotSame(active, reloaded);
+    assertTrue(reloaded.canChangePersonalizedMode());
+    // The cache grew while both notes were admitted. Each insertion evicts one LRU entry,
+    // so replace every existing entry before asserting that the completed note was evicted.
+    int cachedNotes = manager.getCacheSize();
+    for (int i = 0; i < cachedNotes; i++) {
+      manager.addNote(createNote("/after-completion-" + i), AuthenticationInfo.ANONYMOUS);
+    }
+    assertNotSame(reloaded, manager.processNote(active.getId(), n -> n));
+  }
+
+  @Test
+  void explicitReloadDoesNotReplaceAParagraphAdmissionHeldByAnotherThread() throws Exception {
+    Note active = createNote("/admitted");
+    noteManager.addNote(active, AuthenticationInfo.ANONYMOUS);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      active.beginParagraphExecution();
+      assertSame(active, executor.submit(() ->
+          noteManager.processNote(active.getId(), true, n -> n)).get(5, TimeUnit.SECONDS));
+      assertFalse(active.canChangePersonalizedMode());
+    } finally {
+      active.endParagraphExecution();
+      executor.shutdownNow();
+    }
+    assertTrue(active.canChangePersonalizedMode());
+  }
+
+  @Test
+  void forcedReloadDefersWithoutBlockingWhileAnotherThreadProcessesTheNote() throws Exception {
+    InMemoryNotebookRepo repo = spy(new InMemoryNotebookRepo());
+    NoteManager manager = new NoteManager(repo, zConf);
+    Note active = createNote("/processing");
+    manager.addNote(active, AuthenticationInfo.ANONYMOUS);
+    manager.saveNote(active);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    active.getLock().readLock().lock();
+    try {
+      assertSame(active, executor.submit(() ->
+          manager.processNote(active.getId(), true, n -> n)).get(5, TimeUnit.SECONDS));
+      verify(repo, never()).get(anyString(), anyString(), any());
+    } finally {
+      active.getLock().readLock().unlock();
+      executor.shutdownNow();
+    }
+    manager.processNote(active.getId(), true, n -> n);
+    verify(repo).get(eq(active.getId()), anyString(), any());
+  }
+
+  @Test
+  void delayedLoadCannotReplaceAnAdmittedNoteFromANewerTreeGeneration() throws Exception {
+    Note stored = createNote("/tree-generation");
+    String saved = noteParser.toJson(stored);
+    CountDownLatch firstLoadStarted = new CountDownLatch(1);
+    CountDownLatch releaseFirstLoad = new CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicInteger loads = new java.util.concurrent.atomic.AtomicInteger();
+    InMemoryNotebookRepo repo = new InMemoryNotebookRepo() {
+      @Override
+      public Note get(String id, String path, AuthenticationInfo subject) throws IOException {
+        if (loads.incrementAndGet() == 1) {
+          firstLoadStarted.countDown();
+          try {
+            if (!releaseFirstLoad.await(5, TimeUnit.SECONDS)) {
+              throw new IOException("Timed out waiting for the newer tree to load");
+            }
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+          }
+        }
+        return NoteManagerTest.this.noteParser.fromJson(id, saved);
+      }
+    };
+    repo.save(stored, AuthenticationInfo.ANONYMOUS);
+    NoteManager manager = new NoteManager(repo, zConf);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    Note admitted = null;
+    try {
+      java.util.concurrent.Future<Note> oldLoad = executor.submit(() ->
+          manager.processNote(stored.getId(), n -> n));
+      assertTrue(firstLoadStarted.await(5, TimeUnit.SECONDS));
+      manager.reloadNotes();
+      admitted = manager.processNote(stored.getId(), n -> {
+        n.beginParagraphExecution();
+        return n;
+      });
+      releaseFirstLoad.countDown();
+      assertSame(admitted, oldLoad.get(5, TimeUnit.SECONDS));
+      assertSame(admitted, manager.processNote(stored.getId(), n -> n));
+      assertFalse(admitted.canChangePersonalizedMode());
+      assertEquals(2, loads.get());
+    } finally {
+      releaseFirstLoad.countDown();
+      if (admitted != null) {
+        admitted.endParagraphExecution();
+      }
+      executor.shutdownNow();
+    }
   }
 
   @Test

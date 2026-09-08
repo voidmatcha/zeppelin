@@ -442,57 +442,62 @@ public class NotebookService {
       return false;
     }
 
-    Paragraph p = note.getParagraph(paragraphId);
-    if (p == null) {
-      LOGGER.info("Paragraph {} not found in note {}", paragraphId, note.getId());
-      callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
-      return false;
-    }
-    if (failIfDisabled && !p.isEnabled()) {
-      LOGGER.info("Paragraph {} in note {} is disabled, and 'failIfDisabled' flag is set.", paragraphId, note.getId());
-      callback.onFailure(new IOException("paragraph is disabled."), context);
-      return false;
-    }
-    // In personalized mode only the note owner may update the master paragraph, so that
-    // new users inherit the owner's changes while a non-owner's changes stay in their copy.
-    if (!note.isPersonalizedMode()
-        || authorizationService.isOwner(note.getId(), context.getUserAndRoles())) {
-      p.setText(text);
-      p.setTitle(title);
-      p.setAuthenticationInfo(context.getAutheInfo());
-      if (params != null && !params.isEmpty()) {
-        p.settings.setParams(params);
-      }
-      if (config != null && !config.isEmpty()) {
-        p.mergeConfig(config);
-      }
-    }
-
-    if (note.isPersonalizedMode()) {
-      p = p.getUserParagraph(context.getAutheInfo().getUser());
-      p.setText(text);
-      p.setTitle(title);
-      p.setAuthenticationInfo(context.getAutheInfo());
-      if (params != null && !params.isEmpty()) {
-        p.settings.setParams(params);
-      }
-      if (config != null && !config.isEmpty()) {
-        p.mergeConfig(config);
-      }
-    }
-
+    note.beginParagraphExecution();
     try {
-      notebook.saveNote(note, context.getAutheInfo());
-      note.run(p.getId(), sessionId, blocking, context.getAutheInfo().getUser());
-      callback.onSuccess(p, context);
-      return true;
-    } catch (Exception ex) {
-      LOGGER.error("Exception from run", ex);
-      p.setReturn(new InterpreterResult(InterpreterResult.Code.ERROR, ex.getMessage()), ex);
-      p.setStatus(Job.Status.ERROR);
-      // don't call callback.onFailure, we just need to display the error message
-      // in paragraph result section instead of pop up the error window.
-      return false;
+      Paragraph p = note.getParagraph(paragraphId);
+      if (p == null) {
+        LOGGER.info("Paragraph {} not found in note {}", paragraphId, note.getId());
+        callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
+        return false;
+      }
+      if (failIfDisabled && !p.isEnabled()) {
+        LOGGER.info("Paragraph {} in note {} is disabled, and 'failIfDisabled' flag is set.", paragraphId, note.getId());
+        callback.onFailure(new IOException("paragraph is disabled."), context);
+        return false;
+      }
+      // In personalized mode only the note owner may update the master paragraph, so that
+      // new users inherit the owner's changes while a non-owner's changes stay in their copy.
+      if (!note.isPersonalizedMode()
+          || authorizationService.isOwner(note.getId(), context.getUserAndRoles())) {
+        p.setText(text);
+        p.setTitle(title);
+        p.setAuthenticationInfo(context.getAutheInfo());
+        if (params != null && !params.isEmpty()) {
+          p.settings.setParams(params);
+        }
+        if (config != null && !config.isEmpty()) {
+          p.mergeConfig(config);
+        }
+      }
+
+      if (note.isPersonalizedMode()) {
+        p = p.getUserParagraph(context.getAutheInfo().getUser());
+        p.setText(text);
+        p.setTitle(title);
+        p.setAuthenticationInfo(context.getAutheInfo());
+        if (params != null && !params.isEmpty()) {
+          p.settings.setParams(params);
+        }
+        if (config != null && !config.isEmpty()) {
+          p.mergeConfig(config);
+        }
+      }
+
+      try {
+        notebook.saveNote(note, context.getAutheInfo());
+        note.run(p.getId(), sessionId, blocking, context.getAutheInfo().getUser());
+        callback.onSuccess(p, context);
+        return true;
+      } catch (Exception ex) {
+        LOGGER.error("Exception from run", ex);
+        p.setReturn(new InterpreterResult(InterpreterResult.Code.ERROR, ex.getMessage()), ex);
+        p.setStatus(Job.Status.ERROR);
+        // don't call callback.onFailure, we just need to display the error message
+        // in paragraph result section instead of pop up the error window.
+        return false;
+      }
+    } finally {
+      note.endParagraphExecution();
     }
   }
 
@@ -526,6 +531,7 @@ public class NotebookService {
 
         if (paragraphs != null) {
           // run note via the data passed from frontend
+          note.beginParagraphExecution();
           try {
             note.setRunning(true);
             for (Map<String, Object> raw : paragraphs) {
@@ -547,6 +553,9 @@ public class NotebookService {
                 }
                 // also stop execution when user code in a paragraph fails
                 Paragraph p = note.getParagraph(paragraphId);
+                if (note.isPersonalizedMode()) {
+                  p = p.getUserParagraph(context.getAutheInfo().getUser());
+                }
                 InterpreterResult result = p.getReturn();
                 if (result != null && result.code() == ERROR) {
                   return false;
@@ -559,7 +568,11 @@ public class NotebookService {
               }
             }
           } finally {
-            note.setRunning(false);
+            try {
+              note.setRunning(false);
+            } finally {
+              note.endParagraphExecution();
+            }
           }
         } else {
           try {
@@ -859,28 +872,30 @@ public class NotebookService {
         callback)) {
       return;
     }
-    notebook.processNote(noteId,
-      note -> {
-        if (note == null) {
-          callback.onFailure(new NoteNotFoundException(noteId), context);
-          return null;
-        }
-        Paragraph p = note.getParagraph(paragraphId);
-        if (p == null) {
-          callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
-          return null;
-        }
-        Paragraph returnedParagraph;
-        if (note.isPersonalizedMode()) {
-          returnedParagraph = note.clearPersonalizedParagraphOutput(paragraphId,
-              context.getAutheInfo().getUser());
-        } else {
-          note.clearParagraphOutput(paragraphId);
-          returnedParagraph = note.getParagraph(paragraphId);
-        }
-        callback.onSuccess(returnedParagraph, context);
-        return null;
-      });
+    notebook.getInterpreterSettingManager().getInterpreterEventServer().runAfterOutput(() ->
+        notebook.processNote(noteId,
+          note -> {
+            if (note == null) {
+              callback.onFailure(new NoteNotFoundException(noteId), context);
+              return null;
+            }
+            Paragraph p = note.getParagraph(paragraphId);
+            if (p == null) {
+              callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
+              return null;
+            }
+            String user = context.getAutheInfo().getUser();
+            Paragraph returnedParagraph = note.isPersonalizedMode()
+                ? (user == null ? null : p.getUserParagraph(user)) : p;
+            if (returnedParagraph == null) {
+              callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
+              return null;
+            }
+            // The interpreter still owns its result slots after a user clears the display.
+            note.clearParagraphOutputFields(returnedParagraph, true);
+            callback.onSuccess(returnedParagraph, context);
+            return null;
+          }));
   }
 
   public void clearAllParagraphOutput(String noteId,
@@ -892,17 +907,32 @@ public class NotebookService {
     }
 
 
-    notebook.processNote(noteId,
-      note -> {
-        if (note == null) {
-          callback.onFailure(new NoteNotFoundException(noteId), context);
+    java.util.concurrent.atomic.AtomicReference<Note> clearedNote =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    notebook.getInterpreterSettingManager().getInterpreterEventServer().runAfterOutput(() ->
+        notebook.processNote(noteId, note -> {
+          if (note == null) {
+            callback.onFailure(new NoteNotFoundException(noteId), context);
+            return null;
+          }
+          note.clearAllParagraphOutput(context.getAutheInfo().getUser());
+          // Signal the clear before any later append can be delivered to the same viewers.
+          callback.onSuccess(note, context);
+          if (!note.isPersonalizedMode()) {
+            note.getLock().readLock().lock();
+            clearedNote.set(note);
+          }
           return null;
-        }
-        note.clearAllParagraphOutput();
+        }));
+    Note note = clearedNote.get();
+    if (note != null) {
+      try {
+        // Preserve eviction protection without holding the global output drain during storage I/O.
         notebook.saveNote(note, context.getAutheInfo());
-        callback.onSuccess(note, context);
-        return null;
-      });
+      } finally {
+        note.getLock().readLock().unlock();
+      }
+    }
   }
 
 
@@ -977,7 +1007,16 @@ public class NotebookService {
         }
         boolean cronUpdated = isCronUpdated(config, note.getConfig());
         note.setName(name);
-        note.setConfig(config);
+        synchronized (note) {
+          // Mode changes must use UPDATE_PERSONALIZED_MODE and its execution/output barrier.
+          Map<String, Object> updatedConfig = new HashMap<>(config);
+          if (note.getConfig().containsKey("personalizedMode")) {
+            updatedConfig.put("personalizedMode", note.getConfig().get("personalizedMode"));
+          } else {
+            updatedConfig.remove("personalizedMode");
+          }
+          note.setConfig(updatedConfig);
+        }
         notebook.updateNote(note, context.getAutheInfo());
         callback.onSuccess(note, context);
         // refresh cron scheduler after note update
@@ -1236,23 +1275,45 @@ public class NotebookService {
                                      ServiceContext context,
                                      ServiceCallback<Note> callback) throws IOException {
 
-    notebook.processNote(noteId,
-      note -> {
-        if (note == null) {
-          callback.onFailure(new NoteNotFoundException(noteId), context);
+    if (!checkPermission(noteId, Permission.WRITER, Message.OP.UPDATE_PERSONALIZED_MODE, context,
+        callback)) {
+      return;
+    }
+    java.util.concurrent.atomic.AtomicReference<Note> changedNote =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    notebook.getInterpreterSettingManager().getInterpreterEventServer().runAfterOutput(() ->
+        notebook.processNote(noteId, note -> {
+          if (note == null) {
+            callback.onFailure(new NoteNotFoundException(noteId), context);
+            return null;
+          }
+          synchronized (note) {
+            if (note.isPersonalizedMode() != isPersonalized) {
+              if (!note.canChangePersonalizedMode()) {
+                callback.onFailure(new IOException(
+                    "Cannot change personalized mode while paragraphs are running or pending"),
+                    context);
+                return null;
+              }
+              // Execution may have finished during the first drain. Drain its final queued
+              // output under the old mode, with new execution admissions still excluded.
+              notebook.getInterpreterSettingManager().getInterpreterEventServer()
+                  .runAfterOutput(() -> note.setPersonalizedMode(isPersonalized));
+            }
+            callback.onSuccess(note, context);
+            note.getLock().readLock().lock();
+            changedNote.set(note);
+          }
           return null;
-        }
-
-        if (!checkPermission(noteId, Permission.WRITER, Message.OP.UPDATE_PERSONALIZED_MODE, context,
-            callback)) {
-          return null;
-        }
-
-        note.setPersonalizedMode(isPersonalized);
+        }));
+    Note note = changedNote.get();
+    if (note != null) {
+      try {
         notebook.saveNote(note, context.getAutheInfo());
-        callback.onSuccess(note, context);
-        return null;
-      });
+      } finally {
+        note.getLock().readLock().unlock();
+      }
+    }
   }
 
   public void moveNoteToTrash(String noteId,

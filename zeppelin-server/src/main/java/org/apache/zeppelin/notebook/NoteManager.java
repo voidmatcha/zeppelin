@@ -691,28 +691,64 @@ public class NoteManager {
      */
     public <T> T loadAndProcessNote(boolean reload, NoteProcessor<T> noteProcessor)
         throws IOException {
-      // load note
       Note note;
-      synchronized (this) {
-        note = noteCache.getNote(noteInfo.getId());
-        if (note == null || reload) {
-          note = notebookRepo.get(noteInfo.getId(), noteInfo.getPath(), AuthenticationInfo.ANONYMOUS);
-          if (parent.toString().equals("/")) {
-            note.setPath("/" + note.getName());
-          } else {
-            note.setPath(parent.toString() + "/" + note.getName());
+      while (true) {
+        synchronized (this) {
+          note = noteCache.getNote(noteInfo.getId());
+          if (note == null) {
+            note = loadNote();
+            note.getLock().readLock().lock();
+            if (noteCache.publishNote(note, null)) {
+              break;
+            }
+            note.getLock().readLock().unlock();
+            continue;
           }
-          note.setCronSupported(zConf);
-          noteCache.putNote(note);
+          if (reload && note.getLock().writeLock().tryLock()) {
+            Note previous = note;
+            try {
+              if (noteCache.getNote(noteInfo.getId()) != previous) {
+                continue;
+              }
+              if (!previous.hasActiveExecution()) {
+                note = loadNote();
+                note.getLock().readLock().lock();
+                if (noteCache.publishNote(note, previous)) {
+                  break;
+                }
+                note.getLock().readLock().unlock();
+                continue;
+              }
+            } finally {
+              previous.getLock().writeLock().unlock();
+            }
+          }
         }
+        // Do not block on a note lock while holding the cache or NoteNode monitor.
+        note.getLock().readLock().lock();
+        if (noteCache.getNote(noteInfo.getId()) == note) {
+          break;
+        }
+        note.getLock().readLock().unlock();
+        // Eviction/reload won the race before this read lock was acquired.
       }
       try {
-        note.getLock().readLock().lock();
-        // process note
         return noteProcessor.process(note);
       } finally {
         note.getLock().readLock().unlock();
       }
+    }
+
+    private Note loadNote() throws IOException {
+      Note note = notebookRepo.get(noteInfo.getId(), noteInfo.getPath(),
+          AuthenticationInfo.ANONYMOUS);
+      if (parent.toString().equals("/")) {
+        note.setPath("/" + note.getName());
+      } else {
+        note.setPath(parent.toString() + "/" + note.getName());
+      }
+      note.setCronSupported(zConf);
+      return note;
     }
 
     public String getNoteId() {
@@ -800,6 +836,17 @@ public class NoteManager {
       lruCache.put(note.getId(), note);
     }
 
+    /** Publish a loaded note only if another tree generation has not replaced it. */
+    private boolean publishNote(Note note, Note expected) {
+      synchronized (lruCache) {
+        if (lruCache.get(note.getId()) != expected) {
+          return false;
+        }
+        lruCache.put(note.getId(), note);
+        return true;
+      }
+    }
+
     public Note removeNote(String noteId) {
       return lruCache.remove(noteId);
     }
@@ -821,16 +868,17 @@ public class NoteManager {
         final Lock lock = eldestNote.getLock().writeLock();
         if (lock.tryLock()) { // avoid eviction in case the note is in use
           try {
-            return true;
+            if (!eldestNote.hasActiveExecution()) {
+              return true;
+            }
           } finally {
             lock.unlock();
           }
-        } else {
-          LOGGER.info("Can not evict note {}, because the write lock can not be acquired. {} notes currently loaded.",
-              eldestNote.getId(), size());
-          cleanupCache();
-          return false;
         }
+        LOGGER.info("Can not evict active or locked note {}. {} notes currently loaded.",
+            eldestNote.getId(), size());
+        cleanupCache();
+        return false;
       }
 
       private void cleanupCache() {
@@ -843,6 +891,9 @@ public class NoteManager {
           final Lock lock = note.getLock().writeLock();
           if (lock.tryLock()) { // avoid eviction in case the note is in use
             try {
+              if (note.hasActiveExecution()) {
+                continue;
+              }
               iterator.remove(); // remove LRU element from LinkedHashMap
               LOGGER.debug("Remove note {} from LRU Cache", note.getId());
               ++count;

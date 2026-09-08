@@ -31,6 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Interpreter context
  */
 public class InterpreterContext {
+  public static final String OUTPUT_PERSONALIZED_MODE = ".zeppelin.output.personalized";
+
   private static final ThreadLocal<InterpreterContext> threadIC = new ThreadLocal<>();
   private static final ConcurrentHashMap<Thread, InterpreterContext> allContexts = new ConcurrentHashMap<>();
 

@@ -763,13 +763,31 @@ public class NotebookServer implements AngularObjectRegistryListener,
   }
 
   private void inlineBroadcastParagraph(Note note, Paragraph p, String msgId) {
-    broadcastNoteForms(note);
-
-    if (note.isPersonalizedMode()) {
-      broadcastParagraphs(p.getUserParagraphMap(), p, msgId);
-    } else {
-      Message message = new Message(OP.PARAGRAPH).withMsgId(msgId).put("paragraph", p);
-      connectionManager.broadcast(note.getId(), message);
+    synchronized (note) {
+      Paragraph master = note.getParagraph(p.getId());
+      if (master != p) {
+        // Terminal notifications can outlive a mode transition or replacement of a user copy.
+        // Never reinterpret a detached personalized paragraph as shared output.
+        if (master != null && note.isPersonalizedMode()) {
+          for (Map.Entry<String, Paragraph> entry : master.getUserParagraphMap().entrySet()) {
+            if (entry.getValue() == p) {
+              connectionManager.multicastToUserInNote(note.getId(), entry.getKey(),
+                  new Message(OP.PARAGRAPH).withMsgId(msgId)
+                      .put("noteId", note.getId()).put("paragraph", p));
+              break;
+            }
+          }
+        }
+        return;
+      }
+      broadcastNoteForms(note);
+      if (note.isPersonalizedMode()) {
+        broadcastParagraphs(p.getUserParagraphMap(), p, msgId);
+      } else {
+        Message message = new Message(OP.PARAGRAPH).withMsgId(msgId)
+            .put("noteId", note.getId()).put("paragraph", p);
+        connectionManager.broadcast(note.getId(), message);
+      }
     }
   }
 
@@ -780,8 +798,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
   private void inlineBroadcastParagraphs(Map<String, Paragraph> userParagraphMap, String msgId) {
     if (null != userParagraphMap) {
       for (String user : userParagraphMap.keySet()) {
-        Message message = new Message(OP.PARAGRAPH).withMsgId(msgId).put("paragraph", userParagraphMap.get(user));
-        connectionManager.multicastToUser(user, message);
+        Paragraph paragraph = userParagraphMap.get(user);
+        if (paragraph != null && paragraph.getNote() != null) {
+          String noteId = paragraph.getNote().getId();
+          Message message = new Message(OP.PARAGRAPH).withMsgId(msgId)
+              .put("noteId", noteId).put("paragraph", paragraph);
+          connectionManager.multicastToUserInNote(noteId, user, message);
+        }
       }
     }
   }
@@ -1261,7 +1284,19 @@ public class NotebookServer implements AngularObjectRegistryListener,
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
-            broadcastNote(note);
+            if (!note.isPersonalizedMode()) {
+              broadcastNoteForms(note);
+            }
+            String user = context.getAutheInfo().getUser();
+            for (Paragraph paragraph : note.getParagraphs()) {
+              Paragraph target = note.isPersonalizedMode()
+                  ? paragraph.getUserParagraphMap().get(user) : paragraph;
+              if (target != null) {
+                sendOutput(note, user,
+                    new Message(OP.PARAGRAPH).withMsgId(fromMessage.msgId).put("paragraph", target)
+                        .put("outputCleared", true).put("preserveOutputTypes", true));
+              }
+            }
           }
         });
   }
@@ -1334,11 +1369,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
           @Override
           public void onSuccess(Paragraph p, ServiceContext context) throws IOException {
             super.onSuccess(p, context);
-            if (p.getNote().isPersonalizedMode()) {
-              connectionManager.unicastParagraph(p.getNote(), p, context.getAutheInfo().getUser(), fromMessage.msgId);
-            } else {
-              broadcastParagraph(p.getNote(), p, fromMessage.msgId);
+            if (!p.getNote().isPersonalizedMode()) {
+              broadcastNoteForms(p.getNote());
             }
+            // A user clear removes content, but the running interpreter may next send
+            // an append without repeating the output type.
+            sendOutput(p.getNote(), context.getAutheInfo().getUser(),
+                new Message(OP.PARAGRAPH).withMsgId(fromMessage.msgId).put("paragraph", p)
+                    .put("outputCleared", true).put("preserveOutputTypes", true));
           }
         });
   }
@@ -1648,9 +1686,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
                 throws IOException {
               super.onSuccess(p, context);
               if (p.getNote().isPersonalizedMode()) {
-                Paragraph p2 = p.getNote().clearPersonalizedParagraphOutput(paragraphId,
-                    context.getAutheInfo().getUser());
-                connectionManager.unicastParagraph(p.getNote(), p2, context.getAutheInfo().getUser(), fromMessage.msgId);
+                // Execution already clears its output before submission. A fast interpreter
+                // may have emitted its first typed output before this callback runs.
+                broadcastParagraph(p.getNote(), p, fromMessage.msgId);
               }
 
               // if it's the last paragraph and not empty, let's add a new one
@@ -1787,6 +1825,18 @@ public class NotebookServer implements AngularObjectRegistryListener,
    */
   @Override
   public void onOutputAppend(String noteId, String paragraphId, int index, String output) {
+    onOutputAppendForUser(noteId, paragraphId, index, output, null);
+  }
+
+  @Override
+  public void onOutputAppendForUser(String noteId, String paragraphId, int index,
+                                    String output, String user) {
+    onOutputAppendForUser(noteId, paragraphId, index, output, user, null);
+  }
+
+  @Override
+  public void onOutputAppendForUser(String noteId, String paragraphId, int index,
+                                    String output, String user, Boolean personalized) {
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
@@ -1795,7 +1845,19 @@ public class NotebookServer implements AngularObjectRegistryListener,
         .put("paragraphId", paragraphId)
         .put("index", index)
         .put("data", output);
-    connectionManager.broadcast(noteId, msg);
+    try {
+      getNotebook().processNote(noteId, note -> {
+        Paragraph paragraph = outputParagraph(note, paragraphId, user, personalized);
+        if (paragraph == null) {
+          return null;
+        }
+        paragraph.appendOutputBuffer(index, output);
+        sendOutput(note, user, msg);
+        return null;
+      });
+    } catch (IOException e) {
+      LOGGER.warn("Fail to call onOutputAppend", e);
+    }
   }
 
   /**
@@ -1806,6 +1868,18 @@ public class NotebookServer implements AngularObjectRegistryListener,
   @Override
   public void onOutputUpdated(String noteId, String paragraphId, int index,
                               InterpreterResult.Type type, String output) {
+    onOutputUpdatedForUser(noteId, paragraphId, index, type, output, null);
+  }
+
+  @Override
+  public void onOutputUpdatedForUser(String noteId, String paragraphId, int index,
+                                     InterpreterResult.Type type, String output, String user) {
+    onOutputUpdatedForUser(noteId, paragraphId, index, type, output, user, null);
+  }
+
+  @Override
+  public void onOutputUpdatedForUser(String noteId, String paragraphId, int index,
+                                     InterpreterResult.Type type, String output, String user, Boolean personalized) {
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
@@ -1822,16 +1896,12 @@ public class NotebookServer implements AngularObjectRegistryListener,
             LOGGER.warn("Note {} not found", noteId);
             return null;
           }
-          Paragraph paragraph = note.getParagraph(paragraphId);
-          paragraph.updateOutputBuffer(index, type, output);
-          if (note.isPersonalizedMode()) {
-            String user = note.getParagraph(paragraphId).getUser();
-            if (null != user) {
-              connectionManager.multicastToUser(user, msg);
-            }
-          } else {
-            connectionManager.broadcast(noteId, msg);
+          Paragraph paragraph = outputParagraph(note, paragraphId, user, personalized);
+          if (paragraph == null) {
+            return null;
           }
+          paragraph.updateOutputBuffer(index, type, output);
+          sendOutput(note, user, msg);
           return null;
         });
     } catch (IOException e) {
@@ -1844,6 +1914,16 @@ public class NotebookServer implements AngularObjectRegistryListener,
    */
   @Override
   public void onOutputClear(String noteId, String paragraphId) {
+    onOutputClearForUser(noteId, paragraphId, null);
+  }
+
+  @Override
+  public void onOutputClearForUser(String noteId, String paragraphId, String user) {
+    onOutputClearForUser(noteId, paragraphId, user, null);
+  }
+
+  @Override
+  public void onOutputClearForUser(String noteId, String paragraphId, String user, Boolean personalized) {
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
@@ -1855,9 +1935,17 @@ public class NotebookServer implements AngularObjectRegistryListener,
             // It is possible the note is removed, but the job is still running
             LOGGER.warn("Note {} doesn't existed, it maybe deleted.", noteId);
           } else {
-            note.clearParagraphOutput(paragraphId);
-            Paragraph paragraph = note.getParagraph(paragraphId);
-            broadcastParagraph(note, paragraph, MSG_ID_NOT_DEFINED);
+            Paragraph paragraph = outputParagraph(note, paragraphId, user, personalized);
+            if (paragraph == null) {
+              return null;
+            }
+            note.clearParagraphOutputFields(paragraph);
+            if (!note.isPersonalizedMode()) {
+              broadcastNoteForms(note);
+            }
+            sendOutput(note, user, new Message(OP.PARAGRAPH)
+                .withMsgId(MSG_ID_NOT_DEFINED).put("paragraph", paragraph)
+                .put("outputCleared", true));
           }
           return null;
         });
@@ -2119,17 +2207,79 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
   }
 
+  private Paragraph outputParagraph(Note note, String paragraphId, String user,
+                                     Boolean personalized) {
+    if (note == null) {
+      return null;
+    }
+    // A legacy event cannot prove its execution mode after an explicit mode selection.
+    // Keep legacy shared notes working, but fail closed at the personalized-mode boundary.
+    if (personalized == null ? note.getConfig().containsKey("personalizedMode")
+        : personalized != note.isPersonalizedMode()) {
+      return null;
+    }
+    return outputParagraph(note, paragraphId, user);
+  }
+
+  private Paragraph outputParagraph(Note note, String paragraphId, String user) {
+    Paragraph paragraph = note == null ? null : note.getParagraph(paragraphId);
+    if (paragraph == null || !note.isPersonalizedMode()) {
+      return paragraph;
+    }
+    // Legacy events have no execution identity. Never infer it from the shared master.
+    return user == null || user.isEmpty() ? null : paragraph.getUserParagraphMap().get(user);
+  }
+
+  private void sendOutput(Note note, String user, Message message) {
+    message.put("noteId", note.getId());
+    if (note.isPersonalizedMode()) {
+      connectionManager.multicastToUserInNote(note.getId(), user, message);
+    } else {
+      connectionManager.broadcast(note.getId(), message);
+    }
+  }
+
   @Override
   public void checkpointOutput(String noteId, String paragraphId) {
+    prepareCheckpointOutput(noteId, paragraphId, null).run();
+  }
+
+  @Override
+  public Runnable prepareCheckpointOutput(String noteId, String paragraphId, String user) {
+    return prepareCheckpointOutput(noteId, paragraphId, user, null);
+  }
+
+  @Override
+  public Runnable prepareCheckpointOutput(String noteId, String paragraphId, String user,
+                                          Boolean personalized) {
     try {
-      getNotebook().processNote(noteId,
-        note -> {
-          note.getParagraph(paragraphId).checkpointOutput();
-          getNotebook().saveNote(note, AuthenticationInfo.ANONYMOUS);
-          return null;
-        });
+      return getNotebook().processNote(noteId, note -> {
+        Paragraph paragraph = outputParagraph(note, paragraphId, user, personalized);
+        if (paragraph == null) {
+          return () -> { };
+        }
+        paragraph.checkpointOutput();
+        // Personalized copies are transient. Keep their checkpoint in that copy for refresh,
+        // without writing private output into the persisted shared paragraph.
+        if (note.isPersonalizedMode()) {
+          return () -> { };
+        }
+        // Retain processNote's eviction protection until persistence finishes. The runner
+        // invokes this callback synchronously on this thread, outside its shared drain monitor.
+        note.getLock().readLock().lock();
+        return () -> {
+          try {
+            getNotebook().saveNote(note, AuthenticationInfo.ANONYMOUS);
+          } catch (IOException e) {
+            LOGGER.warn("Fail to save note: {}", noteId, e);
+          } finally {
+            note.getLock().readLock().unlock();
+          }
+        };
+      });
     } catch (IOException e) {
-      LOGGER.warn("Fail to save note: {}", noteId, e);
+      LOGGER.warn("Fail to checkpoint note: {}", noteId, e);
+      return () -> { };
     }
   }
 

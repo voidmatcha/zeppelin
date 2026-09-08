@@ -37,7 +37,6 @@ public class ZeppelinDevServer extends
   private static final Logger LOGGER = LoggerFactory.getLogger(ZeppelinDevServer.class);
 
   private DevInterpreter interpreter = null;
-  private InterpreterOutput out;
   public ZeppelinDevServer(int port) throws Exception {
     super(null, port, null, ":");
   }
@@ -66,38 +65,60 @@ public class ZeppelinDevServer extends
 
   @Override
   protected InterpreterOutput createInterpreterOutput(
-      final String noteId, final String paragraphId) {
-    if (out == null) {
-      final RemoteInterpreterEventClient eventClient = getIntpEventClient();
-      try {
-        out = new InterpreterOutput(new InterpreterOutputListener() {
-          @Override
-          public void onUpdateAll(InterpreterOutput out) {
+      final String noteId, final String paragraphId, final String user) {
+    return createInterpreterOutput(noteId, paragraphId, user, null);
+  }
 
-          }
-
-          @Override
-          public void onAppend(int index, InterpreterResultMessageOutput out, byte[] line) {
-            eventClient.onInterpreterOutputAppend(noteId, paragraphId, index, new String(line));
-          }
-
-          @Override
-          public void onUpdate(int index, InterpreterResultMessageOutput out) {
-            try {
-              eventClient.onInterpreterOutputUpdate(noteId, paragraphId,
-                  index, out.getType(), new String(out.toByteArray()));
-            } catch (IOException e) {
-              LOGGER.error(e.getMessage(), e);
+  @Override
+  protected InterpreterOutput createInterpreterOutput(final String noteId, final String paragraphId,
+      final String user, final Boolean personalized) {
+    final RemoteInterpreterEventClient eventClient = getIntpEventClient();
+    try {
+      return new InterpreterOutput(new InterpreterOutputListener() {
+        @Override
+        public void onUpdateAll(InterpreterOutput out) {
+          try {
+            if (personalized == null) {
+              eventClient.onInterpreterOutputUpdateAll(
+                  noteId, paragraphId, out.toInterpreterResultMessage(), user);
+            } else {
+              eventClient.onInterpreterOutputUpdateAll(
+                  noteId, paragraphId, out.toInterpreterResultMessage(), user, personalized);
             }
+          } catch (IOException e) {
+            LOGGER.error(e.getMessage(), e);
           }
-        }, this);
-      } catch (IOException e) {
-        return null;
-      }
-    }
+        }
 
-    out.clear();
-    return out;
+        @Override
+        public void onAppend(int index, InterpreterResultMessageOutput out, byte[] line) {
+          if (personalized == null) {
+            eventClient.onInterpreterOutputAppend(noteId, paragraphId, index, new String(line), user);
+          } else {
+            eventClient.onInterpreterOutputAppend(
+                noteId, paragraphId, index, new String(line), user, personalized);
+          }
+        }
+
+        @Override
+        public void onUpdate(int index, InterpreterResultMessageOutput out) {
+          try {
+            if (personalized == null) {
+              eventClient.onInterpreterOutputUpdate(noteId, paragraphId,
+                  index, out.getType(), new String(out.toByteArray()), user);
+            } else {
+              eventClient.onInterpreterOutputUpdate(noteId, paragraphId,
+                  index, out.getType(), new String(out.toByteArray()), user, personalized);
+            }
+          } catch (IOException e) {
+            LOGGER.error(e.getMessage(), e);
+          }
+        }
+      }, this);
+    } catch (IOException e) {
+      LOGGER.error("Unable to create development output", e);
+      return null;
+    }
   }
 
   @Override

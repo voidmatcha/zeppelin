@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -57,6 +58,9 @@ import org.apache.zeppelin.interpreter.InterpreterResult.Code;
 import org.apache.zeppelin.interpreter.InterpreterSetting;
 import org.apache.zeppelin.interpreter.InterpreterSettingManager;
 import org.apache.zeppelin.interpreter.ManagedInterpreterGroup;
+import org.apache.zeppelin.interpreter.RemoteInterpreterEventServer;
+import org.apache.zeppelin.interpreter.remote.RemoteInterpreterProcessListener;
+import org.apache.zeppelin.interpreter.thrift.OutputAppendEvent;
 import org.apache.zeppelin.notebook.AuthorizationService;
 import org.apache.zeppelin.notebook.GsonNoteParser;
 import org.apache.zeppelin.notebook.Note;
@@ -95,6 +99,7 @@ class NotebookServiceTest {
   private File confDir;
   private SearchService searchService;
   private Notebook notebook;
+  private Interpreter mockInterpreter;
   private AuthorizationService authorizationService;
   private ZeppelinConfiguration zConf;
   private ServiceContext context =
@@ -128,8 +133,11 @@ class NotebookServiceTest {
     notebookRepo.init(zConf, noteParser);
 
     InterpreterSettingManager mockInterpreterSettingManager = mock(InterpreterSettingManager.class);
+    RemoteInterpreterEventServer eventServer =
+        new RemoteInterpreterEventServer(zConf, mockInterpreterSettingManager);
+    when(mockInterpreterSettingManager.getInterpreterEventServer()).thenReturn(eventServer);
     InterpreterFactory mockInterpreterFactory = mock(InterpreterFactory.class);
-    Interpreter mockInterpreter = mock(Interpreter.class);
+    mockInterpreter = mock(Interpreter.class);
     when(mockInterpreterFactory.getInterpreter(any(), any()))
         .thenReturn(mockInterpreter);
     when(mockInterpreter.interpret(eq("invalid_code"), any()))
@@ -637,6 +645,194 @@ class NotebookServiceTest {
     notebookService.clearParagraphOutput(note1Id, p.getId(), context, callback);
     assertNull(p.getReturn());
     verify(callback).onSuccess(p, context);
+  }
+
+  @Test
+  void personalizedRunAllStopsAfterUserParagraphError() throws Exception {
+    assertPersonalizedRunAllResult(Code.ERROR, false);
+  }
+
+  @Test
+  void personalizedRunAllStopsAfterUserParagraphAbort() throws Exception {
+    assertPersonalizedRunAllResult(Code.SUCCESS, true);
+  }
+
+  @Test
+  void personalizedRunAllContinuesAfterUserParagraphSuccess() throws Exception {
+    assertPersonalizedRunAllResult(Code.SUCCESS, false);
+  }
+
+  private void assertPersonalizedRunAllResult(Code firstResult, boolean abort) throws Exception {
+    String noteId = notebookService.createNote("/personalized_run_all", "test", false,
+        context, callback);
+    authorizationService.setOwners(noteId, Collections.singleton("owner"));
+    ServiceContext runner = new ServiceContext(new AuthenticationInfo("runner"),
+        new HashSet<>(Collections.singleton("runner")));
+    Note note = notebook.processNote(noteId, loaded -> loaded);
+    note.setPersonalizedMode(true);
+    Paragraph first = note.addNewParagraph(context.getAutheInfo());
+    Paragraph second = note.addNewParagraph(context.getAutheInfo());
+    boolean shouldContinue = firstResult == Code.SUCCESS && !abort;
+    // The master's stale result must not decide whether the runner can continue.
+    first.setResult(new InterpreterResult(shouldContinue ? Code.ERROR : Code.SUCCESS));
+    Paragraph userFirst = first.getUserParagraph("runner");
+    Paragraph userSecond = second.getUserParagraph("runner");
+    when(mockInterpreter.interpret(eq("first"), any())).thenAnswer(invocation -> {
+      if (abort) {
+        userFirst.abort();
+      }
+      return new InterpreterResult(firstResult, "first result");
+    });
+    when(mockInterpreter.interpret(eq("second"), any()))
+        .thenReturn(new InterpreterResult(Code.SUCCESS, "second result"));
+
+    boolean result = notebookService.runAllParagraphs(noteId,
+        List.of(Map.of("id", first.getId(), "paragraph", "first"),
+            Map.of("id", second.getId(), "paragraph", "second")), runner, callback);
+
+    assertEquals(shouldContinue, result);
+    verify(mockInterpreter).interpret(eq("first"), any());
+    assertEquals(firstResult, userFirst.getReturn().code());
+    if (abort) {
+      // The scheduler resets the transient abort flag after publishing the terminal status.
+      assertEquals(Status.ABORT, userFirst.getStatus());
+    }
+    if (shouldContinue) {
+      verify(mockInterpreter).interpret(eq("second"), any());
+      assertEquals(Code.SUCCESS, userSecond.getReturn().code());
+      assertEquals(Status.FINISHED, userSecond.getStatus());
+    } else {
+      verify(mockInterpreter, never()).interpret(eq("second"), any());
+      assertEquals(Status.READY, userSecond.getStatus());
+    }
+    assertFalse(note.isRunning());
+  }
+
+  @Test
+  void manualClearSharedSnapshotRetainsTypesForRefresh() throws Exception {
+    assertClearedSnapshotRetainsTypes(false);
+  }
+
+  @Test
+  void manualClearPersonalizedSnapshotRetainsTypesForRefresh() throws Exception {
+    assertClearedSnapshotRetainsTypes(true);
+  }
+
+  private void assertClearedSnapshotRetainsTypes(boolean personalized) throws Exception {
+    String noteId = notebookService.createNote("/clear_refresh", "test", true, context, callback);
+    Note note = notebook.processNote(noteId, n -> n);
+    note.setPersonalizedMode(personalized);
+    Paragraph master = note.getParagraph(0);
+    Paragraph target = personalized
+        ? master.getUserParagraph(context.getAutheInfo().getUser()) : master;
+    target.setStatus(org.apache.zeppelin.scheduler.Job.Status.RUNNING);
+    target.updateOutputBuffer(0, InterpreterResult.Type.TABLE, "old secret table");
+    notebookService.clearParagraphOutput(noteId, master.getId(), context, callback);
+    com.google.gson.JsonObject snapshot = notebookService.getNote(noteId, context, callback,
+        n -> new com.google.gson.Gson().toJsonTree(n).getAsJsonObject());
+    com.google.gson.JsonObject p = snapshot.getAsJsonArray("paragraphs").get(0).getAsJsonObject();
+    assertEquals("TABLE", p.getAsJsonArray("outputTypes").get(0).getAsString());
+    assertFalse(p.has("results"));
+    assertFalse(snapshot.toString().contains("old secret table"));
+  }
+
+  @Test
+  void personalizedManualClearCreatesTheRequestersMissingParagraph() throws Exception {
+    String noteId = notebookService.createNote("/clear_unexecuted", "test", true, context, callback);
+    Note note = notebook.processNote(noteId, n -> n);
+    Paragraph master = note.getParagraph(0);
+    master.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "shared result"));
+    note.setPersonalizedMode(true);
+    Paragraph other = master.getUserParagraph("other");
+    other.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "other result"));
+    String user = context.getAutheInfo().getUser();
+    assertFalse(master.getUserParagraphMap().containsKey(user));
+    reset(callback);
+
+    notebookService.clearParagraphOutput(noteId, master.getId(), context, callback);
+
+    Paragraph cleared = master.getUserParagraphMap().get(user);
+    assertNotNull(cleared);
+    assertNull(cleared.getReturn());
+    verify(callback).onSuccess(cleared, context);
+    verify(callback, never()).onFailure(any(), any());
+    assertEquals("shared result", master.getReturn().message().get(0).getData());
+    assertEquals("other result", other.getReturn().message().get(0).getData());
+  }
+
+  @Test
+  void manualClearOrdersQueuedSharedOutputBeforeClearing() throws Exception {
+    assertManualClearOrdersQueuedOutput(false);
+  }
+
+  @Test
+  void manualClearOrdersQueuedPersonalizedOutputBeforeClearing() throws Exception {
+    assertManualClearOrdersQueuedOutput(true);
+  }
+
+  private void assertManualClearOrdersQueuedOutput(boolean personalized) throws Exception {
+    String noteId = notebookService.createNote("/ordered_clear", "test", true, context, callback);
+    Note note = notebook.processNote(noteId, n -> n);
+    note.setPersonalizedMode(personalized);
+    Paragraph master = note.getParagraph(0);
+    String user = context.getAutheInfo().getUser();
+    Paragraph target = personalized ? master.getUserParagraph(user) : master;
+    Paragraph other = personalized ? master.getUserParagraph("other") : null;
+    if (other != null) {
+      other.updateOutputBuffer(0, InterpreterResult.Type.TABLE, "other keep");
+    }
+    target.setStatus(Status.RUNNING);
+    target.updateOutputBuffer(0, InterpreterResult.Type.TABLE, "visible before clear");
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    doAnswer(invocation -> {
+      target.appendOutputBuffer(0, invocation.getArgument(3));
+      return null;
+    }).when(listener).onOutputAppendForUser(eq(noteId), eq(master.getId()), eq(0), any(), eq(user));
+    InterpreterSettingManager manager = notebook.getInterpreterSettingManager();
+    when(manager.getRemoteInterpreterProcessListener()).thenReturn(listener);
+    RemoteInterpreterEventServer events = new RemoteInterpreterEventServer(zConf, manager);
+    when(manager.getInterpreterEventServer()).thenReturn(events);
+    try {
+      events.appendOutput(new OutputAppendEvent(noteId, master.getId(), 0, "queued before clear", null)
+          .setUser(user));
+      notebookService.clearParagraphOutput(noteId, master.getId(), context, callback);
+      // A later checkpoint drains anything left in the runner, exposing a bypassed clear.
+      events.checkpointOutput(noteId, master.getId(), user);
+      target.checkpointOutput();
+      assertEquals("", target.getReturn().message().get(0).getData());
+      events.appendOutput(new OutputAppendEvent(noteId, master.getId(), 0, "after clear", null)
+          .setUser(user));
+      events.checkpointOutput(noteId, master.getId(), user);
+      target.checkpointOutput();
+      assertEquals(InterpreterResult.Type.TABLE, target.getReturn().message().get(0).getType());
+      assertEquals("after clear", target.getReturn().message().get(0).getData());
+      if (other != null) {
+        other.checkpointOutput();
+        assertEquals("other keep", other.getReturn().message().get(0).getData());
+      }
+    } finally {
+      target.setStatus(Status.FINISHED);
+      events.stop();
+    }
+  }
+
+  @Test
+  void manualClearWhileRunningRetainsTypesForLaterCheckpoint() throws IOException {
+    String noteId = notebookService.createNote("/clear_running", "test", true, context, callback);
+    Paragraph paragraph = notebook.processNote(noteId,
+        note -> note.addNewParagraph(AuthenticationInfo.ANONYMOUS));
+    paragraph.setStatus(Status.RUNNING);
+    paragraph.updateOutputBuffer(0, InterpreterResult.Type.TABLE, "old table");
+    paragraph.checkpointOutput();
+
+    notebookService.clearParagraphOutput(noteId, paragraph.getId(), context, callback);
+    assertNull(paragraph.getReturn());
+    paragraph.appendOutputBuffer(0, "new table");
+    paragraph.checkpointOutput();
+    assertEquals(1, paragraph.getReturn().message().size());
+    assertEquals(InterpreterResult.Type.TABLE, paragraph.getReturn().message().get(0).getType());
+    assertEquals("new table", paragraph.getReturn().message().get(0).getData());
+    paragraph.setStatus(Status.FINISHED);
   }
 
   @Test
