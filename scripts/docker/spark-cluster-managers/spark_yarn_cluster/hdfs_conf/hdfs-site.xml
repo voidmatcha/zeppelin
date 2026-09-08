@@ -21,6 +21,10 @@ limitations under the License.
   </property>
 
   <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>/data/hdfs-name</value>
+  </property>
+  <property>
     <name>dfs.datanode.data.dir</name>
     <value>/data/hdfs</value>
     <final>true</final>

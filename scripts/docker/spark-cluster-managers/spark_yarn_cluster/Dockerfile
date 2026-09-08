@@ -79,7 +79,6 @@ COPY hdfs_conf/yarn-site.xml $HADOOP_HOME/etc/hadoop/yarn-site.xml
 
 RUN mkdir /data/
 RUN chmod 777 /data/
-RUN $HADOOP_HOME/bin/hdfs namenode -format -nonInteractive
 
 # passwordless ssh (keys are generated at runtime by entrypoint.sh)
 COPY ssh_config /root/.ssh/config
