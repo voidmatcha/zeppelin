@@ -143,6 +143,9 @@ export interface ParagraphMoved {
 }
 
 export interface UpdateParagraph {
+  noteId?: string;
+  outputCleared?: boolean;
+  preserveOutputTypes?: boolean;
   paragraph: ParagraphItem;
 }
 

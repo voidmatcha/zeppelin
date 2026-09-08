@@ -137,6 +137,8 @@ export interface ParagraphItem {
   config: ParagraphConfig;
   settings: ParagraphEditorSetting;
   results?: ParagraphResults;
+  /** Stream slot types retained when a cleared NOTE snapshot has no result data. */
+  outputTypes?: DatasetType[];
   // eslint-disable-next-line  @typescript-eslint/no-explicit-any
   apps: any[];
   progressUpdateIntervalMs: number;

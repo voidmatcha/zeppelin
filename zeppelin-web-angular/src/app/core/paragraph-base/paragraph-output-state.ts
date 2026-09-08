@@ -15,6 +15,7 @@ import { DatasetType, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 export class ParagraphOutputState {
   private results: ParagraphIResultsMsgItem[] = [];
   private readonly pendingAppends = new Map<number, string>();
+  private readonly hiddenResults = new Set<number>();
   private initialized = false;
   private terminal = false;
 
@@ -25,8 +26,21 @@ export class ParagraphOutputState {
   reset(results: ParagraphIResultsMsgItem[] = [], terminal = false): void {
     this.results = results.map(result => ({ ...result }));
     this.pendingAppends.clear();
+    this.hiddenResults.clear();
     this.initialized = true;
     this.terminal = terminal;
+  }
+
+  clearPreservingTypes(): void {
+    this.pendingAppends.clear();
+    this.results = this.results.map((result, index) => {
+      this.hiddenResults.add(index);
+      return { ...result, data: '' };
+    });
+  }
+
+  isHidden(index: number): boolean {
+    return this.hiddenResults.has(index);
   }
 
   finish(results: ParagraphIResultsMsgItem[] = []): void {
@@ -44,6 +58,7 @@ export class ParagraphOutputState {
     };
     this.pendingAppends.delete(index);
     this.results[index] = result;
+    this.hiddenResults.delete(index);
     return result;
   }
 
@@ -63,10 +78,17 @@ export class ParagraphOutputState {
       data: current.data + data
     };
     this.results[index] = result;
+    this.hiddenResults.delete(index);
     return result;
   }
 
   snapshot(): ParagraphIResultsMsgItem[] {
-    return [...this.results];
+    // Keep server indexes stable: a later slot cannot be rendered before missing
+    // earlier slots acquire their types. Retain those later slots for subsequent updates.
+    let length = 0;
+    while (this.results[length]) {
+      length++;
+    }
+    return this.results.slice(0, length);
   }
 }

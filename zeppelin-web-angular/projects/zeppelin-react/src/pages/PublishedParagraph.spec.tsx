@@ -11,8 +11,9 @@
  */
 
 import { act } from 'react';
+import { within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DatasetType } from '@zeppelin/sdk';
+import { DatasetType, GraphConfig } from '@zeppelin/sdk';
 import { mount, PublishedParagraphMountHandle, PublishedParagraphProps } from './PublishedParagraph';
 
 const textResult = (data: string) => ({ type: DatasetType.TEXT, data });
@@ -95,6 +96,53 @@ describe('PublishedParagraph mount contract', () => {
 
     expect(host!.querySelector('[data-testid="react-published-paragraph"]')).toBeNull();
     expect(host!.textContent).toContain('No paragraph data found');
+  });
+
+  it('hides cleared results without shifting later result configuration', () => {
+    const props: PublishedParagraphProps = {
+      paragraphId: 'paragraph-1',
+      results: [
+        { type: DatasetType.TABLE, data: '' },
+        { type: DatasetType.TABLE, data: 'column\nvisible value' }
+      ],
+      hiddenResults: [true, false],
+      config: {
+        0: { graph: { ...new GraphConfig(), mode: 'pieChart' } },
+        1: { graph: new GraphConfig() }
+      }
+    };
+    mountParagraph(props);
+    const exportButtons = () => within(host!).getAllByRole('button', { name: /Export CSV/ });
+    expect(exportButtons()).toHaveLength(1);
+    expect(host!.querySelector('table')?.textContent).toContain('visible value');
+    act(() => handle!.update({ ...props, hiddenResults: [false, false] }));
+    expect(exportButtons()).toHaveLength(2);
+  });
+
+  it('preserves the selected chart mode when a result is hidden and shown again', () => {
+    const props: PublishedParagraphProps = {
+      paragraphId: 'paragraph-1',
+      results: [{ type: DatasetType.TABLE, data: '' }]
+    };
+    mountParagraph(props);
+    act(() =>
+      within(host!)
+        .getByRole('button', { name: /Pie Chart/ })
+        .click()
+    );
+    expect(
+      within(host!)
+        .getByRole('button', { name: /Pie Chart/ })
+        .classList.contains('ant-btn-primary')
+    ).toBe(true);
+    act(() => handle!.update({ ...props, hiddenResults: [true] }));
+    expect(within(host!).queryByRole('button', { name: /Pie Chart/ })).toBeNull();
+    act(() => handle!.update({ ...props, hiddenResults: [false] }));
+    expect(
+      within(host!)
+        .getByRole('button', { name: /Pie Chart/ })
+        .classList.contains('ant-btn-primary')
+    ).toBe(true);
   });
 
   it('unmount() empties the host element', () => {
