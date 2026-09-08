@@ -174,7 +174,7 @@ public class Note implements JsonSerializable {
     return null != v && "true".equals(v);
   }
 
-  public void setPersonalizedMode(Boolean value) {
+  public synchronized void setPersonalizedMode(Boolean value) {
     String valueString;
     if (value.booleanValue()) {
       valueString = "true";
@@ -966,15 +966,24 @@ public class Note implements JsonSerializable {
     return newNote;
   }
 
-  public Map<String, Object> getConfig() {
+  public synchronized Map<String, Object> getConfig() {
     if (config == null) {
       config = new HashMap<>();
     }
     return config;
   }
 
-  public void setConfig(Map<String, Object> config) {
-    this.config = config;
+  public synchronized void setConfig(Map<String, Object> config) {
+    // A stale client can send settings captured before personalized mode was selected.
+    // Preserve the explicit setting so delayed output cannot bypass the streaming restriction.
+    if (this.config != null && this.config.containsKey("personalizedMode")
+        && (config == null || !config.containsKey("personalizedMode"))) {
+      Map<String, Object> updated = config == null ? new HashMap<>() : new HashMap<>(config);
+      updated.put("personalizedMode", this.config.get("personalizedMode"));
+      this.config = updated;
+    } else {
+      this.config = config;
+    }
   }
 
   public Map<String, Object> getInfo() {

@@ -20,24 +20,72 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 
 import org.apache.zeppelin.conf.ZeppelinConfiguration;
+import org.apache.zeppelin.interpreter.remote.AppendOutputRunner;
 import org.apache.zeppelin.interpreter.remote.InvokeResourceMethodEventMessage;
 import org.apache.zeppelin.interpreter.remote.RemoteInterpreterProcess;
+import org.apache.zeppelin.interpreter.remote.RemoteInterpreterProcessListener;
 import org.apache.zeppelin.interpreter.thrift.InterpreterRPCException;
+import org.apache.zeppelin.interpreter.thrift.OutputAppendEvent;
+import org.apache.zeppelin.interpreter.thrift.OutputUpdateAllEvent;
+import org.apache.zeppelin.interpreter.thrift.OutputUpdateEvent;
+import org.apache.zeppelin.interpreter.thrift.RemoteInterpreterResultMessage;
 import org.apache.zeppelin.resource.Resource;
 import org.apache.zeppelin.resource.ResourceId;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 public class RemoteInterpreterEventServerTest {
   
+  @Test
+  void checkpointDrainsAppendUpdateAndUpdateAllBeforeSaving() throws Exception {
+    RemoteInterpreterProcessListener listener =
+        mock(RemoteInterpreterProcessListener.class);
+    InterpreterSettingManager manager = mock(InterpreterSettingManager.class);
+    when(manager.getRemoteInterpreterProcessListener()).thenReturn(listener);
+    RemoteInterpreterEventServer server = new RemoteInterpreterEventServer(
+        mock(ZeppelinConfiguration.class), manager);
+    AppendOutputRunner runner =
+        new AppendOutputRunner(listener);
+    Field field = RemoteInterpreterEventServer.class.getDeclaredField("runner");
+    field.setAccessible(true);
+    field.set(server, runner);
+    try {
+      server.appendOutput(new OutputAppendEvent(
+          "note", "para", 0, "old", null));
+      server.updateOutput(new OutputUpdateEvent(
+          "note", "para", 0, "TEXT", "update", null));
+      server.updateAllOutput(new OutputUpdateAllEvent(
+          "note", "para", Collections.singletonList(
+              new RemoteInterpreterResultMessage(
+                  "HTML", "replacement"))));
+      org.mockito.Mockito.verify(listener).onOutputUpdated("note", "para", 0,
+          InterpreterResult.Type.HTML, "replacement");
+      server.checkpointOutput("note", "para");
+      InOrder order = inOrder(listener);
+      order.verify(listener).onOutputAppend("note", "para", 0, "old");
+      order.verify(listener).onOutputUpdated("note", "para", 0,
+          InterpreterResult.Type.TEXT, "update");
+      order.verify(listener).onOutputClear("note", "para");
+      order.verify(listener).onOutputUpdated("note", "para", 0,
+          InterpreterResult.Type.HTML, "replacement");
+      order.verify(listener).checkpointOutput("note", "para");
+    } finally {
+      server.stop();
+    }
+  }
+
   @Test
   void invokeMethodThrowsRpcExceptionWhenSerializationFails() throws Exception {
     ZeppelinConfiguration zConf = mock(ZeppelinConfiguration.class);

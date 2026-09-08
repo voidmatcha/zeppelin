@@ -30,3 +30,17 @@ Currently, this feature is experimental. If you find any issues, please report t
 
 <div id="toc"></div>
 
+## Live output limitation
+
+Live paragraph append, update, replacement and checkpoint events do not identify
+which user's execution produced them. These events are therefore ignored for
+notes with an explicit `personalizedMode` setting. This includes `false`: an event
+from a previous personal execution may arrive after switching back to shared mode.
+Saving other note settings preserves an existing personalized-mode setting, even
+when a stale client omits it. A warning is logged once per server instance when this restriction is encountered.
+
+Shared notes without this setting continue to receive live output. This restriction
+does not add execution ownership to the protocol or change terminal-result, Run All,
+or Helium application behavior. Reliable personalized streaming requires a separate
+execution-ownership change. Removing the setting while an interpreter may still emit
+old output is not a safe workaround.

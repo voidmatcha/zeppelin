@@ -41,6 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import jakarta.inject.Inject;
 import jakarta.inject.Provider;
@@ -139,6 +140,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(NotebookServer.class);
+  private final AtomicBoolean unsupportedStreamingWarningLogged = new AtomicBoolean();
   private static final Gson gson = new GsonBuilder()
       .setDateFormat("yyyy-MM-dd'T'HH:mm:ssZ")
       .registerTypeAdapter(Date.class, new NotebookImportDeserializer())
@@ -967,7 +969,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             connectionManager.broadcast(note.getId(), new Message(OP.NOTE_UPDATED).put("name", name)
-                .put("config", config)
+                .put("config", note.getConfig())
                 .put("info", note.getInfo()));
             broadcastNoteList(context.getAutheInfo(), context.getUserAndRoles());
           }
@@ -1795,7 +1797,16 @@ public class NotebookServer implements AngularObjectRegistryListener,
         .put("paragraphId", paragraphId)
         .put("index", index)
         .put("data", output);
-    connectionManager.broadcast(noteId, msg);
+    try {
+      getNotebook().processNote(noteId, note -> {
+        if (streamingParagraph(note, paragraphId) != null) {
+          connectionManager.broadcast(noteId, msg);
+        }
+        return null;
+      });
+    } catch (IOException e) {
+      LOGGER.warn("Fail to call onOutputAppend", e);
+    }
   }
 
   /**
@@ -1818,20 +1829,12 @@ public class NotebookServer implements AngularObjectRegistryListener,
     try {
       getNotebook().processNote(noteId,
         note -> {
-          if (note == null) {
-            LOGGER.warn("Note {} not found", noteId);
+          Paragraph paragraph = streamingParagraph(note, paragraphId);
+          if (paragraph == null) {
             return null;
           }
-          Paragraph paragraph = note.getParagraph(paragraphId);
           paragraph.updateOutputBuffer(index, type, output);
-          if (note.isPersonalizedMode()) {
-            String user = note.getParagraph(paragraphId).getUser();
-            if (null != user) {
-              connectionManager.multicastToUser(user, msg);
-            }
-          } else {
-            connectionManager.broadcast(noteId, msg);
-          }
+          connectionManager.broadcast(noteId, msg);
           return null;
         });
     } catch (IOException e) {
@@ -1851,12 +1854,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
     try {
       getNotebook().processNote(noteId,
         note -> {
-          if (note == null) {
-            // It is possible the note is removed, but the job is still running
-            LOGGER.warn("Note {} doesn't existed, it maybe deleted.", noteId);
-          } else {
+          Paragraph paragraph = streamingParagraph(note, paragraphId);
+          if (paragraph != null) {
             note.clearParagraphOutput(paragraphId);
-            Paragraph paragraph = note.getParagraph(paragraphId);
             broadcastParagraph(note, paragraph, MSG_ID_NOT_DEFINED);
           }
           return null;
@@ -2119,12 +2119,33 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
   }
 
+  /** Legacy output events cannot identify the execution that produced their data. */
+  private Paragraph streamingParagraph(Note note, String paragraphId) {
+    if (note == null) {
+      return null;
+    }
+    // A false value may follow a personal execution whose output is still in flight.
+    // Keep this restriction until events carry trustworthy execution ownership.
+    if (note.getConfig().containsKey("personalizedMode")) {
+      if (unsupportedStreamingWarningLogged.compareAndSet(false, true)) {
+        LOGGER.warn("Live paragraph output and checkpoints are disabled for notes with an "
+            + "explicit personalized mode setting: output events lack execution ownership.");
+      }
+      return null;
+    }
+    return note.getParagraph(paragraphId);
+  }
+
   @Override
   public void checkpointOutput(String noteId, String paragraphId) {
     try {
       getNotebook().processNote(noteId,
         note -> {
-          note.getParagraph(paragraphId).checkpointOutput();
+          Paragraph paragraph = streamingParagraph(note, paragraphId);
+          if (paragraph == null) {
+            return null;
+          }
+          paragraph.checkpointOutput();
           getNotebook().saveNote(note, AuthenticationInfo.ANONYMOUS);
           return null;
         });

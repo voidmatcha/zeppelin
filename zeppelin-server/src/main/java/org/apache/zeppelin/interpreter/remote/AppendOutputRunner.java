@@ -18,10 +18,12 @@
 package org.apache.zeppelin.interpreter.remote;
 
 import org.apache.zeppelin.interpreter.InterpreterResult;
+import org.apache.zeppelin.interpreter.InterpreterResultMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -48,47 +50,54 @@ public class AppendOutputRunner implements Runnable {
   }
 
   @Override
-  public void run() {
+  public synchronized void run() {
 
-    Map<String, StringBuilder> stringBufferMap = new HashMap<>();
+    Map<List<String>, StringBuilder> stringBufferMap = new LinkedHashMap<>();
     List<AppendOutputBuffer> list = new LinkedList<>();
 
-    /* "drainTo" method does not wait for any element
-     * to be present in the queue, and thus this loop would
-     * continuosly run (with period of BUFFER_TIME_MS). "take()" method
-     * waits for the queue to become non-empty and then removes
-     * one element from it. Rest elements from queue (if present) are
-     * removed using "drainTo" method. Thus we save on some un-necessary
-     * cpu-cycles.
-     */
-    try {
-      list.add(queue.take());
-    } catch (InterruptedException e) {
-      LOGGER.error("Wait for OutputBuffer queue interrupted: {}", e.getMessage());
+    queue.drainTo(list);
+    if (list.isEmpty()) {
+      return;
     }
     Long processingStartTime = System.currentTimeMillis();
-    queue.drainTo(list);
 
     Long sizeProcessed = Long.valueOf(0);
     for (AppendOutputBuffer buffer : list) {
-      if (buffer instanceof UpdateOutputBuffer) {
-        sizeProcessed += flushAppendBuffers(stringBufferMap);
-        UpdateOutputBuffer update = (UpdateOutputBuffer) buffer;
-        listener.onOutputUpdated(update.getNoteId(), update.getParagraphId(), update.getIndex(),
-            update.getType(), update.getData());
-        continue;
+      try {
+        if (buffer instanceof UpdateAllOutputBuffer) {
+          sizeProcessed += flushAppendBuffers(stringBufferMap);
+          UpdateAllOutputBuffer update = (UpdateAllOutputBuffer) buffer;
+          listener.onOutputClear(update.getNoteId(), update.getParagraphId());
+          for (int i = 0; i < update.getMessages().size(); i++) {
+            InterpreterResultMessage message = update.getMessages().get(i);
+            listener.onOutputUpdated(update.getNoteId(), update.getParagraphId(), i,
+                message.getType(), message.getData());
+          }
+          continue;
+        }
+        if (buffer instanceof UpdateOutputBuffer) {
+          sizeProcessed += flushAppendBuffers(stringBufferMap);
+          UpdateOutputBuffer update = (UpdateOutputBuffer) buffer;
+          listener.onOutputUpdated(update.getNoteId(), update.getParagraphId(), update.getIndex(),
+              update.getType(), update.getData());
+          continue;
+        }
+
+        String noteId = buffer.getNoteId();
+        String paragraphId = buffer.getParagraphId();
+        int index = buffer.getIndex();
+        List<String> stringBufferKey = Arrays.asList(noteId, paragraphId, Integer.toString(index));
+
+        StringBuilder builder = stringBufferMap.containsKey(stringBufferKey) ?
+            stringBufferMap.get(stringBufferKey) : new StringBuilder();
+
+        builder.append(buffer.getData());
+        stringBufferMap.put(stringBufferKey, builder);
+      } catch (RuntimeException e) {
+        // One failed callback must not stop the shared scheduled drain.
+        LOGGER.warn("Failed to deliver output for note {} paragraph {}",
+            buffer.getNoteId(), buffer.getParagraphId(), e);
       }
-
-      String noteId = buffer.getNoteId();
-      String paragraphId = buffer.getParagraphId();
-      int index = buffer.getIndex();
-      String stringBufferKey = noteId + ":" + paragraphId + ":" + index;
-
-      StringBuilder builder = stringBufferMap.containsKey(stringBufferKey) ?
-          stringBufferMap.get(stringBufferKey) : new StringBuilder();
-
-      builder.append(buffer.getData());
-      stringBufferMap.put(stringBufferKey, builder);
     }
     sizeProcessed += flushAppendBuffers(stringBufferMap);
     Long processingTime = System.currentTimeMillis() - processingStartTime;
@@ -106,14 +115,18 @@ public class AppendOutputRunner implements Runnable {
     }
   }
 
-  private long flushAppendBuffers(Map<String, StringBuilder> stringBufferMap) {
+  private long flushAppendBuffers(Map<List<String>, StringBuilder> stringBufferMap) {
     long sizeProcessed = 0;
-    for (Entry<String, StringBuilder> stringBufferMapEntry : stringBufferMap.entrySet()) {
-      String stringBufferKey = stringBufferMapEntry.getKey();
+    for (Entry<List<String>, StringBuilder> stringBufferMapEntry : stringBufferMap.entrySet()) {
+      List<String> keys = stringBufferMapEntry.getKey();
       StringBuilder buffer = stringBufferMapEntry.getValue();
       sizeProcessed += buffer.length();
-      String[] keys = stringBufferKey.split(":");
-      listener.onOutputAppend(keys[0], keys[1], Integer.parseInt(keys[2]), buffer.toString());
+      try {
+        listener.onOutputAppend(keys.get(0), keys.get(1), Integer.parseInt(keys.get(2)),
+            buffer.toString());
+      } catch (RuntimeException e) {
+        LOGGER.warn("Failed to append output for note {} paragraph {}", keys.get(0), keys.get(1), e);
+      }
     }
     stringBufferMap.clear();
     return sizeProcessed;
@@ -126,5 +139,12 @@ public class AppendOutputRunner implements Runnable {
   public void updateBuffer(String noteId, String paragraphId, int index,
                            InterpreterResult.Type type, String output) {
     queue.offer(new UpdateOutputBuffer(noteId, paragraphId, index, type, output));
+  }
+
+  public synchronized void updateAllBuffer(String noteId, String paragraphId,
+                              List<InterpreterResultMessage> messages) {
+    queue.offer(new UpdateAllOutputBuffer(noteId, paragraphId, messages));
+    // Keep the original RPC completion barrier: final status must not precede this clear.
+    run();
   }
 }

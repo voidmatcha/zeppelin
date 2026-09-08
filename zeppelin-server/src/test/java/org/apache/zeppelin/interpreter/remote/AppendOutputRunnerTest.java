@@ -18,6 +18,7 @@
 package org.apache.zeppelin.interpreter.remote;
 
 import org.apache.zeppelin.interpreter.InterpreterResult;
+import org.apache.zeppelin.interpreter.InterpreterResultMessage;
 import org.apache.log4j.AppenderSkeleton;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -30,12 +31,22 @@ import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -166,24 +177,141 @@ class AppendOutputRunnerTest {
     logger.addAppender(appender);
 
     runner.run();
-    List<LoggingEvent> log;
+    try {
+      String expected = "Processing size for buffered append-output is high: "
+          + (data.length() * numEvents) + " characters.";
+      assertTrue(appender.getLog().stream().anyMatch(event ->
+          Level.WARN.equals(event.getLevel()) && expected.equals(event.getMessage())));
+    } finally {
+      logger.removeAppender(appender);
+    }
+  }
 
-    int warnLogCounter;
-    LoggingEvent sizeWarnLogEntry = null;
-    do {
-      warnLogCounter = 0;
-      log = appender.getLog();
-      for (LoggingEvent logEntry: log) {
-        if (Level.WARN.equals(logEntry.getLevel())) {
-          sizeWarnLogEntry = logEntry;
-          warnLogCounter += 1;
-        }
-      }
-    } while(warnLogCounter != 2);
+  @Test
+  void emptyDrainDoesNotBlock() {
+    AppendOutputRunner runner = new AppendOutputRunner(mock(RemoteInterpreterProcessListener.class));
+    assertTimeoutPreemptively(Duration.ofSeconds(1), runner::run);
+  }
 
-    String loggerString = "Processing size for buffered append-output is high: " +
-        (data.length() * numEvents) + " characters.";
-    assertEquals(loggerString, sizeWarnLogEntry.getMessage());
+  @Test
+  void identifiersContainingColonsRemainDistinct() {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    runner.appendBuffer("a:b", "c", 0, "first");
+    runner.appendBuffer("a", "b:c", 0, "second");
+    runner.run();
+    verify(listener).onOutputAppend("a:b", "c", 0, "first");
+    verify(listener).onOutputAppend("a", "b:c", 0, "second");
+  }
+
+  @Test
+  void callbackFailureDoesNotDiscardOtherEventsOrLaterDrains() {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    doThrow(new IllegalStateException("removed")).when(listener)
+        .onOutputAppend("note", "gone", 0, "bad");
+    doThrow(new IllegalStateException("removed")).when(listener)
+        .onOutputUpdated("note", "gone", 0, InterpreterResult.Type.TEXT, "bad");
+    runner.appendBuffer("note", "gone", 0, "bad");
+    runner.updateBuffer("note", "gone", 0, InterpreterResult.Type.TEXT, "bad");
+    runner.appendBuffer("note", "present", 0, "good");
+    runner.run();
+    runner.appendBuffer("note", "present", 0, "later");
+    runner.run();
+    verify(listener).onOutputAppend("note", "present", 0, "good");
+    verify(listener).onOutputAppend("note", "present", 0, "later");
+  }
+
+  @Test
+  void updateAllIsAnOrderedClearAndReplacement() {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    runner.appendBuffer("note", "para", 0, "old");
+    runner.updateAllBuffer("note", "para", Collections.singletonList(
+        new InterpreterResultMessage(
+            InterpreterResult.Type.HTML, "replacement")));
+    verify(listener).onOutputUpdated("note", "para", 0,
+        InterpreterResult.Type.HTML, "replacement");
+    runner.appendBuffer("note", "para", 0, "new");
+    runner.run();
+    InOrder order = inOrder(listener);
+    order.verify(listener).onOutputAppend("note", "para", 0, "old");
+    order.verify(listener).onOutputClear("note", "para");
+    order.verify(listener).onOutputUpdated("note", "para", 0,
+        InterpreterResult.Type.HTML, "replacement");
+    order.verify(listener).onOutputAppend("note", "para", 0, "new");
+  }
+
+  @Test
+  void concurrentDrainCannotOvertakeInFlightCallback() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      entered.countDown();
+      assertTrue(release.await(5, TimeUnit.SECONDS));
+      return null;
+    }).when(listener).onOutputAppend("note", "para", 0, "old");
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      runner.appendBuffer("note", "para", 0, "old");
+      Future<?> first = executor.submit(runner);
+      assertTrue(entered.await(5, TimeUnit.SECONDS));
+      runner.updateBuffer("note", "para", 0, InterpreterResult.Type.TEXT, "new");
+      Future<?> second = executor.submit(runner);
+      assertThrows(TimeoutException.class, () -> second.get(100, TimeUnit.MILLISECONDS));
+      release.countDown();
+      first.get(5, TimeUnit.SECONDS);
+      second.get(5, TimeUnit.SECONDS);
+      InOrder order = inOrder(listener);
+      order.verify(listener).onOutputAppend("note", "para", 0, "old");
+      order.verify(listener).onOutputUpdated("note", "para", 0,
+          InterpreterResult.Type.TEXT, "new");
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void updateAllWaitsForInFlightAppendAndCompletesBeforeReturning() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    AppendOutputRunner runner = new AppendOutputRunner(listener);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch updateStarted = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      entered.countDown();
+      assertTrue(release.await(5, TimeUnit.SECONDS));
+      return null;
+    }).when(listener).onOutputAppend("note", "para", 0, "old");
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      runner.appendBuffer("note", "para", 0, "old");
+      Future<?> first = executor.submit(runner);
+      assertTrue(entered.await(5, TimeUnit.SECONDS));
+      Future<?> update = executor.submit(() -> {
+        updateStarted.countDown();
+        runner.updateAllBuffer("note", "para", Collections.singletonList(
+            new InterpreterResultMessage(InterpreterResult.Type.HTML, "replacement")));
+        verify(listener).onOutputUpdated("note", "para", 0,
+            InterpreterResult.Type.HTML, "replacement");
+      });
+      assertTrue(updateStarted.await(5, TimeUnit.SECONDS));
+      assertThrows(TimeoutException.class, () -> update.get(100, TimeUnit.MILLISECONDS));
+      release.countDown();
+      first.get(5, TimeUnit.SECONDS);
+      update.get(5, TimeUnit.SECONDS);
+      InOrder order = inOrder(listener);
+      order.verify(listener).onOutputAppend("note", "para", 0, "old");
+      order.verify(listener).onOutputClear("note", "para");
+      order.verify(listener).onOutputUpdated("note", "para", 0,
+          InterpreterResult.Type.HTML, "replacement");
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
   }
 
   private class BombardEvents implements Runnable {

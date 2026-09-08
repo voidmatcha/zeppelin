@@ -239,12 +239,12 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
 
   @Override
   public void updateAllOutput(OutputUpdateAllEvent event) throws InterpreterRPCException, TException {
-    listener.onOutputClear(event.getNoteId(), event.getParagraphId());
-    for (int i = 0; i < event.getMsg().size(); i++) {
-      RemoteInterpreterResultMessage msg = event.getMsg().get(i);
-      listener.onOutputUpdated(event.getNoteId(), event.getParagraphId(), i,
-          InterpreterResult.Type.valueOf(msg.getType()), msg.getData());
+    List<InterpreterResultMessage> messages = new ArrayList<>();
+    for (RemoteInterpreterResultMessage message : event.getMsg()) {
+      messages.add(new InterpreterResultMessage(
+          InterpreterResult.Type.valueOf(message.getType()), message.getData()));
     }
+    runner.updateAllBuffer(event.getNoteId(), event.getParagraphId(), messages);
   }
 
   @Override
@@ -266,6 +266,9 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
 
   @Override
   public void checkpointOutput(String noteId, String paragraphId) throws InterpreterRPCException, TException {
+    // Deliver queued replacements before checkpointing their output buffers. Persistence must
+    // happen outside the runner monitor to avoid holding it during notebook storage callbacks.
+    runner.run();
     listener.checkpointOutput(noteId, paragraphId);
   }
 
