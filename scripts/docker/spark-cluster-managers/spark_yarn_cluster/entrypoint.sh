@@ -197,7 +197,13 @@ case "$LIVE_DATANODES" in
     ;;
 esac
 UPLOADED=""
-if "$HADOOP_HOME/bin/hdfs" dfs -test -d /spark/jars; then
+# A failed existence probe can mean an RPC error, not an absent cache. Only a
+# successful parent listing establishes whether the jars and marker exist.
+if ! SPARK_PATHS="$("$HADOOP_HOME/bin/hdfs" dfs -ls -C /spark)"; then
+  echo "Cannot list the Spark cache; leaving uploaded jars untouched." >&2
+  exit 1
+fi
+if printf '%s\n' "$SPARK_PATHS" | grep -xF '/spark/jars' > /dev/null; then
   # separate "cannot check" from "checked and broken": only the latter is a
   # reason to throw the cache away
   # fsck exits non-zero when it finds corruption, so the status line is what
@@ -210,12 +216,7 @@ if "$HADOOP_HOME/bin/hdfs" dfs -test -d /spark/jars; then
     exit 1
   fi
   if [ "$FSCK_STATUS" = HEALTHY ]; then
-    # A successful parent listing distinguishes a missing marker from an RPC
-    # failure. A failed read of an existing marker must not discard the cache.
-    if ! SPARK_PATHS="$("$HADOOP_HOME/bin/hdfs" dfs -ls -C /spark)"; then
-      echo "Cannot list the Spark upload marker; leaving uploaded jars untouched." >&2
-      exit 1
-    fi
+    # A failed read of an existing marker must not discard the cache.
     if printf '%s\n' "$SPARK_PATHS" | grep -xF '/spark/.jars-upload-complete' > /dev/null; then
       if ! UPLOADED="$("$HADOOP_HOME/bin/hdfs" dfs -cat /spark/.jars-upload-complete)"; then
         echo "Cannot read the Spark upload marker; leaving uploaded jars untouched." >&2

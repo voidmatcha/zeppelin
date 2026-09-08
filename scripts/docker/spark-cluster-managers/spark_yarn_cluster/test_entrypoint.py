@@ -47,6 +47,9 @@ elif args[0] == 'fsck':
     print('Status: ' + status)
     sys.exit(0 if status == 'HEALTHY' else 1)
 elif args[:3] == ['dfs', '-test', '-d']:
+    if state.get('directory_probe_unavailable'):
+        print('Injected directory RPC failure', file=sys.stderr)
+        sys.exit(1)
     sys.exit(0 if state['jar_directory'] else 1)
 elif args[:2] == ['dfs', '-cat']:
     if state.get('marker_missing'):
@@ -61,7 +64,11 @@ elif args[:3] == ['dfs', '-ls', '-C']:
         print('Connection refused', file=sys.stderr)
         sys.exit(1)
     if args[-1] == '/spark':
-        print('/spark/jars')
+        if state.get('directory_probe_unavailable'):
+            print('Injected directory RPC failure', file=sys.stderr)
+            sys.exit(1)
+        if state['jar_directory']:
+            print('/spark/jars')
         if not state.get('marker_missing'):
             print('/spark/.jars-upload-complete')
         for index in range(state.get('parent_entries', 0)):
@@ -235,6 +242,19 @@ class EntrypointTest(unittest.TestCase):
                 result = self.run_entrypoint()
                 self.assertNotEqual(result.returncode, 0)
                 self.assert_no_upload_or_format()
+
+    def test_directory_probe_failure_preserves_cache(self):
+        self.state['directory_probe_unavailable'] = True
+        result = self.run_entrypoint()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Injected directory RPC failure', result.stderr)
+        self.assert_no_upload_or_format()
+
+    def test_missing_jar_path_with_existing_marker_is_uploaded(self):
+        self.state['jar_directory'] = False
+        result = self.run_entrypoint()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(['dfs', '-put', str(self.spark / 'jars'), '/spark'], self.calls)
 
     def test_marker_read_error_preserves_cache_and_diagnostic(self):
         self.state['marker_unavailable'] = True
