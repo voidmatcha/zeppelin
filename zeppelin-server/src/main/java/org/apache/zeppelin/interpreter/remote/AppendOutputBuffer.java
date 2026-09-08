@@ -27,12 +27,34 @@ public class AppendOutputBuffer {
   private String paragraphId;
   private int index;
   private String data;
+  private final String user;
+  private final Boolean personalized;
 
   public AppendOutputBuffer(String noteId, String paragraphId, int index, String data) {
+    this(noteId, paragraphId, index, data, null);
+  }
+
+  public AppendOutputBuffer(String noteId, String paragraphId, int index,
+                            String data, String user) {
+    this(noteId, paragraphId, index, data, user, null);
+  }
+
+  public AppendOutputBuffer(String noteId, String paragraphId, int index,
+                            String data, String user, Boolean personalized) {
+    this.personalized = personalized;
+    this.user = user;
     this.noteId = noteId;
     this.paragraphId = paragraphId;
     this.index = index;
     this.data = data;
+  }
+
+  public Boolean getPersonalized() {
+    return personalized;
+  }
+
+  public String getUser() {
+    return user;
   }
 
   public String getNoteId() {

@@ -36,7 +36,9 @@ struct OutputAppendEvent {
   2: string paragraphId,
   3: i32 index,
   4: string data,
-  5: string appId
+  5: string appId,
+  6: optional string user,
+  7: optional bool personalized
 }
 
 struct OutputUpdateEvent {
@@ -45,13 +47,17 @@ struct OutputUpdateEvent {
   3: i32 index,
   4: string type,
   5: string data,
-  6: string appId
+  6: string appId,
+  7: optional string user,
+  8: optional bool personalized
 }
 
 struct OutputUpdateAllEvent {
   1: string noteId,
   2: string paragraphId,
   3: list<RemoteInterpreterService.RemoteInterpreterResultMessage> msg,
+  4: optional string user,
+  5: optional bool personalized
 }
 
 struct RunParagraphsEvent {
@@ -120,7 +126,8 @@ service RemoteInterpreterEventService {
   void updateAppOutput(1: AppOutputUpdateEvent event) throws (1: RemoteInterpreterService.InterpreterRPCException ex);
   void updateAppStatus(1: AppStatusUpdateEvent event) throws (1: RemoteInterpreterService.InterpreterRPCException ex);
 
-  void checkpointOutput(1: string noteId, 2: string paragraphId) throws (1: RemoteInterpreterService.InterpreterRPCException ex);
+  // A nullable string preserves an absent captured mode at the Java service boundary.
+  void checkpointOutput(1: string noteId, 2: string paragraphId, 3: string user, 4: string outputPersonalizedMode) throws (1: RemoteInterpreterService.InterpreterRPCException ex);
 
   void runParagraphs(1: RunParagraphsEvent event) throws (1: RemoteInterpreterService.InterpreterRPCException ex);
 

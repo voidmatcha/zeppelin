@@ -55,6 +55,52 @@ public interface RemoteInterpreterProcessListener {
    */
   void onOutputClear(String noteId, String paragraphId);
 
+  default void onOutputAppendForUser(String noteId, String paragraphId, int index,
+                                     String output, String user, Boolean personalized) {
+    onOutputAppendForUser(noteId, paragraphId, index, output, user);
+  }
+
+  default void onOutputUpdatedForUser(String noteId, String paragraphId, int index,
+                                      InterpreterResult.Type type, String output, String user,
+                                      Boolean personalized) {
+    onOutputUpdatedForUser(noteId, paragraphId, index, type, output, user);
+  }
+
+  default void onOutputClearForUser(String noteId, String paragraphId, String user,
+                                    Boolean personalized) {
+    onOutputClearForUser(noteId, paragraphId, user);
+  }
+
+  default void onOutputAppendForUser(String noteId, String paragraphId, int index,
+                                     String output, String user) {
+    onOutputAppend(noteId, paragraphId, index, output);
+  }
+
+  default void onOutputUpdatedForUser(String noteId, String paragraphId, int index,
+                                      InterpreterResult.Type type, String output, String user) {
+    onOutputUpdated(noteId, paragraphId, index, type, output);
+  }
+
+  default void onOutputClearForUser(String noteId, String paragraphId, String user) {
+    onOutputClear(noteId, paragraphId);
+  }
+
+  /**
+   * Capture buffered results under the drain lock; persist after releasing it.
+   * The caller must invoke the returned callback exactly once, synchronously on the same
+   * thread, immediately after leaving the drain lock. Implementations may retain a note's
+   * eviction read lock until that callback completes.
+   */
+  default Runnable prepareCheckpointOutput(String noteId, String paragraphId, String user) {
+    checkpointOutput(noteId, paragraphId);
+    return () -> { };
+  }
+
+  default Runnable prepareCheckpointOutput(String noteId, String paragraphId, String user,
+                                             Boolean personalized) {
+    return prepareCheckpointOutput(noteId, paragraphId, user);
+  }
+
   /**
    * Run paragraphs, paragraphs can be specified via indices(paragraphIndices) or ids(paragraphIds)
    * @param noteId

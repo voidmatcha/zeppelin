@@ -99,6 +99,11 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
     this.interpreterSettingManager = interpreterSettingManager;
     this.listener = interpreterSettingManager.getRemoteInterpreterProcessListener();
     this.appListener = interpreterSettingManager.getAppEventListener();
+    this.runner = new AppendOutputRunner(listener);
+  }
+
+  public void runAfterOutput(AppendOutputRunner.OutputOperation operation) throws IOException {
+    runner.runAfterOutput(operation);
   }
 
   public void start() throws IOException {
@@ -140,7 +145,6 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
     }
     LOGGER.info("RemoteInterpreterEventServer is started");
 
-    runner = new AppendOutputRunner(listener);
     appendFuture = appendService.scheduleWithFixedDelay(
         runner, 0, AppendOutputRunner.BUFFER_TIME_MS, TimeUnit.MILLISECONDS);
   }
@@ -218,8 +222,9 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
   @Override
   public void appendOutput(OutputAppendEvent event) throws InterpreterRPCException, TException {
     if (event.getAppId() == null) {
-      runner.appendBuffer(
-          event.getNoteId(), event.getParagraphId(), event.getIndex(), event.getData());
+      runner.appendBuffer(event.getNoteId(), event.getParagraphId(), event.getIndex(),
+          event.getData(), event.getUser(),
+          event.isSetPersonalized() ? event.isPersonalized() : null);
     } else {
       appListener.onOutputAppend(event.getNoteId(), event.getParagraphId(), event.getIndex(),
           event.getAppId(), event.getData());
@@ -230,7 +235,8 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
   public void updateOutput(OutputUpdateEvent event) throws InterpreterRPCException, TException {
     if (event.getAppId() == null) {
       runner.updateBuffer(event.getNoteId(), event.getParagraphId(), event.getIndex(),
-          InterpreterResult.Type.valueOf(event.getType()), event.getData());
+          InterpreterResult.Type.valueOf(event.getType()), event.getData(), event.getUser(),
+          event.isSetPersonalized() ? event.isPersonalized() : null);
     } else {
       appListener.onOutputUpdated(event.getNoteId(), event.getParagraphId(), event.getIndex(),
           event.getAppId(), InterpreterResult.Type.valueOf(event.getType()), event.getData());
@@ -239,12 +245,13 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
 
   @Override
   public void updateAllOutput(OutputUpdateAllEvent event) throws InterpreterRPCException, TException {
-    listener.onOutputClear(event.getNoteId(), event.getParagraphId());
-    for (int i = 0; i < event.getMsg().size(); i++) {
-      RemoteInterpreterResultMessage msg = event.getMsg().get(i);
-      listener.onOutputUpdated(event.getNoteId(), event.getParagraphId(), i,
-          InterpreterResult.Type.valueOf(msg.getType()), msg.getData());
+    List<InterpreterResultMessage> messages = new ArrayList<>();
+    for (RemoteInterpreterResultMessage msg : event.getMsg()) {
+      messages.add(new InterpreterResultMessage(
+          InterpreterResult.Type.valueOf(msg.getType()), msg.getData()));
     }
+    runner.updateAllBuffer(event.getNoteId(), event.getParagraphId(), messages, event.getUser(),
+        event.isSetPersonalized() ? event.isPersonalized() : null);
   }
 
   @Override
@@ -264,9 +271,27 @@ public class RemoteInterpreterEventServer implements RemoteInterpreterEventServi
     appListener.onStatusChange(event.noteId, event.paragraphId, event.appId, event.status);
   }
 
+  public void checkpointOutput(String noteId, String paragraphId)
+      throws InterpreterRPCException, TException {
+    checkpointOutput(noteId, paragraphId, null);
+  }
+
+  public void checkpointOutput(String noteId, String paragraphId, String user)
+      throws InterpreterRPCException, TException {
+    checkpointOutput(noteId, paragraphId, user, null);
+  }
+
   @Override
-  public void checkpointOutput(String noteId, String paragraphId) throws InterpreterRPCException, TException {
-    listener.checkpointOutput(noteId, paragraphId);
+  public void checkpointOutput(String noteId, String paragraphId, String user,
+                                String outputPersonalizedMode)
+      throws InterpreterRPCException, TException {
+    if (outputPersonalizedMode != null && !"true".equals(outputPersonalizedMode)
+        && !"false".equals(outputPersonalizedMode)) {
+      return;
+    }
+    Boolean personalized = "true".equals(outputPersonalizedMode) ? Boolean.TRUE
+        : "false".equals(outputPersonalizedMode) ? Boolean.FALSE : null;
+    runner.checkpointOutput(noteId, paragraphId, user, personalized);
   }
 
   @Override

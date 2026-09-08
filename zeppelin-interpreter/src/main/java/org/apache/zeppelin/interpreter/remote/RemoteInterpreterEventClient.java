@@ -223,10 +223,24 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
 
   public void onInterpreterOutputAppend(
       String noteId, String paragraphId, int outputIndex, String output) {
+    onInterpreterOutputAppend(noteId, paragraphId, outputIndex, output, null);
+  }
+
+  public void onInterpreterOutputAppend(
+      String noteId, String paragraphId, int outputIndex, String output, String user) {
+    onInterpreterOutputAppend(noteId, paragraphId, outputIndex, output, user, null);
+  }
+
+  public void onInterpreterOutputAppend(String noteId, String paragraphId, int outputIndex,
+                                        String output, String user, Boolean personalized) {
     try {
       callRemoteFunction(client -> {
-        client.appendOutput(
-                new OutputAppendEvent(noteId, paragraphId, outputIndex, output, null));
+        OutputAppendEvent event =
+            new OutputAppendEvent(noteId, paragraphId, outputIndex, output, null).setUser(user);
+        if (personalized != null) {
+          event.setPersonalized(personalized);
+        }
+        client.appendOutput(event);
         return null;
       });
     } catch (Exception e) {
@@ -237,10 +251,26 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
   public void onInterpreterOutputUpdate(
       String noteId, String paragraphId, int outputIndex,
       InterpreterResult.Type type, String output) {
+    onInterpreterOutputUpdate(noteId, paragraphId, outputIndex, type, output, null);
+  }
+
+  public void onInterpreterOutputUpdate(
+      String noteId, String paragraphId, int outputIndex,
+      InterpreterResult.Type type, String output, String user) {
+    onInterpreterOutputUpdate(noteId, paragraphId, outputIndex, type, output, user, null);
+  }
+
+  public void onInterpreterOutputUpdate(String noteId, String paragraphId, int outputIndex,
+      InterpreterResult.Type type, String output, String user, Boolean personalized) {
     try {
       callRemoteFunction(client -> {
-        client.updateOutput(
-                new OutputUpdateEvent(noteId, paragraphId, outputIndex, type.name(), output, null));
+        OutputUpdateEvent event =
+            new OutputUpdateEvent(noteId, paragraphId, outputIndex, type.name(), output, null)
+                .setUser(user);
+        if (personalized != null) {
+          event.setPersonalized(personalized);
+        }
+        client.updateOutput(event);
         return null;
       });
 
@@ -251,10 +281,24 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
 
   public void onInterpreterOutputUpdateAll(
       String noteId, String paragraphId, List<InterpreterResultMessage> messages) {
+    onInterpreterOutputUpdateAll(noteId, paragraphId, messages, null);
+  }
+
+  public void onInterpreterOutputUpdateAll(
+      String noteId, String paragraphId, List<InterpreterResultMessage> messages, String user) {
+    onInterpreterOutputUpdateAll(noteId, paragraphId, messages, user, null);
+  }
+
+  public void onInterpreterOutputUpdateAll(String noteId, String paragraphId,
+      List<InterpreterResultMessage> messages, String user, Boolean personalized) {
     try {
       callRemoteFunction(client -> {
-        client.updateAllOutput(
-                new OutputUpdateAllEvent(noteId, paragraphId, convertToThrift(messages)));
+        OutputUpdateAllEvent event =
+            new OutputUpdateAllEvent(noteId, paragraphId, convertToThrift(messages)).setUser(user);
+        if (personalized != null) {
+          event.setPersonalized(personalized);
+        }
+        client.updateAllOutput(event);
         return null;
       });
 
@@ -292,9 +336,18 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
   }
 
   public void checkpointOutput(String noteId, String paragraphId) {
+    checkpointOutput(noteId, paragraphId, null);
+  }
+
+  public void checkpointOutput(String noteId, String paragraphId, String user) {
+    checkpointOutput(noteId, paragraphId, user, null);
+  }
+
+  public void checkpointOutput(String noteId, String paragraphId, String user,
+                               String outputPersonalizedMode) {
     try {
       callRemoteFunction(client -> {
-        client.checkpointOutput(noteId, paragraphId);
+        client.checkpointOutput(noteId, paragraphId, user, outputPersonalizedMode);
         return null;
       });
     } catch (Exception e) {

@@ -30,3 +30,23 @@ Currently, this feature is experimental. If you find any issues, please report t
 
 <div id="toc"></div>
 
+
+## Streaming output
+
+Standard paragraph streams retain the authenticated user and mode of the selected execution
+paragraph. Output from a personalized execution is delivered only to that user's connections
+in the same note. Events whose captured mode differs from the note's current mode are ignored.
+
+Clearing output while a paragraph is running clears the displayed content but preserves its
+result types, so subsequent chunks can still be rendered. The final interpreter result remains
+authoritative and can include content produced before the clear.
+
+Restart interpreter processes after upgrading to enable execution-scoped output metadata.
+Legacy producers without this metadata remain supported for shared notes that have never had
+an explicit personalized-mode selection. Their streaming events are ignored after an explicit
+mode selection because the server cannot determine the execution's original mode. Custom
+output factories, including the legacy Helium development servers, must propagate this metadata
+to support those notes; restarting alone does not update a custom factory.
+
+This change does not alter mode-switch admission, active-note cache/reload behavior, personalized
+Run All result selection, or Helium application lifecycle.

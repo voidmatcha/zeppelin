@@ -859,28 +859,30 @@ public class NotebookService {
         callback)) {
       return;
     }
-    notebook.processNote(noteId,
-      note -> {
-        if (note == null) {
-          callback.onFailure(new NoteNotFoundException(noteId), context);
-          return null;
-        }
-        Paragraph p = note.getParagraph(paragraphId);
-        if (p == null) {
-          callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
-          return null;
-        }
-        Paragraph returnedParagraph;
-        if (note.isPersonalizedMode()) {
-          returnedParagraph = note.clearPersonalizedParagraphOutput(paragraphId,
-              context.getAutheInfo().getUser());
-        } else {
-          note.clearParagraphOutput(paragraphId);
-          returnedParagraph = note.getParagraph(paragraphId);
-        }
-        callback.onSuccess(returnedParagraph, context);
-        return null;
-      });
+    notebook.getInterpreterSettingManager().getInterpreterEventServer().runAfterOutput(() ->
+        notebook.processNote(noteId,
+          note -> {
+            if (note == null) {
+              callback.onFailure(new NoteNotFoundException(noteId), context);
+              return null;
+            }
+            Paragraph p = note.getParagraph(paragraphId);
+            if (p == null) {
+              callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
+              return null;
+            }
+            String user = context.getAutheInfo().getUser();
+            Paragraph returnedParagraph = note.isPersonalizedMode()
+                ? (user == null ? null : p.getUserParagraph(user)) : p;
+            if (returnedParagraph == null) {
+              callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
+              return null;
+            }
+            // The interpreter still owns its result slots after a user clears the display.
+            note.clearParagraphOutputFields(returnedParagraph, true);
+            callback.onSuccess(returnedParagraph, context);
+            return null;
+          }));
   }
 
   public void clearAllParagraphOutput(String noteId,
@@ -892,17 +894,32 @@ public class NotebookService {
     }
 
 
-    notebook.processNote(noteId,
-      note -> {
-        if (note == null) {
-          callback.onFailure(new NoteNotFoundException(noteId), context);
+    java.util.concurrent.atomic.AtomicReference<Note> clearedNote =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    notebook.getInterpreterSettingManager().getInterpreterEventServer().runAfterOutput(() ->
+        notebook.processNote(noteId, note -> {
+          if (note == null) {
+            callback.onFailure(new NoteNotFoundException(noteId), context);
+            return null;
+          }
+          note.clearAllParagraphOutput(context.getAutheInfo().getUser());
+          // Signal the clear before any later append can be delivered to the same viewers.
+          callback.onSuccess(note, context);
+          if (!note.isPersonalizedMode()) {
+            note.getLock().readLock().lock();
+            clearedNote.set(note);
+          }
           return null;
-        }
-        note.clearAllParagraphOutput();
+        }));
+    Note note = clearedNote.get();
+    if (note != null) {
+      try {
+        // Preserve eviction protection without holding the global output drain during storage I/O.
         notebook.saveNote(note, context.getAutheInfo());
-        callback.onSuccess(note, context);
-        return null;
-      });
+      } finally {
+        note.getLock().readLock().unlock();
+      }
+    }
   }
 
 

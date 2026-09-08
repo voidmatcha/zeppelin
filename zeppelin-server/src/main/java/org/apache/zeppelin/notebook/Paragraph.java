@@ -81,6 +81,8 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
   // form and parameter settings
   public GUI settings = new GUI();
   private InterpreterResult results;
+  // Preserve stream slot types in NOTE snapshots even when cleared results are null.
+  private List<InterpreterResult.Type> outputTypes;
   // Application states in this paragraph
   private final List<ApplicationState> apps = new LinkedList<>();
 
@@ -91,8 +93,10 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
   private transient String interpreterGroupId;
   private transient Note note;
   private transient AuthenticationInfo subject;
+  private transient boolean personalizedOutput;
   // personalized
-  private transient Map<String, Paragraph> userParagraphMap = new HashMap<>();
+  private transient Map<String, Paragraph> userParagraphMap =
+      new java.util.concurrent.ConcurrentHashMap<>();
   private transient Map<String, String> localProperties = new HashMap<>();
 
   private Map<String, ParagraphRuntimeInfo> runtimeInfos = new HashMap<>();
@@ -137,10 +141,12 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
   }
 
   public Paragraph getUserParagraph(String user) {
-    if (!userParagraphMap.containsKey(user)) {
-      cloneParagraphForUser(user);
-    }
-    return userParagraphMap.get(user);
+    return userParagraphMap.computeIfAbsent(user, key -> {
+      Paragraph paragraph = new Paragraph(this);
+      paragraph.status = Status.READY;
+      paragraph.personalizedOutput = true;
+      return paragraph;
+    });
   }
 
   @Override
@@ -165,6 +171,7 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
   }
 
   public void addUser(Paragraph p, String user) {
+    p.personalizedOutput = true;
     userParagraphMap.put(user, p);
   }
 
@@ -538,6 +545,9 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
       subject.setUserCredentials(userCredentials);
     }
 
+    Map<String, String> executionProperties = new HashMap<>(localProperties);
+    executionProperties.put(InterpreterContext.OUTPUT_PERSONALIZED_MODE,
+        Boolean.toString(personalizedOutput));
     return InterpreterContext.builder()
             .setNoteId(note.getId())
             .setNoteName(note.getName())
@@ -546,7 +556,7 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
             .setParagraphTitle(title)
             .setParagraphText(text)
             .setAuthenticationInfo(subject)
-            .setLocalProperties(localProperties)
+            .setLocalProperties(executionProperties)
             .setConfig(config)
             .setGUI(settings)
             .setNoteGUI(getNoteGui())
@@ -693,7 +703,18 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
   }
 
   public void cleanOutputBuffer() {
-    this.outputBuffer.clear();
+    synchronized (outputBuffer) {
+      outputBuffer.clear();
+      outputTypes = null;
+    }
+  }
+
+  public void clearOutputBufferData() {
+    synchronized (outputBuffer) {
+      for (int i = 0; i < outputBuffer.size(); i++) {
+        outputBuffer.set(i, new InterpreterResultMessage(outputBuffer.get(i).getType(), ""));
+      }
+    }
   }
 
   /**
@@ -702,9 +723,12 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
    */
   public void checkpointOutput() {
     LOGGER.info("Checkpoint Paragraph output for paragraph: {}", getId());
-    this.results = new InterpreterResult(Code.SUCCESS);
-    for (InterpreterResultMessage buffer : outputBuffer) {
-      results.add(buffer);
+    synchronized (outputBuffer) {
+      InterpreterResult checkpoint = new InterpreterResult(Code.SUCCESS);
+      for (InterpreterResultMessage buffer : outputBuffer) {
+        checkpoint.add(buffer);
+      }
+      this.results = checkpoint;
     }
   }
 
@@ -792,14 +816,35 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     return note.getNoteParser().fromJson(json);
   }
 
+  public void appendOutputBuffer(int index, String output) {
+    synchronized (outputBuffer) {
+      if (index < 0 || index >= outputBuffer.size()) {
+        // An append carries no result type. Wait for a typed update rather than inventing one.
+        return;
+      }
+      InterpreterResultMessage previous = outputBuffer.get(index);
+      outputBuffer.set(index,
+          new InterpreterResultMessage(previous.getType(), previous.getData() + output));
+    }
+  }
+
   public void updateOutputBuffer(int index, InterpreterResult.Type type, String output) {
-    InterpreterResultMessage interpreterResultMessage = new InterpreterResultMessage(type, output);;
-    if (outputBuffer.size() == index) {
-      outputBuffer.add(interpreterResultMessage);
-    } else if (outputBuffer.size() > index) {
-      outputBuffer.set(index, interpreterResultMessage);
-    } else {
-      LOGGER.warn("Get output of index: {}, but there's only {} output in outputBuffer", index, outputBuffer.size());
+    InterpreterResultMessage message = new InterpreterResultMessage(type, output);
+    synchronized (outputBuffer) {
+      if (outputBuffer.size() == index) {
+        outputBuffer.add(message);
+      } else if (index >= 0 && outputBuffer.size() > index) {
+        outputBuffer.set(index, message);
+      } else {
+        LOGGER.warn("Get output of index: {}, but there's only {} output in outputBuffer",
+            index, outputBuffer.size());
+      }
+      // Publish a replacement list so concurrent JSON serialization never sees list mutation.
+      List<InterpreterResult.Type> types = new ArrayList<>();
+      for (InterpreterResultMessage outputMessage : outputBuffer) {
+        types.add(outputMessage.getType());
+      }
+      outputTypes = types;
     }
   }
 

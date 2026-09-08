@@ -513,9 +513,17 @@ public class Note implements JsonSerializable {
   }
 
   public void clearParagraphOutputFields(Paragraph p) {
+    clearParagraphOutputFields(p, false);
+  }
+
+  public void clearParagraphOutputFields(Paragraph p, boolean preserveOutputTypes) {
     p.setReturn(null, null);
     p.cleanRuntimeInfos();
-    p.cleanOutputBuffer();
+    if (preserveOutputTypes) {
+      p.clearOutputBufferData();
+    } else {
+      p.cleanOutputBuffer();
+    }
   }
 
   public Paragraph clearPersonalizedParagraphOutput(String paragraphId, String user) {
@@ -553,8 +561,20 @@ public class Note implements JsonSerializable {
    * Clear all paragraph output of note
    */
   public void clearAllParagraphOutput() {
-    for (Paragraph p : paragraphs) {
-      p.setReturn(null, null);
+    clearAllParagraphOutput(null);
+  }
+
+  public void clearAllParagraphOutput(String user) {
+    if (isPersonalizedMode() && user == null) {
+      return;
+    }
+    for (Paragraph paragraph : paragraphs) {
+      Paragraph target = isPersonalizedMode()
+          ? paragraph.getUserParagraph(user) : paragraph;
+      if (target != null) {
+        // Running interpreters may append again without repeating their result types.
+        clearParagraphOutputFields(target, true);
+      }
     }
   }
 
@@ -948,6 +968,7 @@ public class Note implements JsonSerializable {
   public Note getUserNote(String user) {
     Note newNote = new Note();
     newNote.name = getName();
+    newNote.path = getPath();
     newNote.id = getId();
     newNote.setConfig(getConfig());
     newNote.angularObjects = getAngularObjects();

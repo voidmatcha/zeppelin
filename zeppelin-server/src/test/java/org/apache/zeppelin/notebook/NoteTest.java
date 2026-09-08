@@ -79,6 +79,19 @@ class NoteTest {
     noteParser = new GsonNoteParser(zConf);
   }
 
+  @Test
+  void personalizedSnapshotPreservesTheNotePath() {
+    Note note = new Note();
+    note.setPath("/folder/streaming");
+    note.setZeppelinConfiguration(zConf);
+    note.setNoteParser(noteParser);
+
+    Note personalized = note.getUserNote("alice");
+
+    assertEquals(note.getPath(), personalized.getPath());
+    assertEquals(note.getName(), personalized.getName());
+  }
+
   @BeforeEach
   public void setUp() {
     repo = mock(NotebookRepo.class);
@@ -164,6 +177,27 @@ class NoteTest {
   }
 
   @Test
+  void personalizedClearAllCreatesOnlyTheRequestersMissingParagraphs() {
+    Note note = new Note("test", "", interpreterFactory, interpreterSettingManager,
+        paragraphJobListener, credentials, noteEventListener, zConf, noteParser);
+    Paragraph master = note.addNewParagraph(AuthenticationInfo.ANONYMOUS);
+    master.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "shared result"));
+    note.setPersonalizedMode(true);
+    Paragraph bob = master.getUserParagraph("bob");
+    bob.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "bob result"));
+
+    note.clearAllParagraphOutput(null);
+    assertEquals(1, master.getUserParagraphMap().size());
+    assertEquals("shared result", master.getReturn().message().get(0).getData());
+    note.clearAllParagraphOutput("alice");
+
+    assertEquals(2, master.getUserParagraphMap().size());
+    assertNull(master.getUserParagraphMap().get("alice").getReturn());
+    assertEquals("shared result", master.getReturn().message().get(0).getData());
+    assertEquals("bob result", bob.getReturn().message().get(0).getData());
+  }
+
+  @Test
   void clearAllParagraphOutputTest() throws InterpreterNotFoundException {
 
     Note note = new Note("test", "", interpreterFactory, interpreterSettingManager,
@@ -175,10 +209,20 @@ class NoteTest {
     Paragraph p2 = note.addNewParagraph(AuthenticationInfo.ANONYMOUS);
     p2.setReturn(result, new Throwable());
 
+    p1.updateOutputBuffer(0, InterpreterResult.Type.TABLE, "old table");
+    p2.updateOutputBuffer(0, InterpreterResult.Type.TEXT, "old text");
     note.clearAllParagraphOutput();
 
     assertNull(p1.getReturn());
     assertNull(p2.getReturn());
+    p1.checkpointOutput();
+    p2.checkpointOutput();
+    assertEquals("", p1.getReturn().message().get(0).getData());
+    assertEquals("", p2.getReturn().message().get(0).getData());
+    p1.appendOutputBuffer(0, "new table");
+    p1.checkpointOutput();
+    assertEquals(InterpreterResult.Type.TABLE, p1.getReturn().message().get(0).getType());
+    assertEquals("new table", p1.getReturn().message().get(0).getData());
   }
 
 

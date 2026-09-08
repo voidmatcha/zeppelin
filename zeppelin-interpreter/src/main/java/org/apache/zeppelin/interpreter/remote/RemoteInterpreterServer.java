@@ -128,6 +128,9 @@ public class RemoteInterpreterServer extends Thread
   // Hold information for manual progress update
   private ConcurrentMap<String, Integer> progressMap = new ConcurrentHashMap<>();
 
+  // Only used while invoking the legacy output factory. Callbacks capture values, not this scope.
+  private final ThreadLocal<RemoteInterpreterContext> outputFactoryContext = new ThreadLocal<>();
+
   // keep track of the running jobs for job recovery.
   private ConcurrentMap<String, InterpretJob> runningJobs = new ConcurrentHashMap<>();
   // cache result threshold, result cache is for purpose of recover paragraph even after
@@ -955,7 +958,17 @@ public class RemoteInterpreterServer extends Thread
   }
 
   private InterpreterContext convert(RemoteInterpreterContext ric) {
-    return convert(ric, createInterpreterOutput(ric.getNoteId(), ric.getParagraphId()));
+    RemoteInterpreterContext previous = outputFactoryContext.get();
+    outputFactoryContext.set(ric);
+    try {
+      return convert(ric, createInterpreterOutput(ric.getNoteId(), ric.getParagraphId()));
+    } finally {
+      if (previous == null) {
+        outputFactoryContext.remove();
+      } else {
+        outputFactoryContext.set(previous);
+      }
+    }
   }
 
   private InterpreterContext convert(RemoteInterpreterContext ric, InterpreterOutput output) {
@@ -983,12 +996,29 @@ public class RemoteInterpreterServer extends Thread
 
   protected InterpreterOutput createInterpreterOutput(final String noteId, final String
       paragraphId) {
+    RemoteInterpreterContext context = outputFactoryContext.get();
+    AuthenticationInfo authenticationInfo = context == null ? null
+        : AuthenticationInfo.fromJson(context.getAuthenticationInfo());
+    String mode = context == null || context.getLocalProperties() == null ? null
+        : context.getLocalProperties().get(InterpreterContext.OUTPUT_PERSONALIZED_MODE);
+    return createInterpreterOutput(noteId, paragraphId,
+        authenticationInfo == null ? null : authenticationInfo.getUser(),
+        mode == null ? null : Boolean.valueOf(mode));
+  }
+
+  protected InterpreterOutput createInterpreterOutput(
+      final String noteId, final String paragraphId, final String user) {
+    return createInterpreterOutput(noteId, paragraphId, user, null);
+  }
+
+  protected InterpreterOutput createInterpreterOutput(final String noteId, final String paragraphId,
+      final String user, final Boolean personalized) {
     return new InterpreterOutput(new InterpreterOutputListener() {
       @Override
       public void onUpdateAll(InterpreterOutput out) {
         try {
           intpEventClient.onInterpreterOutputUpdateAll(
-              noteId, paragraphId, out.toInterpreterResultMessage());
+              noteId, paragraphId, out.toInterpreterResultMessage(), user, personalized);
         } catch (IOException e) {
           LOGGER.error(e.getMessage(), e);
         }
@@ -999,7 +1029,7 @@ public class RemoteInterpreterServer extends Thread
         String output = new String(line);
         LOGGER.debug("Output Append: {}", output);
         intpEventClient.onInterpreterOutputAppend(
-            noteId, paragraphId, index, output);
+            noteId, paragraphId, index, output, user, personalized);
       }
 
       @Override
@@ -1009,7 +1039,7 @@ public class RemoteInterpreterServer extends Thread
           output = new String(out.toByteArray());
           LOGGER.debug("Output Update for index {}: {}", index, output);
           intpEventClient.onInterpreterOutputUpdate(
-              noteId, paragraphId, index, out.getType(), output);
+              noteId, paragraphId, index, out.getType(), output, user, personalized);
         } catch (IOException e) {
           LOGGER.error(e.getMessage(), e);
         }
