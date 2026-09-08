@@ -15,25 +15,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 <configuration>
+  <!-- Clients read these addresses to reach the ResourceManager, so they must
+       name a resolvable host. The individual *.address properties default to
+       ${yarn.resourcemanager.hostname}:<port>; bind-host keeps the server
+       listening on every interface. -->
   <property>
-    <name>yarn.resourcemanager.scheduler.address</name>
-    <value>0.0.0.0:8030</value>
+    <name>yarn.resourcemanager.hostname</name>
+    <value>sparkmaster</value>
   </property>
   <property>
-    <name>yarn.resourcemanager.address</name>
-    <value>0.0.0.0:8032</value>
-  </property>
-  <property>
-    <name>yarn.resourcemanager.webapp.address</name>
-    <value>0.0.0.0:8088</value>
-  </property>
-  <property>
-    <name>yarn.resourcemanager.resource-tracker.address</name>
-    <value>0.0.0.0:8031</value>
-  </property>
-  <property>
-    <name>yarn.resourcemanager.admin.address</name>
-    <value>0.0.0.0:8033</value>
+    <name>yarn.resourcemanager.bind-host</name>
+    <value>0.0.0.0</value>
   </property>
   <property>
       <name>yarn.application.classpath</name>
