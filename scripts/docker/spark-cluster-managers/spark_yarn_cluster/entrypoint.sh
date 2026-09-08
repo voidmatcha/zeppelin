@@ -53,8 +53,12 @@ service ssh start
 
 "$HADOOP_HOME/bin/hdfs" dfsadmin -safemode leave
 "$HADOOP_HOME/bin/hdfs" dfs -mkdir -p /spark
-if ! "$HADOOP_HOME/bin/hdfs" dfs -test -e /spark/.jars-upload-complete; then
-  "$HADOOP_HOME/bin/hdfs" dfs -rm -r -f /spark/jars
+# spark.yarn.jars points at /spark/jars, so check the jars themselves and not
+# just the marker: a marker left behind by a removed directory would otherwise
+# skip the upload and every submit would fail with a missing ExecutorLauncher.
+if ! "$HADOOP_HOME/bin/hdfs" dfs -test -e /spark/.jars-upload-complete \
+  || ! "$HADOOP_HOME/bin/hdfs" dfs -test -d /spark/jars; then
+  "$HADOOP_HOME/bin/hdfs" dfs -rm -r -f /spark/jars /spark/.jars-upload-complete
   "$HADOOP_HOME/bin/hdfs" dfs -put "$SPARK_HOME/jars" /spark
   "$HADOOP_HOME/bin/hdfs" dfs -touchz /spark/.jars-upload-complete
 fi

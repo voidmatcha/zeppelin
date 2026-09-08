@@ -91,6 +91,12 @@ RUN chmod 600 /root/.ssh/config
 RUN chown root:root /root/.ssh/config
 RUN chmod +x /usr/local/hadoop/etc/hadoop/*-env.sh
 
+# point spark-submit at the jars the entrypoint uploads to HDFS, so YARN
+# applications do not re-upload $SPARK_HOME/jars on every submit
+RUN mkdir -p "$SPARK_HOME/conf" \
+    && echo "spark.yarn.jars hdfs:///spark/jars/*" \
+       >> "$SPARK_HOME/conf/spark-defaults.conf"
+
 # update boot script
 COPY entrypoint.sh /etc/entrypoint.sh
 RUN chown root:root /etc/entrypoint.sh

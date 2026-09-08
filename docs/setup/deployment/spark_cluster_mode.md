@@ -124,7 +124,7 @@ docker run -it \
 
 Note that `sparkmaster` hostname used here to run docker container should be defined in your `/etc/hosts`.
 
-The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_yarn bash -c "ps -ef"`. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Hadoop and Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
+The trailing `bash` is the command the container runs after the cluster starts. Arguments are executed directly, so quote a shell one-liner explicitly, for example `spark_yarn bash -c "ps -ef"`. On the first start the container uploads the Spark jars to HDFS, so wait for `hdfs dfs -test -e /spark/.jars-upload-complete` to succeed before submitting; a submit that races the upload fails with a `Failed to download resource ..._COPYING_` diagnostic. Pass `-d` instead of a command to keep the container running in the background. `docker stop` then exits immediately; the Hadoop and Spark daemons are terminated by Docker rather than shut down gracefully, which is fine for this throwaway example.
 
 ### 3. Verify running Spark on YARN.
 
@@ -147,6 +147,8 @@ export SPARK_HOME=[your_spark_home_path]
 `HADOOP_CONF_DIR`(Hadoop configuration path) is defined in `/scripts/docker/spark-cluster-managers/spark_yarn_cluster/hdfs_conf`.
 
 Don't forget to set Spark `spark.master` as `yarn` and `spark.submit.deployMode` as `client` in Zeppelin **Interpreters** setting page.
+
+Also set `spark.yarn.jars` to `hdfs://sparkmaster:9000/spark/jars/*`. The container uploads `$SPARK_HOME/jars` to that HDFS path on startup, and without this property Spark packs and uploads its own jars on every submit. Use it only when the Spark you point `SPARK_HOME` at is the same version the container ships, since the jars come from the container. If a submit fails with `ClassNotFoundException: org.apache.spark.deploy.yarn.ExecutorLauncher`, check that `/spark/jars` still exists in HDFS.
 
 ### 5. Run Zeppelin with Spark interpreter
 After running a single paragraph with Spark interpreter in Zeppelin, browse `http://<hostname>:8088/cluster/apps` and check Zeppelin application is running well or not.
