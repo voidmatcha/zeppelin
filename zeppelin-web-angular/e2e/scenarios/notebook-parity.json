@@ -434,9 +434,14 @@
         "runner": "not-applicable"
       },
       "coverage": {
-        "status": "gap",
-        "tests": [],
-        "issues": ["ZEPPELIN-6661"],
+        "status": "covered",
+        "tests": [
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/persistence/notebook-save-timing.spec.ts",
+            "tag": "@NB-PARITY-050"
+          }
+        ],
+        "issues": [],
         "uncoveredOutcomes": []
       },
       "implementationEvidence": [
@@ -485,9 +490,14 @@
         "runner": "not-applicable"
       },
       "coverage": {
-        "status": "gap",
-        "tests": [],
-        "issues": ["ZEPPELIN-6661"],
+        "status": "covered",
+        "tests": [
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/persistence/notebook-save-timing.spec.ts",
+            "tag": "@NB-PARITY-051"
+          }
+        ],
+        "issues": [],
         "uncoveredOutcomes": []
       },
       "implementationEvidence": [

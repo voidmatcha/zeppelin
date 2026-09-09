@@ -26,7 +26,7 @@ import {
   ParagraphIResultsMsgItem
 } from '@zeppelin/sdk';
 
-import * as DiffMatchPatch from 'diff-match-patch';
+import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { isEmpty, isEqual } from 'lodash';
 
 import { MessageListener, MessageListenersManager } from '../message-listener/message-listener';
@@ -239,7 +239,7 @@ export abstract class ParagraphBase extends MessageListenersManager {
       throw new Error('paragraph is not defined');
     }
     if (oldPara.text !== newPara.text) {
-      if (this.dirtyText) {
+      if (this.dirtyText !== undefined) {
         // check if editor has local update
         if (this.dirtyText === newPara.text) {
           // when local update is the same from remote, clear local update
@@ -247,8 +247,8 @@ export abstract class ParagraphBase extends MessageListenersManager {
           this.dirtyText = undefined;
           this.originalText = newPara.text;
         } else {
-          // if there're local update, keep it.
-          this.paragraph.text = newPara.text;
+          // An earlier save response must not replace an edit made while it was in flight.
+          this.paragraph.text = this.dirtyText;
         }
       } else {
         this.paragraph.text = newPara.text;
