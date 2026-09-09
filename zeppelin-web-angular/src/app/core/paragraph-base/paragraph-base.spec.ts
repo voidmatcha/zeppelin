@@ -13,7 +13,7 @@
 import { ChangeDetectorRef } from '@angular/core';
 import { DatasetType, Message, ParagraphItem, ParagraphStatusValue } from '@zeppelin/sdk';
 import { EMPTY } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AngularContextManager } from './angular-context-manager';
 import { ParagraphBase } from './paragraph-base';
@@ -290,5 +290,59 @@ describe('ParagraphBase streaming boundaries', () => {
     component.onParagraphAppendOutput({ noteId: 'note', paragraphId: 'A', index: 2, data: ' end' });
     expect(component.results[2].data).toBe('third end');
     component.ngOnDestroy();
+  });
+});
+
+class SaveTestParagraph extends ParagraphBase {
+  changeColWidth(): void {}
+  updateParagraphResult(): void {}
+}
+
+const saveTestParagraphs: SaveTestParagraph[] = [];
+
+afterEach(() => {
+  for (const paragraph of saveTestParagraphs.splice(0)) {
+    paragraph.ngOnDestroy();
+  }
+});
+
+const createSaveTestParagraph = (text: string, dirtyText?: string): SaveTestParagraph => {
+  const paragraph = new SaveTestParagraph(
+    { receive: () => EMPTY } as unknown as Message,
+    { isParagraphRunning: () => false, isEntireNoteRunning: () => false },
+    {
+      setContextValue: vi.fn(),
+      unsetContextValue: vi.fn(),
+      contextChanged: () => EMPTY,
+      runParagraphAction: () => EMPTY
+    } as unknown as AngularContextManager,
+    { markForCheck: vi.fn() } as unknown as ChangeDetectorRef
+  );
+  paragraph.paragraph = { text } as ParagraphItem;
+  paragraph.originalText = 'previous save';
+  paragraph.dirtyText = dirtyText;
+  saveTestParagraphs.push(paragraph);
+  return paragraph;
+};
+
+describe('ParagraphBase save responses', () => {
+  it.each(['latest edit', ''])('preserves an unsaved edit %j when an earlier save responds', dirtyText => {
+    const paragraph = createSaveTestParagraph(dirtyText, dirtyText);
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'previous save' } as ParagraphItem);
+
+    expect(paragraph.paragraph?.text).toBe(dirtyText);
+    expect(paragraph.dirtyText).toBe(dirtyText);
+    expect(paragraph.originalText).toBe('previous save');
+  });
+
+  it('accepts a remote edit when there is no unsaved local edit', () => {
+    const paragraph = createSaveTestParagraph('previous save');
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'remote edit' } as ParagraphItem);
+
+    expect(paragraph.paragraph?.text).toBe('remote edit');
+    expect(paragraph.originalText).toBe('remote edit');
+    expect(paragraph.dirtyText).toBeUndefined();
   });
 });
