@@ -24,6 +24,7 @@
     "test:shell": "vitest run --config vitest.shell.config.mts",
     "test:eslint-rules": "node --test eslint-rules/",
     "e2e": "playwright test",
+    "perf:notebook-baseline": "playwright test --config playwright.performance.config.js --project chromium",
     "e2e:fast": "playwright test --project=chromium",
     "e2e:classic": "playwright test --config playwright.classic.config.js",
     "e2e:ui": "playwright test --ui",

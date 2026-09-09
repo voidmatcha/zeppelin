@@ -20,7 +20,7 @@ process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || defaultBase
 module.exports = defineConfig({
   ...baseConfig,
   // The legacy classic UI suite runs separately via playwright.classic.config.js.
-  testIgnore: /tests\/classic\/.*\.spec\.ts/,
+  testIgnore: [/tests\/classic\/.*\.spec\.ts/, /performance\/.*\.spec\.ts/],
   reporter: [
     [!!process.env.CI ? 'github' : 'list'],
     ['html', { open: !!process.env.CI ? 'never' : 'always' }],
