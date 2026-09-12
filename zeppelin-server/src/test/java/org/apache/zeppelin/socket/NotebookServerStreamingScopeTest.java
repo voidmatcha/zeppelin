@@ -97,4 +97,22 @@ class NotebookServerStreamingScopeTest {
     assertTrue(otherUserMessages.stream().noneMatch(m -> m.getData().contains("private update")),
         "another user's paragraph sees the checkpointed output: " + otherUserMessages);
   }
+
+  @Test
+  void personalizedUnownedClearDoesNotResetTheSharedTemplate() {
+    note.setPersonalizedMode(true);
+    Paragraph shared = note.getParagraph("para");
+    shared.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "shared result"));
+
+    // Same as onOutputAppend/onOutputUpdated: this event carries no owner, so it must not touch
+    // the shared paragraph that cloneParagraphForUser() bases every future user's clone on.
+    server.onOutputClear("note", "para");
+
+    InterpreterResult sharedResult = shared.getReturn();
+    List<InterpreterResultMessage> sharedMessages =
+        sharedResult == null ? Collections.emptyList() : sharedResult.message();
+    assertTrue(sharedMessages.stream().anyMatch(m -> m.getData().contains("shared result")),
+        "unowned onOutputClear reset the shared template future clones are made from: "
+            + sharedMessages);
+  }
 }

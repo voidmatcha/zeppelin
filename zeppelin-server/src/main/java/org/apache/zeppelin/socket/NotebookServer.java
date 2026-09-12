@@ -1839,11 +1839,20 @@ public class NotebookServer implements AngularObjectRegistryListener,
           if (note == null) {
             // It is possible the note is removed, but the job is still running
             LOGGER.warn("Note {} doesn't existed, it maybe deleted.", noteId);
-          } else {
-            note.clearParagraphOutput(paragraphId);
-            Paragraph paragraph = note.getParagraph(paragraphId);
-            broadcastParagraph(note, paragraph, MSG_ID_NOT_DEFINED);
+            return null;
           }
+          if (note.isPersonalizedMode()) {
+            // This event carries no owner, same as onOutputAppend/onOutputUpdated, so it cannot
+            // be routed to Note#clearPersonalizedParagraphOutput(paragraphId, user) for just the
+            // running user. Clearing the shared paragraph here doesn't touch already-cloned
+            // users' own Paragraph instances, but it would reset the shared template that
+            // cloneParagraphForUser() copies for any user who hasn't opened this paragraph yet,
+            // for output that isn't theirs to begin with.
+            return null;
+          }
+          note.clearParagraphOutput(paragraphId);
+          Paragraph paragraph = note.getParagraph(paragraphId);
+          broadcastParagraph(note, paragraph, MSG_ID_NOT_DEFINED);
           return null;
         });
 
