@@ -38,9 +38,19 @@ export class ParagraphOutputState {
       return undefined;
     }
 
+    // Empty data usually means the server's first-write type declaration for this index (the
+    // common case): absorb whatever APPEND chunks arrived before the type was known. Non-empty
+    // data is unambiguously a genuine replacement and supersedes them; gluing stale
+    // pendingAppends onto it would garble the output (e.g. append('old') then
+    // update('replacement') rendering 'replacementold').
+    // KNOWN LIMITATION: an explicit InterpreterOutput.clear() also flushes an empty-data UPDATE
+    // (InterpreterResultMessageOutput.java's clear(true)), so a real "clear to empty" mid-stream
+    // is indistinguishable here from a first-write declaration and would still resurrect any
+    // pending append for that index. This ambiguity already existed before this fix; the
+    // protocol carries no signal to tell the two apart client-side.
     const result = {
       type,
-      data: data + (this.pendingAppends.get(index) ?? '')
+      data: data === '' ? (this.pendingAppends.get(index) ?? '') : data
     };
     this.pendingAppends.delete(index);
     this.results[index] = result;

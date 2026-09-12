@@ -98,6 +98,37 @@ describe('ParagraphOutputState', () => {
     });
   });
 
+  it('discards a stale pending APPEND rather than gluing it onto a non-empty UPDATE', () => {
+    const state = new ParagraphOutputState();
+    state.reset();
+
+    // Buffered before the index had a type, same as the "holds APPEND chunks" case, but this
+    // UPDATE carries real replacement content rather than the empty first-write declaration.
+    expect(state.append(0, 'old')).toBeUndefined();
+
+    expect(state.update(0, DatasetType.TEXT, 'replacement')).toEqual({
+      type: DatasetType.TEXT,
+      data: 'replacement'
+    });
+  });
+
+  // KNOWN LIMITATION: InterpreterOutput.clear() also flushes an empty-data UPDATE, same as a
+  // first-write type declaration, so this reducer can't tell the two apart client-side. This
+  // pins the current (pre-existing, not introduced by the fix above) behavior rather than
+  // asserting it's correct — a genuine mid-stream clear resurrects a stale pending APPEND
+  // instead of actually clearing.
+  it('resurrects a stale pending APPEND on an empty UPDATE, even one meant to clear the index', () => {
+    const state = new ParagraphOutputState();
+    state.reset();
+
+    expect(state.append(0, 'stale')).toBeUndefined();
+
+    expect(state.update(0, DatasetType.TEXT, '')).toEqual({
+      type: DatasetType.TEXT,
+      data: 'stale'
+    });
+  });
+
   it('uses the terminal snapshot after UPDATE overtakes a queued APPEND', () => {
     const state = new ParagraphOutputState();
     state.reset([{ type: DatasetType.TEXT, data: 'stale\n' }]);
