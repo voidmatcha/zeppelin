@@ -300,6 +300,28 @@ test('capture server rejects an invalid paragraph status and progress setting be
   assert.equal(existsSync(launched), false);
 });
 
+test('capture server opts into GitNotebookRepo without changing the VFS default', () => {
+  const root = createRoot();
+  const probe = path.join(root.root, 'storage-probe.mjs');
+  const observed = path.join(root.root, 'storage.txt');
+  writeFileSync(
+    probe,
+    `import { writeFileSync } from 'node:fs';
+writeFileSync(${JSON.stringify(observed)}, process.env.ZEPPELIN_NOTEBOOK_STORAGE ?? '');
+await import(${JSON.stringify(stub)});
+`
+  );
+  const result = run(['start', '--root', root.root, '--storage', 'git', '--port', String(root.zeppelinPort)], {
+    CAPTURE_ZEPPELIN_COMMAND: `node ${probe}`
+  });
+  try {
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(observed, 'utf8'), 'org.apache.zeppelin.notebook.repo.GitNotebookRepo');
+  } finally {
+    if (existsSync(path.join(root.root, 'zeppelin.pid'))) stop(root);
+  }
+});
+
 test('capture-server starts and stops a server in its own root', () => {
   const root = createRoot();
 

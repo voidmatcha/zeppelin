@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -29,6 +29,11 @@ import {
   createPlaywrightFixtureAdapter,
   validateFixture
 } from '../../../core-contract/notebook-transport-fixture.mjs';
+import {
+  createNotebookLifecycleRecorder,
+  validateLifecycleContractCoverage,
+  validateLifecycleFixture
+} from '../../../core-contract/notebook-lifecycle-fixture.mjs';
 import { fixtureMetadata } from '../../../core-contract/fixture-doubles.mjs';
 import { E2E_TEST_FOLDER } from '../../../models/base-page';
 import { LoginTestUtil } from '../../../models/login-page.util';
@@ -49,6 +54,51 @@ const notebookRequest = {
   method: 'GET',
   url: '/api/notebook/note-a'
 };
+
+const liveCaptureProvenance = (
+  page: import('@playwright/test').Page,
+  browserName: string,
+  configuration: Record<string, boolean | number | string>,
+  interpreter = 'not-used'
+) => {
+  const sourceCommit = process.env.ZEPPELIN_E2E_SOURCE_COMMIT;
+  const baseCommit = process.env.ZEPPELIN_E2E_BASE_COMMIT;
+  const buildManifestPath = process.env.ZEPPELIN_E2E_BUILD_MANIFEST;
+  if (!sourceCommit) throw new Error('ZEPPELIN_E2E_SOURCE_COMMIT is required for live fixture capture');
+  if (!baseCommit) throw new Error('ZEPPELIN_E2E_BASE_COMMIT is required for live fixture capture');
+  if (!buildManifestPath) throw new Error('ZEPPELIN_E2E_BUILD_MANIFEST is required for live fixture capture');
+  const manifest = JSON.parse(readFileSync(buildManifestPath, 'utf8'));
+  if (manifest.sourceCommit !== sourceCommit) throw new Error('build manifest source does not match capture source');
+  return {
+    baseCommit,
+    authentication: process.env.ZEPPELIN_E2E_CAPTURE_AUTHENTICATION ?? 'anonymous',
+    browser: { name: browserName, version: page.context().browser()!.version() },
+    buildManifest: {
+      artifacts: manifest.artifacts,
+      baseCommit: manifest.baseCommit,
+      id: manifest.manifestId,
+      launchTargets: manifest.launchTargets,
+      sourceCommit: manifest.sourceCommit,
+      sourceTree: manifest.sourceTree,
+      version: manifest.version
+    },
+    captureMode: process.env.ZEPPELIN_E2E_CAPTURE_MODE ?? 'lifecycle',
+    configuration,
+    interpreter,
+    isolation: {
+      logs: '<capture-root>/logs',
+      notebook: '<capture-root>/notebook',
+      pid: '<capture-root>/run',
+      recovery: '<capture-root>/recovery',
+      root: '<capture-root>',
+      searchIndex: '<capture-root>/index'
+    },
+    origin: new URL(page.url()).origin,
+    sourceCommit
+  };
+};
+
+const liveCaptureMode = process.env.ZEPPELIN_E2E_CAPTURE_MODE;
 
 const replayFixture = () => ({
   metadata: fixtureMetadata(),
@@ -78,6 +128,76 @@ const replayFixture = () => ({
   ],
   version: 1
 });
+
+type RawLifecycleMessage = { data?: Record<string, unknown>; msgId?: string; op: string };
+type RawLifecycleWindow = Window & {
+  lifecycleMessages: RawLifecycleMessage[];
+  lifecycleSequence: number;
+  lifecycleSocket: WebSocket;
+  lifecycleTicket: { principal: string; roles: string; ticket: string };
+};
+
+const openRawLifecycleSocket = async (page: import('@playwright/test').Page, origin: string) => {
+  await page.goto(`${origin}/api/version`);
+  await page.evaluate(async () => {
+    const lifecycle = window as unknown as RawLifecycleWindow;
+    const ticketResponse = await (await fetch('/api/security/ticket')).json();
+    lifecycle.lifecycleTicket = ticketResponse.body;
+    lifecycle.lifecycleMessages = [];
+    lifecycle.lifecycleSequence = 0;
+    lifecycle.lifecycleSocket = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
+    lifecycle.lifecycleSocket.onmessage = event => lifecycle.lifecycleMessages.push(JSON.parse(String(event.data)));
+    await new Promise<void>((resolve, reject) => {
+      lifecycle.lifecycleSocket.onopen = () => resolve();
+      lifecycle.lifecycleSocket.onerror = () => reject(new Error('Notebook WebSocket failed to open'));
+    });
+  });
+};
+
+const sendRawLifecycleMessage = async (
+  page: import('@playwright/test').Page,
+  op: string,
+  data?: Record<string, unknown>,
+  expectedOp?: string
+) =>
+  page.evaluate(
+    async ({ data, expectedOp, op }) => {
+      const lifecycle = window as unknown as RawLifecycleWindow;
+      const start = lifecycle.lifecycleMessages.length;
+      lifecycle.lifecycleSocket.send(
+        JSON.stringify({
+          data,
+          msgId: `lifecycle-${++lifecycle.lifecycleSequence}`,
+          op,
+          ...lifecycle.lifecycleTicket
+        })
+      );
+      if (!expectedOp) return undefined;
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        const match = lifecycle.lifecycleMessages.slice(start).find(message => message.op === expectedOp);
+        if (match) return match;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error(`Timed out waiting for ${expectedOp} after ${op}`);
+    },
+    { data, expectedOp, op }
+  );
+
+const waitForRawLifecycleMessage = async (page: import('@playwright/test').Page, op: string, start = 0) =>
+  page.evaluate(
+    async ({ op, start }) => {
+      const lifecycle = window as unknown as RawLifecycleWindow;
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        const match = lifecycle.lifecycleMessages.slice(start).find(message => message.op === op);
+        if (match) return match;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error(`Timed out waiting for ${op}`);
+    },
+    { op, start }
+  );
 
 // Serve a test page without a Zeppelin server.
 const servePage = (page: import('@playwright/test').Page) =>
@@ -403,4 +523,565 @@ test.describe('Notebook core transport capture', () => {
       }
     }
   });
+
+  test(
+    'captures the complete ZEPPELIN-6672 lifecycle contract from Zeppelin',
+    { tag: '@live' },
+    async ({ browser, browserName, page }) => {
+      test.skip(
+        Boolean(liveCaptureMode) && liveCaptureMode !== 'lifecycle',
+        'Lifecycle capture runs separately from other fixture captures'
+      );
+      await page.goto('/#/');
+      await waitForZeppelinReady(page);
+      await performLoginIfRequired(page);
+      const authenticated = await LoginTestUtil.isShiroEnabled();
+      const credentials = authenticated
+        ? Object.values(await LoginTestUtil.getTestCredentials()).filter(
+            credential => credential.username && credential.password && !credential.username.startsWith('wrong')
+          )
+        : [];
+      test.skip(
+        authenticated && credentials.length < 2,
+        'Authenticated lifecycle capture requires two configured users'
+      );
+      const createdNoteIds: string[] = [];
+      try {
+        const { noteId } = await createNotebookViaRest(page, `${E2E_TEST_FOLDER}/LifecycleCaptureA_${Date.now()}`);
+        createdNoteIds.push(noteId);
+        const { noteId: secondNoteId } = await createNotebookViaRest(
+          page,
+          `${E2E_TEST_FOLDER}/LifecycleCaptureB_${Date.now()}`
+        );
+        createdNoteIds.push(secondNoteId);
+        const origin = new URL(page.url()).origin;
+        const actors = [
+          {
+            authentication: authenticated ? ('authenticated' as const) : ('anonymous' as const),
+            contextId: 'browser-context-a',
+            id: 'viewer-a',
+            ...(authenticated ? { principalAlias: 'capture-user-a' } : {})
+          },
+          {
+            authentication: authenticated ? ('authenticated' as const) : ('anonymous' as const),
+            contextId: 'browser-context-b',
+            id: 'viewer-b',
+            ...(authenticated ? { principalAlias: 'capture-user-b' } : {})
+          }
+        ];
+        const coveredOperations = [
+          'MOVE_PARAGRAPH',
+          'INSERT_PARAGRAPH',
+          'COPY_PARAGRAPH',
+          'PARAGRAPH_REMOVE',
+          'COMMIT_PARAGRAPH',
+          'PARAGRAPH_ADDED',
+          'PARAGRAPH_REMOVED',
+          'PARAGRAPH_MOVED',
+          'CHECKPOINT_NOTE',
+          'LIST_REVISION_HISTORY',
+          'NOTE_REVISION',
+          'SET_NOTE_REVISION',
+          'NOTE_REVISION_FOR_COMPARE',
+          'PATCH_PARAGRAPH',
+          'NOTE_UPDATED',
+          'COLLABORATIVE_MODE_STATUS',
+          'GET_NOTE',
+          'RELOAD_NOTE',
+          'GET_HOME_NOTE',
+          'NEW_NOTE',
+          'CLONE_NOTE',
+          'NOTE',
+          'LIST_NOTE_JOBS',
+          'UNSUBSCRIBE_UPDATE_NOTE_JOBS'
+        ];
+        const recorder = createNotebookLifecycleRecorder(
+          {
+            captureSource: 'live-server',
+            contract: 'ZEPPELIN-6672',
+            coveredOperations,
+            knownExclusions: [],
+            owner: 'zeppelin-web-angular',
+            provenance: liveCaptureProvenance(page, browserName, { notebookStorage: 'git' }),
+            protocolGaps: ['COMMIT_PARAGRAPH has no wire acknowledgement'],
+            scenario: 'Live structural, revision, collaboration, association, and reconnect capture'
+          },
+          actors
+        );
+        let firstCaptureContext: { activeNoteId: string; revisionId?: string } | { routeKind: 'job-manager' } = {
+          activeNoteId: noteId
+        };
+        let secondCaptureContext: { activeNoteId: string; revisionId?: string } | { routeKind: 'job-manager' } = {
+          activeNoteId: noteId
+        };
+        let restFullNote = false;
+        const classify = (
+          record: { kind: string; websocket?: { payloadText?: string } },
+          allowRestAuthoritative = false
+        ) => {
+          if (record.kind === 'rest') {
+            return { authoritativeInput: 'none' as const, operationPath: 'rest' as const };
+          }
+          const payload = JSON.parse(record.websocket?.payloadText ?? '{}') as { op?: string };
+          if (allowRestAuthoritative && restFullNote && payload.op === 'NOTE') {
+            restFullNote = false;
+            return { authoritativeInput: 'full-note' as const, operationPath: 'rest' as const };
+          }
+          return [
+            'PARAGRAPH_ADDED',
+            'PARAGRAPH_REMOVED',
+            'PARAGRAPH_MOVED',
+            'PATCH_PARAGRAPH',
+            'NOTE_UPDATED',
+            'COLLABORATIVE_MODE_STATUS'
+          ].includes(payload.op ?? '')
+            ? { authoritativeInput: 'granular-event' as const, operationPath: 'websocket' as const }
+            : payload.op === 'NOTE' || payload.op === 'NOTE_REVISION'
+              ? { authoritativeInput: 'full-note' as const, operationPath: 'websocket' as const }
+              : { authoritativeInput: 'reply' as const, operationPath: 'websocket' as const };
+        };
+        const firstContext = await browser.newContext();
+        const secondContext = await browser.newContext();
+        const authenticateContext = async (context: import('@playwright/test').BrowserContext, index: number) => {
+          if (!authenticated) return;
+          const response = await context.request.post(`${origin}/api/login`, {
+            form: { password: credentials[index].password, userName: credentials[index].username }
+          });
+          expect(response.ok()).toBe(true);
+          const ticket = (await (await context.request.get(`${origin}/api/security/ticket`)).json()) as {
+            body?: { principal?: string };
+          };
+          expect(ticket.body?.principal).toBe(credentials[index].username);
+        };
+        await Promise.all([authenticateContext(firstContext, 0), authenticateContext(secondContext, 1)]);
+        const firstPage = await firstContext.newPage();
+        const secondPage = await secondContext.newPage();
+        const firstSegment = recorder.install({
+          actorId: 'viewer-a',
+          classify: record => classify(record),
+          connectionId: 'a-1',
+          getCaptureContext: () => firstCaptureContext,
+          page: firstPage
+        });
+        recorder.install({
+          actorId: 'viewer-b',
+          classify: record => classify(record, true),
+          connectionId: 'b-1',
+          getCaptureContext: () => secondCaptureContext,
+          page: secondPage
+        });
+
+        try {
+          // Use raw sockets on the same two independent browser contexts so every required
+          // operation is recorded from Zeppelin itself, without inventing message identities.
+          await Promise.all([openRawLifecycleSocket(firstPage, origin), openRawLifecycleSocket(secondPage, origin)]);
+          await sendRawLifecycleMessage(firstPage, 'GET_NOTE', { id: noteId }, 'NOTE');
+          const collaborativeStart = await firstPage.evaluate(
+            () => (window as unknown as RawLifecycleWindow).lifecycleMessages.length
+          );
+          await sendRawLifecycleMessage(secondPage, 'GET_NOTE', { id: noteId }, 'NOTE');
+          await waitForRawLifecycleMessage(firstPage, 'COLLABORATIVE_MODE_STATUS', collaborativeStart);
+
+          const inserted = await sendRawLifecycleMessage(
+            firstPage,
+            'INSERT_PARAGRAPH',
+            { index: 0 },
+            'PARAGRAPH_ADDED'
+          );
+          const paragraphId = (inserted?.data?.paragraph as { id: string }).id;
+          const copied = await sendRawLifecycleMessage(
+            firstPage,
+            'COPY_PARAGRAPH',
+            { config: {}, index: 1, paragraph: 'copy', params: {}, title: '' },
+            'PARAGRAPH_ADDED'
+          );
+          const copiedId = (copied?.data?.paragraph as { id: string }).id;
+          await sendRawLifecycleMessage(firstPage, 'MOVE_PARAGRAPH', { id: paragraphId, index: 1 }, 'PARAGRAPH_MOVED');
+          await sendRawLifecycleMessage(firstPage, 'PARAGRAPH_REMOVE', { id: copiedId }, 'PARAGRAPH_REMOVED');
+          const commitStartedAt = Date.now();
+          await sendRawLifecycleMessage(firstPage, 'COMMIT_PARAGRAPH', {
+            config: {},
+            id: paragraphId,
+            noteId,
+            paragraph: '',
+            params: {},
+            title: ''
+          });
+          await expect
+            .poll(() =>
+              recorder.snapshot().records.some(record => {
+                return JSON.parse(record.transport.websocket?.payloadText ?? '{}').op === 'COMMIT_PARAGRAPH';
+              })
+            )
+            .toBe(true);
+          const commit = [...recorder.snapshot().records]
+            .reverse()
+            .find(record => JSON.parse(record.transport.websocket?.payloadText ?? '{}').op === 'COMMIT_PARAGRAPH');
+          expect(commit).toBeDefined();
+          recorder.fault({ kind: 'drop', sequence: commit!.sequence });
+          await firstPage.waitForTimeout(750);
+          recorder.transition({
+            actorId: 'viewer-a',
+            afterSequence: commit!.sequence,
+            connectionId: 'a-1',
+            elapsedMs: Date.now() - commitStartedAt,
+            kind: 'timeout',
+            observation: 'bounded-wait',
+            reason: 'commit',
+            triggerSequence: commit!.sequence
+          });
+          const reconciliationStart = recorder.snapshot().records.length;
+          await sendRawLifecycleMessage(firstPage, 'GET_NOTE', { id: noteId }, 'NOTE');
+          const reconciliationRecords = recorder.snapshot().records.slice(reconciliationStart);
+          const reconciliationRequest = reconciliationRecords.find(
+            record =>
+              record.transport.websocket?.direction === 'send' &&
+              JSON.parse(record.transport.websocket.payloadText ?? '{}').op === 'GET_NOTE'
+          );
+          const reconciliationConfirmation = reconciliationRecords.find(
+            record =>
+              record.transport.websocket?.direction === 'receive' &&
+              record.authoritativeInput === 'full-note' &&
+              JSON.parse(record.transport.websocket.payloadText ?? '{}').op === 'NOTE'
+          );
+          expect(reconciliationRequest).toBeDefined();
+          expect(reconciliationConfirmation).toBeDefined();
+          recorder.transition({
+            actorId: 'viewer-a',
+            afterSequence: reconciliationRequest!.sequence,
+            confirmationSequence: reconciliationConfirmation!.sequence,
+            connectionId: 'a-1',
+            kind: 'reconcile',
+            reason: 'commit',
+            requestSequence: reconciliationRequest!.sequence,
+            triggerSequence: commit!.sequence
+          });
+          const patchStart = await secondPage.evaluate(
+            () => (window as unknown as RawLifecycleWindow).lifecycleMessages.length
+          );
+          await sendRawLifecycleMessage(firstPage, 'PATCH_PARAGRAPH', {
+            id: paragraphId,
+            noteId,
+            patch: '@@ -0,0 +1,4 @@\n+live\n'
+          });
+          await waitForRawLifecycleMessage(secondPage, 'PATCH_PARAGRAPH', patchStart);
+          await sendRawLifecycleMessage(
+            firstPage,
+            'NOTE_UPDATE',
+            { config: {}, id: noteId, name: `${E2E_TEST_FOLDER}/LifecycleCaptureA_updated` },
+            'NOTE_UPDATED'
+          );
+
+          const structuralRest = async (method: string, path: string, body?: Record<string, unknown>) => {
+            const start = await secondPage.evaluate(
+              () => (window as unknown as RawLifecycleWindow).lifecycleMessages.length
+            );
+            restFullNote = true;
+            const response = await secondPage.evaluate(
+              async ({ body, method, path }) => {
+                const result = await fetch(path, {
+                  body: body ? JSON.stringify(body) : undefined,
+                  headers: body ? { 'content-type': 'application/json' } : undefined,
+                  method
+                });
+                return { body: await result.json(), ok: result.ok };
+              },
+              { body, method, path }
+            );
+            expect(response.ok).toBe(true);
+            await waitForRawLifecycleMessage(secondPage, 'NOTE', start);
+            return response.body as { body?: string };
+          };
+          const restInserted = await structuralRest('POST', `/api/notebook/${noteId}/paragraph`, {
+            config: {},
+            index: 0,
+            params: {},
+            text: '',
+            title: ''
+          });
+          const restParagraphId = restInserted.body!;
+          await structuralRest('POST', `/api/notebook/${noteId}/paragraph/${restParagraphId}/move/0`);
+          await structuralRest('DELETE', `/api/notebook/${noteId}/paragraph/${restParagraphId}`);
+
+          // Route A to B while a late granular event from A is still possible, then load B
+          // and retain another granular event after the authoritative NOTE.
+          firstCaptureContext = { activeNoteId: secondNoteId };
+          recorder.transition({
+            actorId: 'viewer-a',
+            connectionId: 'a-1',
+            kind: 'route',
+            to: firstCaptureContext
+          });
+          await sendRawLifecycleMessage(secondPage, 'INSERT_PARAGRAPH', { index: 0 }, 'PARAGRAPH_ADDED');
+          await sendRawLifecycleMessage(firstPage, 'GET_NOTE', { id: secondNoteId }, 'NOTE');
+          secondCaptureContext = { activeNoteId: secondNoteId };
+          recorder.transition({ actorId: 'viewer-b', connectionId: 'b-1', kind: 'route', to: secondCaptureContext });
+          await sendRawLifecycleMessage(secondPage, 'GET_NOTE', { id: secondNoteId }, 'NOTE');
+          const routeParagraph = await sendRawLifecycleMessage(
+            secondPage,
+            'INSERT_PARAGRAPH',
+            { index: 0 },
+            'PARAGRAPH_ADDED'
+          );
+          const routeParagraphId = (routeParagraph?.data?.paragraph as { id: string }).id;
+          await sendRawLifecycleMessage(
+            secondPage,
+            'MOVE_PARAGRAPH',
+            { id: routeParagraphId, index: 1 },
+            'PARAGRAPH_MOVED'
+          );
+
+          const revisionReply = await sendRawLifecycleMessage(
+            firstPage,
+            'CHECKPOINT_NOTE',
+            { commitMessage: 'ZEPPELIN-6672 live checkpoint', noteId: secondNoteId },
+            'LIST_REVISION_HISTORY'
+          );
+          await sendRawLifecycleMessage(
+            firstPage,
+            'LIST_REVISION_HISTORY',
+            { noteId: secondNoteId },
+            'LIST_REVISION_HISTORY'
+          );
+          const revisions = revisionReply?.data?.revisionList as Array<{ id: string }>;
+          expect(revisions.length).toBeGreaterThan(0);
+          const revisionId = revisions[0].id;
+          firstCaptureContext = { activeNoteId: secondNoteId, revisionId };
+          recorder.transition({ actorId: 'viewer-a', connectionId: 'a-1', kind: 'route', to: firstCaptureContext });
+          await sendRawLifecycleMessage(
+            firstPage,
+            'NOTE_REVISION',
+            { noteId: secondNoteId, revisionId },
+            'NOTE_REVISION'
+          );
+          await sendRawLifecycleMessage(
+            firstPage,
+            'NOTE_REVISION_FOR_COMPARE',
+            { noteId: secondNoteId, position: 'first', revisionId },
+            'NOTE_REVISION_FOR_COMPARE'
+          );
+          await sendRawLifecycleMessage(
+            firstPage,
+            'SET_NOTE_REVISION',
+            { noteId: secondNoteId, revisionId },
+            'SET_NOTE_REVISION'
+          );
+          const revisionUpdateStart = await firstPage.evaluate(
+            () => (window as unknown as RawLifecycleWindow).lifecycleMessages.length
+          );
+          await sendRawLifecycleMessage(
+            secondPage,
+            'NOTE_UPDATE',
+            { config: {}, id: secondNoteId, name: `${E2E_TEST_FOLDER}/LifecycleCaptureB_updated` },
+            'NOTE_UPDATED'
+          );
+          await waitForRawLifecycleMessage(firstPage, 'NOTE_UPDATED', revisionUpdateStart);
+
+          secondCaptureContext = { routeKind: 'job-manager' };
+          recorder.transition({ actorId: 'viewer-b', connectionId: 'b-1', kind: 'route', to: secondCaptureContext });
+          await sendRawLifecycleMessage(secondPage, 'LIST_NOTE_JOBS', {});
+          await sendRawLifecycleMessage(secondPage, 'UNSUBSCRIBE_UPDATE_NOTE_JOBS', {});
+          secondCaptureContext = { activeNoteId: noteId };
+          recorder.transition({ actorId: 'viewer-b', connectionId: 'b-1', kind: 'route', to: secondCaptureContext });
+          await sendRawLifecycleMessage(secondPage, 'RELOAD_NOTE', { id: noteId }, 'NOTE');
+          await sendRawLifecycleMessage(secondPage, 'GET_HOME_NOTE', {}, 'NOTE');
+          const newNote = await sendRawLifecycleMessage(
+            secondPage,
+            'NEW_NOTE',
+            { name: `${E2E_TEST_FOLDER}/LifecycleNew_${Date.now()}` },
+            'NEW_NOTE'
+          );
+          const newNoteId = (newNote?.data?.note as { id: string }).id;
+          createdNoteIds.push(newNoteId);
+          secondCaptureContext = { activeNoteId: newNoteId };
+          recorder.transition({ actorId: 'viewer-b', connectionId: 'b-1', kind: 'route', to: secondCaptureContext });
+          await sendRawLifecycleMessage(secondPage, 'GET_NOTE', { id: newNoteId }, 'NOTE');
+          const clone = await sendRawLifecycleMessage(
+            secondPage,
+            'CLONE_NOTE',
+            { id: noteId, name: `${E2E_TEST_FOLDER}/LifecycleClone_${Date.now()}` },
+            'NEW_NOTE'
+          );
+          const cloneNoteId = (clone?.data?.note as { id: string }).id;
+          createdNoteIds.push(cloneNoteId);
+          secondCaptureContext = { activeNoteId: cloneNoteId };
+          recorder.transition({ actorId: 'viewer-b', connectionId: 'b-1', kind: 'route', to: secondCaptureContext });
+          await sendRawLifecycleMessage(secondPage, 'GET_NOTE', { id: cloneNoteId }, 'NOTE');
+
+          secondCaptureContext = { activeNoteId: noteId };
+          recorder.transition({ actorId: 'viewer-b', connectionId: 'b-1', kind: 'route', to: secondCaptureContext });
+          await sendRawLifecycleMessage(secondPage, 'GET_NOTE', { id: noteId }, 'NOTE');
+
+          await firstPage.evaluate(() => (window as unknown as RawLifecycleWindow).lifecycleSocket.close(1000));
+          await firstSegment.stop();
+          await firstPage.addInitScript(() => {
+            const NativeWebSocket = window.WebSocket;
+            const sockets: WebSocket[] = [];
+            Object.defineProperty(window, '__zeppelinCaptureSockets', { value: sockets });
+            window.WebSocket = class CaptureWebSocket extends NativeWebSocket {
+              constructor(url: string | URL, protocols?: string | string[]) {
+                super(url, protocols);
+                sockets.push(this);
+              }
+            };
+          });
+          recorder.transition({ actorId: 'viewer-a', connectionId: 'a-1', kind: 'disconnect' });
+          firstCaptureContext = { activeNoteId: noteId };
+          recorder.transition({ actorId: 'viewer-a', connectionId: 'a-angular-1', kind: 'reconnect' });
+          const angularFirstSegment = recorder.install({
+            actorId: 'viewer-a',
+            classify: record => classify(record),
+            connectionId: 'a-angular-1',
+            getCaptureContext: () => firstCaptureContext,
+            page: firstPage
+          });
+          let angularSocketCount = 0;
+          let observedTransportSequence = 0;
+          const angularSockets: import('@playwright/test').WebSocket[] = [];
+          firstPage.on('websocket', socket => {
+            if (new URL(socket.url()).pathname !== '/ws') return;
+            angularSocketCount += 1;
+            angularSockets.push(socket);
+            if (angularSocketCount === 1) return;
+            const recordFrame = (direction: 'receive' | 'send', payload: string | Buffer) => {
+              const transport = {
+                kind: 'websocket',
+                sequence: ++observedTransportSequence,
+                websocket: {
+                  direction,
+                  ...(Buffer.isBuffer(payload)
+                    ? { payloadBase64: payload.toString('base64') }
+                    : { payloadText: String(payload) })
+                }
+              };
+              recorder.recordObserved({
+                actorId: 'viewer-a',
+                captureContext: firstCaptureContext,
+                classify: record => classify(record),
+                connectionId: `a-angular-${angularSocketCount}`,
+                transport
+              });
+            };
+            socket.on('framesent', event => recordFrame('send', event.payload));
+            socket.on('framereceived', event => recordFrame('receive', event.payload));
+          });
+          await navigateToNotebookWithFallback(firstPage, noteId);
+          await expect
+            .poll(
+              () =>
+                recorder
+                  .snapshot()
+                  .records.filter(record => record.connectionId === 'a-angular-1')
+                  .map(record => JSON.parse(record.transport.websocket?.payloadText ?? '{}').op),
+              { timeout: 15000 }
+            )
+            .toEqual(expect.arrayContaining(['GET_NOTE', 'LIST_REVISION_HISTORY']));
+
+          const paragraphs = firstPage.locator('zeppelin-notebook-paragraph');
+          const paragraphCount = await paragraphs.count();
+          const collaborationStart = await secondPage.evaluate(
+            () => (window as unknown as RawLifecycleWindow).lifecycleMessages.length
+          );
+          // JUSTIFIED: The final add control appends after the final paragraph; earlier controls insert between paragraphs.
+          const addParagraph = firstPage.locator('zeppelin-notebook-add-paragraph').last();
+          await addParagraph.hover();
+          await addParagraph.locator('a.inner').click();
+          await expect(paragraphs).toHaveCount(paragraphCount + 1);
+          await waitForRawLifecycleMessage(secondPage, 'PARAGRAPH_ADDED', collaborationStart);
+
+          await angularFirstSegment.stop();
+          recorder.transition({ actorId: 'viewer-a', connectionId: 'a-angular-1', kind: 'disconnect' });
+          recorder.transition({ actorId: 'viewer-a', connectionId: 'a-angular-2', kind: 'reconnect' });
+          expect(angularSockets).toHaveLength(1);
+          await firstPage.evaluate(() => {
+            const sockets = (window as unknown as { __zeppelinCaptureSockets: WebSocket[] }).__zeppelinCaptureSockets;
+            if (sockets.length !== 1) throw new Error(`Expected one active Angular socket, received ${sockets.length}`);
+            sockets[0].close(4000, 'fixture reconnect capture');
+          });
+          await expect
+            .poll(
+              () =>
+                recorder
+                  .snapshot()
+                  .records.filter(record => record.connectionId === 'a-angular-2')
+                  .map(record => JSON.parse(record.transport.websocket?.payloadText ?? '{}').op),
+              { timeout: 30000 }
+            )
+            .toEqual(expect.arrayContaining(['GET_NOTE', 'LIST_REVISION_HISTORY']));
+          await firstPage.waitForTimeout(500);
+          expect(angularSockets).toHaveLength(2);
+          await sendRawLifecycleMessage(secondPage, 'GET_NOTE', { id: noteId }, 'NOTE');
+          await recorder.stop();
+
+          const beforeFaults = recorder.snapshot();
+          const lastSequence = beforeFaults.records.at(-1)!.sequence;
+          const stateMutationOperations = new Set([
+            'PARAGRAPH_ADDED',
+            'PARAGRAPH_REMOVED',
+            'PARAGRAPH_MOVED',
+            'PATCH_PARAGRAPH'
+          ]);
+          const candidates = beforeFaults.records.filter(
+            record =>
+              record.sequence < lastSequence &&
+              record.sequence !== commit!.sequence &&
+              record.transport.kind === 'websocket' &&
+              record.transport.websocket?.direction === 'receive' &&
+              record.authoritativeInput === 'granular-event' &&
+              stateMutationOperations.has(JSON.parse(record.transport.websocket.payloadText ?? '{}').op)
+          );
+          const duplicateCandidate = candidates.find(
+            record => JSON.parse(record.transport.websocket!.payloadText ?? '{}').op === 'PATCH_PARAGRAPH'
+          );
+          const reconciledCandidates = candidates.filter(record =>
+            beforeFaults.records.some(
+              candidate =>
+                candidate.sequence > record.sequence &&
+                candidate.sequence <= lastSequence &&
+                candidate.actorId === record.actorId &&
+                'activeNoteId' in candidate.captureContext &&
+                'activeNoteId' in record.captureContext &&
+                candidate.captureContext.activeNoteId === record.captureContext.activeNoteId &&
+                candidate.authoritativeInput === 'full-note'
+            )
+          );
+          const tailCandidates = reconciledCandidates
+            .filter(record => record.sequence !== duplicateCandidate?.sequence)
+            .slice(-2);
+          expect(duplicateCandidate).toBeDefined();
+          expect(tailCandidates).toHaveLength(2);
+          recorder.fault({ kind: 'duplicate', sequence: duplicateCandidate!.sequence });
+          recorder.fault({ afterSequence: lastSequence, kind: 'delay', sequence: tailCandidates[0].sequence });
+          recorder.fault({ afterSequence: lastSequence, kind: 'reorder', sequence: tailCandidates[1].sequence });
+          recorder.converge(['viewer-a', 'viewer-b']);
+          const fixture = recorder.snapshot();
+          expect(validateLifecycleFixture(fixture)).toEqual([]);
+          expect(validateLifecycleContractCoverage(fixture)).toEqual([]);
+          expect(new Set(fixture.records.map(record => record.actorId))).toEqual(new Set(['viewer-a', 'viewer-b']));
+          expect(fixture.records.some(record => record.connectionId === 'a-angular-2')).toBe(true);
+          const outputDirectory = process.env.ZEPPELIN_E2E_FIXTURE_OUTPUT_DIR;
+          if (outputDirectory) {
+            mkdirSync(outputDirectory, { recursive: true });
+            writeFileSync(join(outputDirectory, 'notebook-lifecycle.json'), `${JSON.stringify(fixture, null, 2)}\n`);
+          }
+        } finally {
+          await recorder.stop().catch(() => undefined);
+          await firstContext.close().catch(() => undefined);
+          await secondContext.close().catch(() => undefined);
+          for (const id of createdNoteIds) {
+            await page
+              .evaluate(async note => fetch(`/api/notebook/${note}`, { method: 'DELETE' }), id)
+              .catch(() => undefined);
+          }
+        }
+      } catch (error) {
+        for (const id of createdNoteIds) {
+          await page
+            .evaluate(async note => fetch(`/api/notebook/${note}`, { method: 'DELETE' }), id)
+            .catch(() => undefined);
+        }
+        throw error;
+      }
+    }
+  );
 });

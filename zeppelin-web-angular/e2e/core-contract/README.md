@@ -59,7 +59,52 @@ Add a fixture when a Notebook operation is moved into the shared adapter
 contract. If that operation cannot yet be represented, add its explicit reason
 to the scenario's `knownExclusions`; do not silently rely on another fixture.
 
-## What version 1 does not model
+## Lifecycle fixtures
+
+`notebook-lifecycle-fixture.mjs` composes raw version 1 transport records across
+browser contexts and physical WebSocket connections. The lifecycle layer records
+the active note and optional revision as capture context beside each raw record.
+It never adds those identifiers to the captured payload. This distinction matters
+for replies such as `NOTE_UPDATED`, whose wire envelope does not identify a note.
+Run the composed capture through `sanitizeLifecycleFixture` before committing it;
+the function applies the transport fixture's existing redaction without changing
+the lifecycle context or causal annotations.
+`createNotebookLifecycleRecorder` installs the version 1 recorder on each browser
+page and assigns one global observed sequence as those real recorder callbacks
+arrive. Callers supply the current route context and classify the reducer input;
+the recorder does not infer note association from an untagged frame.
+
+Each lifecycle record declares both its transport ingress and the operation path
+that caused the authoritative reducer input. REST insert, move and remove flows
+therefore retain their REST request and response records and label the later full
+`NOTE` broadcast as the `full-note` input for the REST path. Their WebSocket
+counterparts label `PARAGRAPH_ADDED`, `PARAGRAPH_REMOVED` and `PARAGRAPH_MOVED` as
+the `granular-event` input. The two paths are not normalized into one payload.
+
+Actors name independent browser `contextId` values. Authenticated actors must also
+use distinct redacted `principalAlias` values. Connection IDs split traffic before
+and after a physical reconnect. Note route contexts carry an `activeNoteId` and an
+optional `revisionId`; the Job Manager uses the separate `job-manager` route kind
+and carries no made-up note identifier. Route transitions are the only way a
+connection's capture context may change; validation rejects an unexplained change
+as invented association evidence.
+
+The lifecycle replay runner can deterministically delay, duplicate, drop or reorder
+selected records. It delivers the recorded timeout and reconciliation transitions
+even when the record at that boundary was dropped, then compares every declared
+actor snapshot with the server snapshot. A missing snapshot or divergence fails
+closed. The ZEPPELIN-6672 contract additionally requires a dropped
+`COMMIT_PARAGRAPH` to retain local dirty state until its timeout and declared
+reconciliation path. Because the current wire has no positive commit reply, the
+fixture records that protocol gap rather than manufacturing an acknowledgement.
+
+The lifecycle schema has its own version. Unsupported versions, duplicate or
+decreasing global sequence numbers, missing route associations, incomplete required
+operation coverage and invalid fault targets are rejected before replay. The raw
+records inside it remain transport version 1 and are validated by the original
+transport validator.
+
+## What transport version 1 does not model
 
 A fixture records one observed interleaving of REST and WebSocket traffic and delivers
 it in exactly that order. The migration plan this format serves does not assume the
@@ -119,12 +164,13 @@ Only `accept` and `content-type` survive header filtering, so a fixture cannot c
 the `www-authenticate` of a 401 or the `location` of a redirect, both of which
 ZEPPELIN-6673 needs.
 
-Two more limits follow from the same shape. A record carries no timing, so a
+Two more limits follow from the same transport shape. A record carries no timing, so a
 scenario that turns on delay - a server change applied before an HTTP response times
-out - cannot be replayed. And a fixture models one WebSocket connection, so the
-reconnection scenarios in ZEPPELIN-6672 need more than version 1 provides.
-Capture rejects a second notebook WebSocket connection, including a reconnect,
-instead of flattening connections into a fixture that cannot be replayed.
+out - cannot be replayed by the transport adapter alone. And a transport fixture
+models one WebSocket connection, so lifecycle reconnection scenarios compose more
+than one transport trace rather than weakening version 1. Capture rejects a second
+notebook WebSocket connection, including a reconnect, instead of flattening
+connections into a fixture that cannot be replayed.
 
 That is deliberate. Widening the format before those scenarios exist would mean
 designing for guesses. When a scenario needs it, the `version` field is the place to
@@ -173,6 +219,10 @@ has no authentication setup, stored browser session, global setup/teardown or de
 server. It does not contact `PLAYWRIGHT_BASE_URL` or clean notebooks from another run.
 The focused command runs Chromium. The ordinary E2E suite still includes the synthetic
 browser tests in its Chromium, Firefox and WebKit projects and excludes `@live`.
+The live capture project also exercises two independent browser contexts and a
+physical reconnect through the lifecycle recorder. In Shiro mode it logs those
+contexts in as two configured users and skips when the isolated server does not
+provide two users, rather than recording a same-principal collaboration trace.
 
 The capture server requires `lsof` to verify listener ownership. Build a clean detached
 `origin/master` checkout with
@@ -202,8 +252,8 @@ SIGKILL, inspect its processes before removing a leftover lock or `starting` cla
 the script does not guess that another operation's lock is stale.
 
 Live capture uses the same dedicated config with an explicit `PLAYWRIGHT_BASE_URL`,
-authentication setup and zero retries. The test deletes only the note it created,
-in a `finally` block; neither mode invokes the shared API cleanup. `CI=true` disables
+authentication setup and zero retries. The tests delete only the notes they create,
+in `finally` blocks; neither mode invokes the shared API cleanup. `CI=true` disables
 screenshots and video. Point the login helper at the capture root even in anonymous
 mode: its absent `shiro.ini` prevents fallback to unrelated repository credentials.
 Authentication state and browser results use separate directories under a unique
@@ -215,16 +265,17 @@ when its artifacts are no longer needed.
 
 The server discards inherited `ZEPPELIN_*` settings, JVM option variables
 (`JAVA_OPTS`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`) and `CLASSPATH`.
-It explicitly selects local `VFSNotebookRepo` storage and loopback binding, so a shell's
-remote notebook configuration cannot redirect capture writes. `JAVA_HOME` and `PATH`
-still select the installed toolchain.
+It selects local `VFSNotebookRepo` storage by default and loopback binding, so a shell's
+remote notebook configuration cannot redirect capture writes. Pass `--storage git` for
+revision scenarios; this selects local `GitNotebookRepo` in the same isolated notebook
+directory. `JAVA_HOME` and `PATH` still select the installed toolchain.
 
 ```bash
 CAPTURE_ROOT="$(mktemp -d)"
 BUILD_ROOT=/path/to/clean-origin-master-checkout
 BUILD_MANIFEST="$(mktemp)"
 node e2e/core-contract/capture-build-manifest.mjs create "${BUILD_MANIFEST}" "${BUILD_ROOT}"
-e2e/core-contract/capture-server.sh start --root "${CAPTURE_ROOT}" --port 18080 \
+e2e/core-contract/capture-server.sh start --root "${CAPTURE_ROOT}" --storage git --port 18080 \
   --build-root "${BUILD_ROOT}" --build-manifest "${BUILD_MANIFEST}"
 ZEPPELIN_E2E_SHIRO_INI="${CAPTURE_ROOT}/conf/shiro.ini" \
   ZEPPELIN_E2E_BUILD_MANIFEST="${BUILD_MANIFEST}" \
