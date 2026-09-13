@@ -26,6 +26,7 @@ it('separates received wire fields from backward-compatible import input', () =>
         noteId: string;
         paragraphId: string;
       }
+    | null
     | undefined
   >();
   expectTypeOf<AngularObjectRemove>().toHaveProperty('interpreterGroupId').toEqualTypeOf<string | undefined>();

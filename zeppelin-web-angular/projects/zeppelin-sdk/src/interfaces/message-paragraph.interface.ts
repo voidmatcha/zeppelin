@@ -239,13 +239,19 @@ interface AngularObjectRemoveBase {
 
 export type AngularObjectRemove = AngularObjectRemoveBase &
   (
-    | { name: string; angularObject?: AngularObjectPayload; interpreterGroupId?: string }
-    | { name?: undefined; angularObject: AngularObjectPayload; interpreterGroupId: string }
+    | {
+        name: string;
+        angularObject?: AngularObjectPayload | null;
+        interpreterGroupId?: string;
+      }
+    | {
+        name?: undefined;
+        angularObject: AngularObjectPayload | null;
+        interpreterGroupId: string;
+      }
   );
 
-export interface AngularObjectUpdate {
-  noteId: string;
-  paragraphId: string;
+export interface AngularObjectUpdate extends AngularObjectRemoveBase {
   interpreterGroupId: string;
   angularObject: AngularObjectPayload;
 }
