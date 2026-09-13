@@ -39,7 +39,7 @@
             @case (formType.Select) {
               <nz-select [nzDisabled]="disable" [(ngModel)]="paramDefs[form.name]" (ngModelChange)="onFormChange()">
                 @for (opt of form.options; track opt) {
-                  <nz-option [nzLabel]="opt.displayName || opt.value" [nzValue]="opt.value"></nz-option>
+                  <nz-option [nzLabel]="getDynamicFormsOptionLabel(opt)" [nzValue]="opt.value"></nz-option>
                 }
               </nz-select>
             }
