@@ -24,10 +24,27 @@ import {
 } from '@angular/core';
 import { Subject } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
+import { isEqual } from 'lodash';
 
 import { NzCheckboxOption } from 'ng-zorro-antd/checkbox';
 
 import { DynamicForms, DynamicFormsItem, DynamicFormsType, DynamicFormParams } from '@zeppelin/sdk';
+
+export const normalizeDynamicFormsType = (type: DynamicFormsType): DynamicFormsType => {
+  switch (type) {
+    case DynamicFormsType.LegacyTextBox:
+      return DynamicFormsType.TextBox;
+    case DynamicFormsType.LegacySelect:
+      return DynamicFormsType.Select;
+    case DynamicFormsType.LegacyCheckBox:
+      return DynamicFormsType.CheckBox;
+    default:
+      return type;
+  }
+};
+
+export const getDynamicFormsOptionLabel = (option: NonNullable<DynamicFormsItem['options']>[number]): string =>
+  option.displayName ?? String(option.value);
 
 @Component({
   selector: 'zeppelin-notebook-paragraph-dynamic-forms',
@@ -50,11 +67,16 @@ export class NotebookParagraphDynamicFormsComponent implements OnInit, OnChanges
   formChange$ = new Subject<void>();
   forms: DynamicFormsItem[] = [];
   formType = DynamicFormsType;
+  getDynamicFormsOptionLabel = getDynamicFormsOptionLabel;
+  compareDynamicFormValues = isEqual;
   checkboxGroups: {
     [key: string]: NzCheckboxOption[];
   } = {};
   checkboxValues: {
     [key: string]: Array<string | number>;
+  } = {};
+  private checkboxOptionValues: {
+    [key: string]: unknown[];
   } = {};
 
   @HostListener('keydown.enter')
@@ -69,10 +91,14 @@ export class NotebookParagraphDynamicFormsComponent implements OnInit, OnChanges
   }
 
   setForms() {
-    this.forms = Object.values(this.formDefs);
+    this.forms = Object.values(this.formDefs).map(form => ({
+      ...form,
+      type: normalizeDynamicFormsType(form.type)
+    }));
     this.checkboxGroups = {};
+    this.checkboxOptionValues = {};
     this.forms.forEach(e => {
-      if (!this.paramDefs[e.name]) {
+      if (!Object.prototype.hasOwnProperty.call(this.paramDefs, e.name)) {
         this.paramDefs[e.name] = e.defaultValue;
       }
       if (e.type === DynamicFormsType.CheckBox) {
@@ -80,18 +106,33 @@ export class NotebookParagraphDynamicFormsComponent implements OnInit, OnChanges
         // ng-zorro v19 split nz-checkbox-group into `nzOptions` (the {label, value}
         // choices) and an ngModel that holds the selected values directly, instead
         // of a single array of {label, value, checked} objects.
-        this.checkboxGroups[e.name] = e.options!.map(opt => ({
-          label: opt.displayName || opt.value,
-          value: opt.value
+        const options = e.options ?? [];
+        this.checkboxOptionValues[e.name] = options.map(option => option.value);
+        this.checkboxGroups[e.name] = options.map((option, index) => ({
+          label: getDynamicFormsOptionLabel(option),
+          value: index
         }));
         const param = this.paramDefs[e.name];
-        this.checkboxValues[e.name] = Array.isArray(param) ? [...param] : [];
+        const selectedValues = Array.isArray(param) ? param : [];
+        this.checkboxValues[e.name] = options.reduce<Array<string | number>>((selectedIndexes, option, index) => {
+          if (selectedValues.some(selectedValue => isEqual(selectedValue, option.value))) {
+            selectedIndexes.push(index);
+          }
+          return selectedIndexes;
+        }, []);
       }
     });
   }
 
   checkboxChange(value: Array<string | number>, name: string) {
-    this.paramDefs[name] = value as string[];
+    const optionValues = this.checkboxOptionValues[name] ?? [];
+    this.paramDefs[name] = value.reduce<unknown[]>((selectedValues, optionIndex) => {
+      const index = Number(optionIndex);
+      if (Number.isInteger(index) && index >= 0 && index < optionValues.length) {
+        selectedValues.push(optionValues[index]);
+      }
+      return selectedValues;
+    }, []);
     this.onFormChange();
   }
 

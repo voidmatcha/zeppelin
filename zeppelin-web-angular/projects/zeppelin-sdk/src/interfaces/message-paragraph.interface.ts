@@ -16,17 +16,20 @@ export enum DynamicFormsType {
   TextBox = 'TextBox',
   Password = 'Password',
   Select = 'Select',
-  CheckBox = 'CheckBox'
+  CheckBox = 'CheckBox',
+  LegacyTextBox = 'input',
+  LegacySelect = 'select',
+  LegacyCheckBox = 'checkbox'
 }
 
 export interface DynamicFormsItem {
-  defaultValue: string | string[];
+  defaultValue: unknown;
   hidden: boolean;
   name: string;
   displayName?: string;
   type: DynamicFormsType;
   argument?: string;
-  options?: Array<{ value: string; displayName?: string }>;
+  options?: Array<{ value: unknown; displayName?: string }>;
 }
 
 export interface DynamicForms {
@@ -34,7 +37,12 @@ export interface DynamicForms {
 }
 
 export interface DynamicFormParams {
-  [key: string]: string | string[];
+  [key: string]: unknown;
+}
+
+export interface ParagraphSettings {
+  params: DynamicFormParams;
+  forms: DynamicForms;
 }
 
 export interface ParagraphEditorSetting {
@@ -118,10 +126,10 @@ export interface ParasInfo {
 }
 
 export interface RuntimeInfos {
-  jobUrl: RuntimeInfosJobUrl;
+  [propertyName: string]: ParagraphRuntimeInfo | undefined;
 }
 
-interface RuntimeInfosJobUrl {
+export interface ParagraphRuntimeInfo {
   propertyName: string;
   label: string;
   tooltip: string;
@@ -130,16 +138,14 @@ interface RuntimeInfosJobUrl {
   interpreterSettingId: string;
 }
 
-interface RuntimeInfosValuesItem {
-  jobUrl: string;
-}
+export type RuntimeInfosValuesItem = Record<string, string>;
 
 export interface ParagraphItem {
   text: string;
   user: string;
   dateUpdated: string;
   config: ParagraphConfig;
-  settings: ParagraphEditorSetting;
+  settings: ParagraphSettings;
   results?: ParagraphResults;
   // eslint-disable-next-line  @typescript-eslint/no-explicit-any
   apps: any[];

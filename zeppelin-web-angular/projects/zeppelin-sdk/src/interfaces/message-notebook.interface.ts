@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { ImportParagraphItem, ParagraphItem } from './message-paragraph.interface';
+import { DynamicFormsItem, ImportParagraphItem, ParagraphItem } from './message-paragraph.interface';
 
 interface ID {
   id: string;
@@ -88,8 +88,7 @@ export interface NoteParams {
 }
 
 export interface NoteForms {
-  // eslint-disable-next-line  @typescript-eslint/no-explicit-any
-  [key: string]: any;
+  [key: string]: DynamicFormsItem;
 }
 
 export interface RemoveNoteForms {
