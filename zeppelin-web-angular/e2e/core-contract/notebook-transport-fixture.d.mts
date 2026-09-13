@@ -154,7 +154,10 @@ export declare function validateReplayFixture(fixture: unknown): string[];
 export declare function validateCaptureProvenance(metadata: unknown): string[];
 
 export declare function createPlaywrightFixtureAdapter(fixture: TransportFixture): PlaywrightFixtureAdapter;
-export declare function createNotebookTransportRecorder(metadata: FixtureMetadata): NotebookTransportRecorder;
+export declare function createNotebookTransportRecorder(
+  metadata: FixtureMetadata,
+  options?: { onRecord?: (record: FixtureRecord) => void }
+): NotebookTransportRecorder;
 
 export declare function parseRestBody(
   body: string,

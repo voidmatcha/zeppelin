@@ -18,13 +18,14 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 start|stop --root <dir> [--mode anonymous|auth] [--port <port>] [--paragraph-status-progress true|false] [--build-root <dir> --build-manifest <file>]" >&2
+  echo "usage: $0 start|stop --root <dir> [--mode anonymous|auth] [--storage vfs|git] [--port <port>] [--paragraph-status-progress true|false] [--build-root <dir> --build-manifest <file>]" >&2
 }
 
 command="${1:-}"
 shift || true
 capture_root=""
 capture_mode="anonymous"
+capture_storage="vfs"
 zeppelin_port="8080"
 port_given="no"
 paragraph_status_progress="true"
@@ -63,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       build_manifest="${2:-}"
       shift 2
       ;;
+    --storage)
+      capture_storage="${2:-}"
+      shift 2
+      ;;
     *)
       usage
       exit 2
@@ -76,6 +81,10 @@ if [[ -z "${command}" || -z "${capture_root}" ]]; then
 fi
 if [[ "${paragraph_status_progress}" != "true" && "${paragraph_status_progress}" != "false" ]]; then
   echo "--paragraph-status-progress must be true or false, got '${paragraph_status_progress}'" >&2
+  exit 2
+fi
+if [[ "${capture_storage}" != "vfs" && "${capture_storage}" != "git" ]]; then
+  echo "--storage must be vfs or git, got '${capture_storage}'" >&2
   exit 2
 fi
 
@@ -264,7 +273,11 @@ start_zeppelin() {
 
   export ZEPPELIN_CONF_DIR="${capture_root}/conf"
   export ZEPPELIN_ADDR="127.0.0.1"
-  export ZEPPELIN_NOTEBOOK_STORAGE="org.apache.zeppelin.notebook.repo.VFSNotebookRepo"
+  if [[ "${capture_storage}" == "git" ]]; then
+    export ZEPPELIN_NOTEBOOK_STORAGE="org.apache.zeppelin.notebook.repo.GitNotebookRepo"
+  else
+    export ZEPPELIN_NOTEBOOK_STORAGE="org.apache.zeppelin.notebook.repo.VFSNotebookRepo"
+  fi
   export ZEPPELIN_NOTEBOOK_DIR="${capture_root}/notebook"
   export ZEPPELIN_LOG_DIR="${capture_root}/logs"
   export ZEPPELIN_PID_DIR="${capture_root}/run"
