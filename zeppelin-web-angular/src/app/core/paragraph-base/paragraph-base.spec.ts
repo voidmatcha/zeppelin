@@ -11,7 +11,7 @@
  */
 
 import { ChangeDetectorRef } from '@angular/core';
-import { DatasetType, Message, ParagraphItem } from '@zeppelin/sdk';
+import { DatasetType, Message, ParagraphItem, ParagraphStatusValue } from '@zeppelin/sdk';
 import { EMPTY } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -38,7 +38,11 @@ class TestParagraph extends ParagraphBase {
   }
 }
 
-const paragraph = (id: string, status = 'RUNNING', dateStarted = '2026-01-01T00:00:00Z'): ParagraphItem => ({
+const paragraph = (
+  id: string,
+  status: ParagraphStatusValue = 'RUNNING',
+  dateStarted = '2026-01-01T00:00:00Z'
+): ParagraphItem => ({
   id,
   status,
   dateStarted,
@@ -88,7 +92,7 @@ describe('ParagraphBase streaming state isolation', () => {
     component.ngOnDestroy();
   });
 
-  it.each(['FINISHED', 'ERROR', 'ABORT', 'RUNNING', 'PENDING'])(
+  it.each(['FINISHED', 'ERROR', 'ABORT', 'RUNNING', 'PENDING'] as const)(
     'keeps accumulating output when another paragraph becomes %s',
     status => {
       const component = new TestParagraph(paragraph('A'));
