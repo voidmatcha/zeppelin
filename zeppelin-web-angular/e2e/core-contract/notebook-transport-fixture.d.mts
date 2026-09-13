@@ -48,8 +48,13 @@ export interface FixtureRecord {
 }
 
 export interface FixtureMetadata {
+  authorizationBasis?: string;
+  captureMode?: string;
+  capturePhase?: string;
+  captureSource?: 'capture-server.sh' | 'live-server';
   coveredOperations: string[];
   knownExclusions: string[];
+  lifecycle?: string;
   owner: string;
   scenario: string;
   configuration?: Record<string, boolean | number | string>;
@@ -57,7 +62,6 @@ export interface FixtureMetadata {
   // Recorded capture identity and environment.
   capturedAt?: string;
   zeppelinVersion?: string;
-  captureSource?: 'live-server';
   provenance?: {
     baseCommit: string;
     authentication: string;

@@ -24,7 +24,9 @@ export const fixtureVersion = 1;
 const restDirections = new Set(['request', 'response']);
 const websocketDirections = new Set(['send', 'receive']);
 
-const safeHeaderNames = new Set(['accept', 'content-type']);
+// Location is part of the host redirect contract for a 401. Keep it while
+// continuing to discard cookies and authentication credentials.
+const safeHeaderNames = new Set(['accept', 'content-type', 'location']);
 const volatileFieldNames = new Set([
   'dateCreated',
   'dateFinished',
@@ -146,7 +148,7 @@ function validateExecutionCoveredOperations(errors, fixture) {
 
 export function validateCaptureProvenance(metadata) {
   const errors = [];
-  if (metadata?.captureSource !== 'live-server') return errors;
+  if (!['capture-server.sh', 'live-server'].includes(metadata?.captureSource)) return errors;
 
   const provenance = metadata.provenance;
   if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
@@ -478,7 +480,7 @@ export function createPlaywrightFixtureAdapter(fixture) {
   return {
     install: async page => {
       await page.route('**/api/**', async (route, request) => {
-        if (!isNotebookRestUrl(request.url())) {
+        if (!isCoreContractRestUrl(request.url())) {
           // fallback() preserves earlier route handlers; continue() bypasses them.
           await route.fallback?.();
           return;
@@ -675,7 +677,7 @@ export function createNotebookTransportRecorder(metadata, options = {}) {
       }
       installedPage = page;
       subscribe(page, 'request', request => {
-        if (!isNotebookRestUrl(request.url())) {
+        if (!isCoreContractRestUrl(request.url())) {
           return;
         }
         outstandingRequests.add(request);
@@ -689,18 +691,20 @@ export function createNotebookTransportRecorder(metadata, options = {}) {
       });
       subscribe(page, 'response', async response => {
         const request = response.request();
-        if (!isNotebookRestUrl(request.url())) {
+        if (!isCoreContractRestUrl(request.url())) {
           return;
         }
         outstandingRequests.add(request);
+        const responseHeaders = response.headers();
+        const expectedEmptyBody = request.method() === 'HEAD' || responseHeaders['content-length'] === '0';
         const rest = {
           direction: 'response',
-          headers: filterHeaders(response.headers()),
+          headers: filterHeaders(responseHeaders),
           request: summarizeRequest(request),
           status: response.status(),
           bodyRaw: ''
         };
-        responseRecords.set(request, rest);
+        responseRecords.set(request, { expectedEmptyBody, rest });
         const bodyRead = response
           .text()
           .then(body => {
@@ -709,27 +713,32 @@ export function createNotebookTransportRecorder(metadata, options = {}) {
             Object.assign(rest, parsed);
           })
           .catch(error => {
-            captureFailure ??= error;
+            if (!expectedEmptyBody) captureFailure ??= error;
           })
           .finally(() => pending.delete(bodyRead));
         pending.add(bodyRead);
       });
       subscribe(page, 'requestfinished', request => {
-        const rest = responseRecords.get(request);
-        if (!rest) return;
+        const responseRecord = responseRecords.get(request);
+        if (!responseRecord) return;
         // response fires at headers; text() returns asynchronously.
         // Reserve ordering at download completion, before later WebSocket frames.
-        record({ kind: 'rest', rest });
+        record({ kind: 'rest', rest: responseRecord.rest });
         responseRecords.delete(request);
         outstandingRequests.delete(request);
       });
       // Retain the transport error for stop() and write().
       subscribe(page, 'requestfailed', request => {
-        if (!isNotebookRestUrl(request.url())) {
+        if (!isCoreContractRestUrl(request.url())) {
           return;
         }
+        const responseRecord = responseRecords.get(request);
         outstandingRequests.delete(request);
         responseRecords.delete(request);
+        if (responseRecord?.expectedEmptyBody) {
+          record({ kind: 'rest', rest: responseRecord.rest });
+          return;
+        }
         const reason = request.failure?.()?.errorText ?? 'unknown error';
         captureFailure ??= new Error(
           `Notebook request failed during capture: ${request.method()} ${request.url()} (${reason})`
@@ -871,7 +880,11 @@ function sanitizeRecord(record) {
 function filterHeaders(headers = {}) {
   return Object.fromEntries(
     Object.entries(headers)
-      .map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value.join(', ') : String(value ?? '')])
+      .map(([key, value]) => {
+        const normalizedKey = key.toLowerCase();
+        const normalizedValue = Array.isArray(value) ? value.join(', ') : String(value ?? '');
+        return [normalizedKey, normalizedKey === 'location' ? redactEmbeddedSecrets(normalizedValue) : normalizedValue];
+      })
       .filter(([key, value]) => safeHeaderNames.has(key) && !isDefaultAccept(key, value))
   );
 }
@@ -902,6 +915,11 @@ function recordCapturedWebSocketFrame(record, direction, payload) {
 export function isNotebookRestUrl(value) {
   const url = new URL(value);
   return url.pathname === '/api/notebook' || url.pathname.startsWith('/api/notebook/');
+}
+
+export function isCoreContractRestUrl(value) {
+  const url = new URL(value);
+  return isNotebookRestUrl(value) || url.pathname === '/api/login' || url.pathname === '/api/login/logout';
 }
 
 function isNotebookWebSocketUrl(value) {
@@ -961,11 +979,30 @@ function parseEnvelope(payload) {
 // Preserve top-level msgId for request/reply correlation.
 // Nested IDs keep their normal redaction rules.
 function normalizeEnvelope(value) {
-  const normalized = normalizeFixtureRecord(value);
+  const envelope = redactAuthorizationInfo(value);
+  const normalized = normalizeFixtureRecord(envelope);
   if (value && !Array.isArray(value) && typeof value === 'object' && Object.hasOwn(value, 'msgId')) {
     normalized.msgId = value.msgId;
   }
   return normalized;
+}
+
+function redactAuthorizationInfo(value) {
+  if (value?.op !== 'AUTH_INFO' || typeof value.data?.info !== 'string') {
+    return value;
+  }
+  return {
+    ...value,
+    data: {
+      ...value.data,
+      info: value.data.info
+        .replace(/Allowed users or roles: \[[^\]\r\n]*\]/g, 'Allowed users or roles: [<redacted>]')
+        .replace(
+          /But the user [^\r\n]* belongs to: \[[^\]\r\n]*\]/g,
+          'But the user <redacted> belongs to: [<redacted>]'
+        )
+    }
+  };
 }
 
 function sanitizeWebSocket(websocket) {
@@ -1025,7 +1062,7 @@ function sanitizeRestRequest(request) {
 // Match sensitive suffixes such as accessToken and PGPASSWORD, but not tokenizer.
 // Avoid a prefix quantifier to keep matching linear.
 const sensitiveWordPattern =
-  '(?:api[-_]?key|authorization|client[-_]?secret|cookie|credential(?:s)?|jsessionid|passphrase|passwd|password|principal|private[-_]?key|secret|ticket|token)';
+  '(?:api[-_]?key|authorization|client[-_]?secret|cookie|credential(?:s)?|jsessionid|passphrase|passwd|password|principal|private[-_]?key|secret|ticket|token|username)';
 const sensitiveNamePattern = `${sensitiveWordPattern}(?![A-Za-z0-9_])`;
 const sensitiveWholeWordPattern = new RegExp(`^${sensitiveWordPattern}$`, 'i');
 const sensitiveSuffixPattern = new RegExp(`${sensitiveWordPattern}$`, 'i');
