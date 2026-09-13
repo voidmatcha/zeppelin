@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { HttpClient, HttpErrorResponse, HttpEvent, HttpHandler, HttpRequest } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpEvent, HttpHandler, HttpHeaders, HttpRequest } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { defer, firstValueFrom, of, Subject, throwError } from 'rxjs';
 
@@ -53,6 +53,33 @@ describe('AppHttpInterceptor', () => {
       })
     );
     interceptor = new AppHttpInterceptor({ logout } as unknown as TicketService);
+  });
+
+  it('assigns a 401 Location as the host redirect target', async () => {
+    const originalHash = window.location.hash;
+    const failure = new HttpErrorResponse({
+      status: 401,
+      headers: new HttpHeaders({ Location: '/#/login?reason=expired' })
+    });
+
+    try {
+      await expect(intercept(failure, `${REST_BASE}/notebook`)).rejects.toBe(failure);
+
+      expect(window.location.hash).toBe('#/login?reason=expired');
+      expect(logout).not.toHaveBeenCalled();
+    } finally {
+      window.location.hash = originalHash;
+    }
+  });
+
+  it('does not navigate when a 401 has no Location', async () => {
+    const before = window.location.href;
+    const failure = new HttpErrorResponse({ status: 401 });
+
+    await expect(intercept(failure, `${REST_BASE}/notebook`)).rejects.toBe(failure);
+
+    expect(window.location.href).toBe(before);
+    expect(logout).not.toHaveBeenCalled();
   });
 
   it('logs out once when a non-logout request is answered with 405', async () => {

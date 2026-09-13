@@ -156,13 +156,14 @@ fulfillment rejects its route and prevents successful completion, while independ
 routes can still receive their recorded responses.
 
 `principal` is redacted wherever it appears, and Zeppelin puts it on nearly every
-WebSocket frame; `user`, `users` and `roles` go the same way. A fixture therefore names
-nobody, which also means it cannot express a scenario that turns on who is acting. The
-permission and authentication scenarios in ZEPPELIN-6673 will need that distinction.
+WebSocket frame; `user`, `users` and `roles` go the same way. Permission arrays retain
+their shape and cardinality, while scenario metadata distinguishes anonymous and
+authenticated captures without storing an identity.
 
-Only `accept` and `content-type` survive header filtering, so a fixture cannot carry
-the `www-authenticate` of a 401 or the `location` of a redirect, both of which
-ZEPPELIN-6673 needs.
+`accept`, `content-type` and `location` survive header filtering. `location` values use
+the same credential redaction as URLs, which preserves the host's 401 redirect target
+without recording tickets or tokens. Authentication response headers other than
+`location`, including `set-cookie`, remain excluded.
 
 Two more limits follow from the same transport shape. A record carries no timing, so a
 scenario that turns on delay - a server change applied before an HTTP response times
@@ -251,17 +252,18 @@ operation completes. A concurrent operation fails. If an operation is killed wit
 SIGKILL, inspect its processes before removing a leftover lock or `starting` claim;
 the script does not guess that another operation's lock is stale.
 
-Live capture uses the same dedicated config with an explicit `PLAYWRIGHT_BASE_URL`,
-authentication setup and zero retries. The tests delete only the notes they create,
-in `finally` blocks; neither mode invokes the shared API cleanup. `CI=true` disables
-screenshots and video. Point the login helper at the capture root even in anonymous
+Live capture uses the same dedicated config with an explicit `PLAYWRIGHT_BASE_URL`
+and zero retries. Dedicated anonymous/auth fixture capture logs in through the isolated
+server's REST API and does not run the Angular global login setup. The tests delete only
+the notes they create, in `finally` blocks; neither mode invokes shared API cleanup.
+`CI=true` disables screenshots and video. Point the login helper at the capture root even in anonymous
 mode: its absent `shiro.ini` prevents fallback to unrelated repository credentials.
-Authentication state and browser results use separate directories under a unique
-temporary run directory. They do not overwrite the ordinary suite's auth snapshot or
-test results. Set `ZEPPELIN_CORE_CONTRACT_RUN_DIR` to keep them in a chosen capture
-directory; use a different directory for each concurrent run. The auth snapshot is
-under `.auth/user.json` and results are under `results/`; remove the run directory
-when its artifacts are no longer needed.
+Browser results use a unique temporary run directory and do not overwrite the ordinary
+suite's test results. Generic live runs keep their auth snapshot there as
+`.auth/user.json`; dedicated anonymous/auth capture does not create one. Set
+`ZEPPELIN_CORE_CONTRACT_RUN_DIR` to keep results in a chosen capture directory; use a
+different directory for each concurrent run and remove it when its artifacts are no
+longer needed.
 
 The server discards inherited `ZEPPELIN_*` settings, JVM option variables
 (`JAVA_OPTS`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`) and `CLASSPATH`.
@@ -312,7 +314,33 @@ installed; that result is not evidence that the fixture scenario passed.
 For authenticated capture, add `--mode auth` to start. That installs
 `shiro.ini.template` in the capture root; the same `ZEPPELIN_E2E_SHIRO_INI` setting
 selects it. The helper wiring and a successful authenticated capture are separate
-checks. Multi-user permission scenarios remain the responsibility of ZEPPELIN-6673.
+checks. `capture-auth-error-fixtures.sh` enforces both modes and writes each recorder's
+sanitized output below the supplied root:
+
+```bash
+CAPTURE_ROOT="$(mktemp -d)"
+npm run capture:core-contract-auth-errors -- --root "${CAPTURE_ROOT}" --port 18080 \
+  --build-root "${BUILD_ROOT}" --build-manifest "${BUILD_MANIFEST}"
+```
+
+The live cases capture anonymous and authenticated ACL GET/PUT responses, an explicit
+logout REST 401, non-logout and logout-URL REST 405 responses, and an ACL-driven
+`AUTH_INFO`. A checkpoint request on a note with no revision safely captures the
+server's global `ERROR_INFO` path. The session matrix is backed by four separate recorder fixtures: HTTP-only
+405, HTTP 405 followed by a command on the existing ticket, explicit logout followed by
+the server's no-response behavior for the removed ticket, and an old-ticket
+`SESSION_LOGOUT` after a full isolated-server stop/start and replacement login. The
+orchestrator removes its temporary raw ticket state and stops both server processes.
+Every generated fixture records `captureSource: capture-server.sh`; the restart fixture
+also records `capturePhase: after-server-restart`. The committed copies contain only
+recorder output, and tests replay all four lifecycle fixtures and reject missing
+provenance or secrets.
+
+Cases the isolated server cannot produce safely carry a specific `knownExclusions`
+entry: the other 401 `Location` variant and the browser-only missing-response-URL
+guard. Those host behaviors remain covered by interceptor unit tests and are not
+counted as captured events. The client-side principal-only `isOwner` display
+shortcut is not used as a server authorization rule.
 `npm run check:core-contract-auth` runs a browser-backed anonymous setup regression
 in a disposable directory and verifies that the ordinary auth snapshot is preserved.
 It requires installed Chromium but no Zeppelin server; the Node-only fixture check
@@ -323,8 +351,9 @@ WebSocket frame that does not match the next recorded one, and any record left
 unconsumed all fail the test. The limits of that strictness are in "What version 1
 does not model". Maven runs the format checks in its test phase and the capture-server checks
 in integration-test. The browser tests are part of the ordinary e2e suite, so they
-run wherever it does. The live capture is the one layer nothing runs for you: it is
-tagged `@live` and excluded until `npm run e2e:core-contract:live` asks for it.
+run wherever it does. Live capture remains outside the ordinary suite: its cases are
+tagged `@live` and run only through `npm run e2e:core-contract:live` or the two-mode
+capture command above.
 
 These checks prove fixture shape and adapter transport behavior. Separate E2E
 scenarios must cover a running Zeppelin server, authorization, collaboration,
@@ -365,9 +394,9 @@ test timeout.
 
 ## Capturing safely
 
-`createNotebookTransportRecorder(metadata)` records only `/api/notebook` REST
-traffic and `/ws` frames. It redacts configured sensitive and volatile fields
-before it writes a fixture. JSON WebSocket frames are normalized and redacted;
+`createNotebookTransportRecorder(metadata)` records `/api/notebook`, `/api/login`, and
+`/api/login/logout` REST traffic plus `/ws` frames. It redacts configured sensitive and
+volatile fields before it writes a fixture. JSON WebSocket frames are normalized and redacted;
 binary frames are rejected during capture until a binary redaction policy is
 implemented. Replay still supports deliberately authored binary fixtures for
 protocol-level tests.
