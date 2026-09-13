@@ -12,9 +12,9 @@
 
 import { ChangeDetectorRef } from '@angular/core';
 import {
-  AngularObjectRemove,
   AngularObjectUpdate,
   GraphConfig,
+  getAngularObjectRemoveName,
   Message,
   MessageReceiveDataTypeMap,
   OP,
@@ -222,12 +222,21 @@ export abstract class ParagraphBase extends MessageListenersManager {
   }
 
   @MessageListener(OP.ANGULAR_OBJECT_REMOVE)
-  angularObjectRemove(data: AngularObjectRemove) {
+  angularObjectRemove(data: unknown) {
     if (!this.paragraph) {
       throw new Error('paragraph is not defined');
     }
-    if (data.paragraphId === this.paragraph.id) {
-      this.angularContextManager.unsetContextValue(data.name, data.paragraphId, false);
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('paragraphId' in data) ||
+      data.paragraphId !== this.paragraph.id
+    ) {
+      return;
+    }
+    const name = getAngularObjectRemoveName(data);
+    if (name !== undefined) {
+      this.angularContextManager.unsetContextValue(name, data.paragraphId, false);
     }
   }
 

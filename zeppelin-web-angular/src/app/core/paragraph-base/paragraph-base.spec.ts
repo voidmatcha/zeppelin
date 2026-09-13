@@ -27,11 +27,11 @@ class TestParagraph extends ParagraphBase {
     this.setParagraphSnapshot(snapshot);
   }
 
-  constructor(paragraph: ParagraphItem) {
+  constructor(paragraph: ParagraphItem, angularContextManager = {} as AngularContextManager) {
     super(
       { receive: () => EMPTY } as unknown as Message,
       { isParagraphRunning: item => item.status === 'RUNNING', isEntireNoteRunning: () => false },
-      {} as AngularContextManager,
+      angularContextManager,
       { markForCheck: vi.fn() } as unknown as ChangeDetectorRef
     );
     this.paragraph = paragraph;
@@ -74,6 +74,48 @@ const appendOutput = (component: TestParagraph) =>
   component.onParagraphAppendOutput({ noteId: 'note', paragraphId: 'A', index: 0, data: 'second\n' });
 
 describe('ParagraphBase streaming state isolation', () => {
+  it.each([
+    ['top-level', { noteId: 'note', paragraphId: 'A', name: 'top-level-name' }, 'top-level-name'],
+    [
+      'nested',
+      {
+        noteId: 'note',
+        paragraphId: 'A',
+        interpreterGroupId: 'group',
+        angularObject: {
+          name: 'nested-name',
+          object: 'value',
+          noteId: 'note',
+          paragraphId: 'A'
+        }
+      },
+      'nested-name'
+    ]
+  ] as const)('removes an angular object from the %s payload shape', (_shape, payload, expectedName) => {
+    const angularContextManager = { unsetContextValue: vi.fn() } as unknown as AngularContextManager;
+    const component = new TestParagraph(paragraph('A'), angularContextManager);
+
+    component.angularObjectRemove(payload);
+
+    expect(angularContextManager.unsetContextValue).toHaveBeenCalledWith(expectedName, 'A', false);
+    component.ngOnDestroy();
+  });
+
+  it.each([
+    ['a null payload', null],
+    ['a missing name', { noteId: 'note', paragraphId: 'A' }],
+    ['a null angular object', { noteId: 'note', paragraphId: 'A', interpreterGroupId: 'group', angularObject: null }],
+    ['a malformed angular object', { noteId: 'note', paragraphId: 'A', angularObject: { name: 1 } }]
+  ])('ignores angular-object removal with %s', (_description, payload) => {
+    const angularContextManager = { unsetContextValue: vi.fn() } as unknown as AngularContextManager;
+    const component = new TestParagraph(paragraph('A'), angularContextManager);
+
+    component.angularObjectRemove(payload);
+
+    expect(angularContextManager.unsetContextValue).not.toHaveBeenCalled();
+    component.ngOnDestroy();
+  });
+
   it.each(['append', 'update'])('ignores %s from another note with the same paragraph ID', kind => {
     const component = new TestParagraph(paragraph('A'));
     beginOutput(component);
