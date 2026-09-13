@@ -10,6 +10,16 @@
  * limitations under the License.
  */
 
-export * from './interfaces/public-api';
-export * from './message';
-export { getAngularObjectRemoveName } from './message-payload-guards/angular-object';
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+export const getAngularObjectRemoveName = (data: unknown): string | undefined => {
+  if (!isRecord(data)) {
+    return undefined;
+  }
+  if (typeof data.name === 'string') {
+    return data.name;
+  }
+  return isRecord(data.angularObject) && typeof data.angularObject.name === 'string'
+    ? data.angularObject.name
+    : undefined;
+};
