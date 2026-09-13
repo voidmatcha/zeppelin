@@ -615,7 +615,7 @@ export function createPlaywrightFixtureAdapter(fixture) {
   };
 }
 
-export function createNotebookTransportRecorder(metadata) {
+export function createNotebookTransportRecorder(metadata, options = {}) {
   const metadataErrors = [];
   validateFixtureMetadata(metadataErrors, metadata);
   if (metadataErrors.length > 0) {
@@ -650,6 +650,12 @@ export function createNotebookTransportRecorder(metadata) {
       sequence: ++sequence
     };
     records.push(entry);
+    try {
+      options.onRecord?.(entry);
+    } catch (error) {
+      captureFailure ??= error;
+      throw error;
+    }
     return entry;
   };
 
