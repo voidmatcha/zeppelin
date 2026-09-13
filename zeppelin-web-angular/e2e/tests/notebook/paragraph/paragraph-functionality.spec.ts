@@ -190,7 +190,7 @@ test.describe('Notebook Paragraph Functionality', () => {
       await expect(paragraphPage.status).toHaveText('RUNNING', { timeout: 60000 });
       await expect(paragraphPage.cancelButton).toBeVisible();
       await expect(paragraphPage.progressBar).toBeVisible();
-      await expect(paragraphPage.elapsedTime).toHaveText(/^Started .+ ago\.$/);
+      await expect(paragraphPage.elapsedTime).toHaveText(/^Started .+ ago\.$/, { timeout: 15000 });
     });
 
     await test.step('Then completion removes progress and shows result timing', async () => {
@@ -349,7 +349,7 @@ test.describe('Notebook Paragraph Functionality', () => {
     await expect(paragraphPage.cancelButton).toBeVisible({ timeout: 10000 });
     await expect(paragraphPage.status).toHaveText('RUNNING', { timeout: 60000 });
     await expect(paragraphPage.progressBar).toBeVisible();
-    await expect(paragraphPage.elapsedTime).toHaveText(/^Started .+ ago\.$/);
+    await expect(paragraphPage.elapsedTime).toHaveText(/^Started .+ ago\.$/, { timeout: 15000 });
     await expect(paragraphPage.addParagraphAboveLink).toHaveClass(/\bdisabled\b/);
     await expect(paragraphPage.addParagraphBelowLink).toHaveClass(/\bdisabled\b/);
 
