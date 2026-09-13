@@ -21,12 +21,13 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { WebSocketServer, type WebSocket as ServerWebSocket } from 'ws';
 
 import {
   createNotebookTransportRecorder,
   createPlaywrightFixtureAdapter,
+  type FixtureMetadata,
   validateFixture
 } from '../../../core-contract/notebook-transport-fixture.mjs';
 import {
@@ -199,6 +200,134 @@ const waitForRawLifecycleMessage = async (page: import('@playwright/test').Page,
     { op, start }
   );
 
+const fixtureDirectory = join(__dirname, '..', '..', '..', 'core-contract', 'fixtures');
+const loadCommittedFixture = (name: string) => JSON.parse(readFileSync(join(fixtureDirectory, name), 'utf8'));
+
+const liveFixtureDirectory = process.env.ZEPPELIN_E2E_FIXTURE_OUTPUT_DIR;
+const lifecycleStatePath = process.env.ZEPPELIN_E2E_LIFECYCLE_STATE;
+
+const liveFixturePath = (name: string): string => {
+  if (!liveFixtureDirectory) {
+    throw new Error('Live auth capture requires ZEPPELIN_E2E_FIXTURE_OUTPUT_DIR');
+  }
+  return join(liveFixtureDirectory, name);
+};
+
+const withLiveProvenance = (page: Page, metadata: FixtureMetadata): FixtureMetadata => {
+  const sourceCommit = process.env.ZEPPELIN_E2E_SOURCE_COMMIT;
+  const baseCommit = process.env.ZEPPELIN_E2E_BASE_COMMIT;
+  const buildManifestPath = process.env.ZEPPELIN_E2E_BUILD_MANIFEST;
+  if (!sourceCommit) throw new Error('ZEPPELIN_E2E_SOURCE_COMMIT is required for live fixture capture');
+  if (!baseCommit) throw new Error('ZEPPELIN_E2E_BASE_COMMIT is required for live fixture capture');
+  if (!buildManifestPath) throw new Error('ZEPPELIN_E2E_BUILD_MANIFEST is required for live fixture capture');
+  const manifest = JSON.parse(readFileSync(buildManifestPath, 'utf8'));
+  if (manifest.sourceCommit !== sourceCommit) throw new Error('build manifest source does not match capture source');
+  return {
+    ...metadata,
+    provenance: {
+      baseCommit,
+      authentication: metadata.captureMode?.includes('anonymous') ? 'anonymous' : 'authenticated',
+      browser: { name: 'chromium', version: page.context().browser()!.version() },
+      buildManifest: {
+        artifacts: manifest.artifacts,
+        baseCommit: manifest.baseCommit,
+        id: manifest.manifestId,
+        launchTargets: manifest.launchTargets,
+        sourceCommit: manifest.sourceCommit,
+        sourceTree: manifest.sourceTree,
+        version: manifest.version
+      },
+      captureMode: metadata.captureMode ?? 'unspecified',
+      configuration: metadata.configuration ?? { notebookStorage: 'vfs' },
+      interpreter: metadata.interpreter ?? 'not-used',
+      isolation: {
+        logs: '<capture-root>/logs',
+        notebook: '<capture-root>/notebook',
+        pid: '<capture-root>/run',
+        recovery: '<capture-root>/recovery',
+        root: '<capture-root>',
+        searchIndex: '<capture-root>/index'
+      },
+      origin: new URL(page.url()).origin,
+      sourceCommit
+    }
+  };
+};
+
+const captureRestTraffic = async <T>(
+  page: Page,
+  name: string,
+  metadata: FixtureMetadata,
+  traffic: () => Promise<T>
+) => {
+  const recorder = createNotebookTransportRecorder(withLiveProvenance(page, metadata));
+  recorder.install(page);
+  const outcome = await traffic();
+  // Browser fetch() can resolve before Playwright delivers requestfinished/requestfailed.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+  await recorder.stop();
+  const fixture = await recorder.write(liveFixturePath(name));
+  expect(validateFixture(fixture)).toEqual([]);
+  return { fixture, outcome };
+};
+
+const exchangeNotebookMessage = (
+  page: Page,
+  message: {
+    data: Record<string, unknown>;
+    msgId: string;
+    op: string;
+    principal: string;
+    roles: string;
+    ticket: string;
+  },
+  expectedOp: string
+) =>
+  page.evaluate(
+    ({ outbound, targetOp }) =>
+      new Promise<Record<string, unknown>>((resolve, reject) => {
+        const socket = new WebSocket(`${location.origin.replace('http:', 'ws:')}/ws`);
+        const timeout = window.setTimeout(() => {
+          socket.close();
+          reject(new Error(`Notebook WebSocket did not emit ${targetOp}`));
+        }, 10_000);
+        socket.onerror = () => reject(new Error('Notebook WebSocket failed'));
+        socket.onopen = () => socket.send(JSON.stringify(outbound));
+        socket.onmessage = event => {
+          const frame = JSON.parse(event.data as string);
+          if (frame.op === targetOp) {
+            window.clearTimeout(timeout);
+            socket.close();
+            resolve(frame);
+          }
+        };
+      }),
+    { outbound: message, targetOp: expectedOp }
+  );
+
+const sendNotebookMessageWithoutResponse = (
+  page: Page,
+  message: { data: { id: string }; msgId: string; op: string; principal: string; roles: string; ticket: string }
+) =>
+  page.evaluate(
+    outbound =>
+      new Promise<boolean>((resolve, reject) => {
+        const socket = new WebSocket(`${location.origin.replace('http:', 'ws:')}/ws`);
+        const timeout = window.setTimeout(() => {
+          socket.close();
+          resolve(false);
+        }, 750);
+        socket.onerror = () => reject(new Error('Notebook WebSocket failed'));
+        socket.onopen = () => socket.send(JSON.stringify(outbound));
+        socket.onmessage = () => {
+          window.clearTimeout(timeout);
+          socket.close();
+          resolve(true);
+        };
+      }),
+    message
+  );
+
 // Serve a test page without a Zeppelin server.
 const servePage = (page: import('@playwright/test').Page) =>
   page.route('http://fixture.test/', route =>
@@ -206,6 +335,284 @@ const servePage = (page: import('@playwright/test').Page) =>
   );
 
 test.describe('Notebook core transport fixture replay in a browser', () => {
+  test('replays anonymous and authenticated permission response shapes', async ({ page }) => {
+    await servePage(page);
+    await page.goto('http://fixture.test/');
+
+    const anonymousFixture = loadCommittedFixture('anonymous-permissions.json');
+    const anonymousUrl = anonymousFixture.records[0].rest.request.url;
+    const anonymous = createPlaywrightFixtureAdapter(anonymousFixture);
+    await anonymous.install(page);
+    expect(
+      await page.evaluate(async url => {
+        const before = await (await fetch(url, { headers: { accept: 'application/json' } })).json();
+        const updated = await (
+          await fetch(url, {
+            method: 'PUT',
+            headers: { accept: 'application/json', 'content-type': 'application/json' },
+            body: JSON.stringify({ owners: [], readers: [], runners: [], writers: [] })
+          })
+        ).json();
+        const after = await (await fetch(url, { headers: { accept: 'application/json' } })).json();
+        return { after, before, updated };
+      }, anonymousUrl)
+    ).toEqual({
+      before: { status: 'OK', message: '', body: { owners: [], readers: [], runners: [], writers: [] } },
+      updated: { status: 'OK' },
+      after: { status: 'OK', message: '', body: { owners: [], readers: [], runners: [], writers: [] } }
+    });
+    anonymous.assertComplete();
+
+    const authenticatedPage = await page.context().newPage();
+    try {
+      await servePage(authenticatedPage);
+      const authenticatedFixture = loadCommittedFixture('authenticated-permissions.json');
+      const authenticatedUrl = authenticatedFixture.records[0].rest.request.url;
+      const authenticated = createPlaywrightFixtureAdapter(authenticatedFixture);
+      await authenticated.install(authenticatedPage);
+      await authenticatedPage.goto('http://fixture.test/');
+      expect(
+        await authenticatedPage.evaluate(async url => {
+          const permissions = await (await fetch(url, { headers: { accept: 'application/json' } })).json();
+          const updated = await (
+            await fetch(url, {
+              method: 'PUT',
+              headers: { accept: 'application/json', 'content-type': 'application/json' },
+              body: JSON.stringify({
+                owners: ['owner-user'],
+                readers: ['reader-role'],
+                runners: ['runner-role'],
+                writers: ['writer-role']
+              })
+            })
+          ).json();
+          return { permissions, updated };
+        }, authenticatedUrl)
+      ).toEqual({
+        permissions: {
+          status: 'OK',
+          message: '',
+          body: {
+            owners: ['<owners>'],
+            readers: [],
+            runners: [],
+            writers: []
+          }
+        },
+        updated: { status: 'OK' }
+      });
+      authenticated.assertComplete();
+    } finally {
+      await authenticatedPage.close();
+    }
+  });
+
+  test('replays the captured host-owned REST and WebSocket outcomes', async ({ browser }) => {
+    const rest401Page = await browser.newPage();
+    const rest405Page = await browser.newPage();
+    const authInfoPage = await browser.newPage();
+    const errorInfoPage = await browser.newPage();
+    try {
+      await servePage(rest401Page);
+      const rest401 = createPlaywrightFixtureAdapter(loadCommittedFixture('rest-401.json'));
+      await rest401.install(rest401Page);
+      await rest401Page.goto('http://fixture.test/');
+      expect(
+        await rest401Page.evaluate(async () => (await fetch('/api/login/logout', { method: 'POST' })).status)
+      ).toBe(401);
+      rest401.assertComplete();
+
+      await servePage(rest405Page);
+      const rest405 = createPlaywrightFixtureAdapter(loadCommittedFixture('rest-405.json'));
+      await rest405.install(rest405Page);
+      await rest405Page.goto('http://fixture.test/');
+      expect(
+        await rest405Page.evaluate(async () => {
+          const [nonLogout, logoutUrl] = await Promise.all([
+            fetch('/api/login', { method: 'DELETE' }),
+            fetch('/api/login/logout', { method: 'HEAD' })
+          ]);
+          return [nonLogout.status, logoutUrl.status];
+        })
+      ).toEqual([405, 405]);
+      rest405.assertComplete();
+
+      const replayFrame = async (targetPage: Page, fixtureName: string) => {
+        await servePage(targetPage);
+        const fixture = loadCommittedFixture(fixtureName);
+        const outbound = JSON.parse(
+          fixture.records.find(
+            (record: { websocket?: { direction: string } }) => record.websocket?.direction === 'send'
+          ).websocket.payloadText
+        );
+        const adapter = createPlaywrightFixtureAdapter(fixture);
+        await adapter.install(targetPage);
+        await targetPage.goto('http://fixture.test/');
+        const frame = await targetPage.evaluate(
+          message =>
+            new Promise<Record<string, unknown>>((resolve, reject) => {
+              const socket = new WebSocket('ws://fixture.test/ws');
+              socket.onerror = () => reject(new Error('fixture WebSocket failed'));
+              socket.onopen = () =>
+                socket.send(
+                  JSON.stringify({
+                    ...message,
+                    principal: 'runtime-user',
+                    roles: '["runtime-role"]',
+                    ticket: 'runtime-ticket',
+                    msgId: 'runtime-message-id'
+                  })
+                );
+              socket.onmessage = event => {
+                socket.close();
+                resolve(JSON.parse(event.data as string));
+              };
+            }),
+          outbound
+        );
+        adapter.assertComplete();
+        return frame;
+      };
+
+      const authInfo = await replayFrame(authInfoPage, 'websocket-auth-info.json');
+      expect(authInfo).toEqual(expect.objectContaining({ op: 'AUTH_INFO' }));
+      expect(authInfo).not.toHaveProperty('msgId');
+      const errorInfo = await replayFrame(errorInfoPage, 'websocket-error-info.json');
+      expect(errorInfo).toEqual(expect.objectContaining({ op: 'ERROR_INFO' }));
+    } finally {
+      await Promise.all([rest401Page.close(), rest405Page.close(), authInfoPage.close(), errorInfoPage.close()]);
+    }
+  });
+
+  test('replays every captured session lifecycle and asserts its browser observation', async ({ browser }) => {
+    const openReplay = async (fixtureName: string) => {
+      const page = await browser.newPage();
+      await servePage(page);
+      const fixture = loadCommittedFixture(fixtureName);
+      const adapter = createPlaywrightFixtureAdapter(fixture);
+      await adapter.install(page);
+      await page.goto('http://fixture.test/');
+      return { adapter, fixture, page };
+    };
+    const outbound = (fixture: { records: Array<{ websocket?: { direction: string; payloadText: string } }> }) =>
+      JSON.parse(fixture.records.find(record => record.websocket?.direction === 'send')!.websocket!.payloadText);
+
+    const httpOnly = await openReplay('session-http-only-expiry.json');
+    try {
+      const status = await httpOnly.page.evaluate(async () => (await fetch('/api/login', { method: 'DELETE' })).status);
+      expect(status).toBe(405);
+      httpOnly.adapter.assertComplete();
+    } finally {
+      await httpOnly.page.close();
+    }
+
+    const existing = await openReplay('session-http-expiry-existing-ticket.json');
+    try {
+      const observed = await existing.page.evaluate(
+        ({ message }) =>
+          new Promise<{ operations: string[]; status: number }>(async (resolve, reject) => {
+            const status = await (await fetch('/api/login', { method: 'DELETE' })).status;
+            const operations: string[] = [];
+            const socket = new WebSocket('ws://fixture.test/ws');
+            socket.onerror = () => reject(new Error('fixture WebSocket failed'));
+            socket.onopen = () =>
+              socket.send(
+                JSON.stringify({
+                  ...message,
+                  principal: 'runtime-user',
+                  roles: '["runtime-role"]',
+                  ticket: 'runtime-ticket',
+                  msgId: 'runtime-message-id'
+                })
+              );
+            socket.onmessage = event => {
+              const operation = JSON.parse(event.data as string).op;
+              operations.push(operation);
+              if (operation === 'NOTE') {
+                socket.close();
+                resolve({ operations, status });
+              }
+            };
+          }),
+        { message: outbound(existing.fixture) }
+      );
+      expect(observed).toEqual({ operations: ['COLLABORATIVE_MODE_STATUS', 'NOTE'], status: 405 });
+      existing.adapter.assertComplete();
+    } finally {
+      await existing.page.close();
+    }
+
+    const removed = await openReplay('session-ticket-removed.json');
+    try {
+      const observed = await removed.page.evaluate(
+        ({ message }) =>
+          new Promise<{ operations: string[]; status: number }>(async (resolve, reject) => {
+            const status = await (await fetch('/api/login/logout', { method: 'POST' })).status;
+            const operations: string[] = [];
+            const socket = new WebSocket('ws://fixture.test/ws');
+            socket.onerror = () => reject(new Error('fixture WebSocket failed'));
+            socket.onopen = () =>
+              socket.send(
+                JSON.stringify({
+                  ...message,
+                  principal: 'runtime-user',
+                  roles: '["runtime-role"]',
+                  ticket: 'runtime-ticket',
+                  msgId: 'runtime-message-id'
+                })
+              );
+            socket.onmessage = event => operations.push(JSON.parse(event.data as string).op);
+            window.setTimeout(() => {
+              socket.close();
+              resolve({ operations, status });
+            }, 250);
+          }),
+        { message: outbound(removed.fixture) }
+      );
+      expect(observed).toEqual({ operations: [], status: 401 });
+      removed.adapter.assertComplete();
+    } finally {
+      await removed.page.close();
+    }
+
+    const restarted = await openReplay('session-server-restart.json');
+    try {
+      const observed = await restarted.page.evaluate(
+        ({ message }) =>
+          new Promise<{ loginStatus: number; operation: string }>(async (resolve, reject) => {
+            const loginStatus = await (
+              await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                body: 'userName=runtime-user&password=runtime-pass'
+              })
+            ).status;
+            const socket = new WebSocket('ws://fixture.test/ws');
+            socket.onerror = () => reject(new Error('fixture WebSocket failed'));
+            socket.onopen = () =>
+              socket.send(
+                JSON.stringify({
+                  ...message,
+                  principal: 'runtime-user',
+                  roles: '["runtime-role"]',
+                  ticket: 'old-runtime-ticket',
+                  msgId: 'runtime-message-id'
+                })
+              );
+            socket.onmessage = event => {
+              socket.close();
+              resolve({ loginStatus, operation: JSON.parse(event.data as string).op });
+            };
+          }),
+        { message: outbound(restarted.fixture) }
+      );
+      expect(observed).toEqual({ loginStatus: 200, operation: 'SESSION_LOGOUT' });
+      restarted.adapter.assertComplete();
+    } finally {
+      await restarted.page.close();
+    }
+  });
+
   for (const notebookPath of ['/ws', '/ws?session=notebook']) {
     test(`replays only the exact notebook WebSocket pathname at ${notebookPath}`, async ({ page }) => {
       const adapter = createPlaywrightFixtureAdapter({
@@ -477,7 +884,469 @@ test.describe('Notebook core transport capture auth wiring', () => {
 test.describe('Notebook core transport capture', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
 
+  test('captures anonymous ACL GET and PUT through the isolated server', { tag: '@live' }, async ({ page }) => {
+    test.skip(liveCaptureMode !== 'anonymous', 'This capture belongs to capture-server.sh anonymous mode');
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    const { noteId } = await createNotebookViaRest(page, `${E2E_TEST_FOLDER}/AnonymousAclCapture_${Date.now()}`);
+    const recorderPage = await page.context().newPage();
+    try {
+      await recorderPage.goto('/#/');
+      await waitForZeppelinReady(recorderPage);
+      const { fixture, outcome } = await captureRestTraffic(
+        recorderPage,
+        'anonymous-permissions.json',
+        {
+          scenario: 'Read and update notebook permissions in anonymous mode',
+          owner: 'zeppelin-web-angular',
+          captureMode: 'anonymous',
+          captureSource: 'capture-server.sh',
+          coveredOperations: ['GET /api/notebook/{noteId}/permissions', 'PUT /api/notebook/{noteId}/permissions'],
+          knownExclusions: []
+        },
+        () =>
+          recorderPage.evaluate(async id => {
+            const get = async () => {
+              const response = await fetch(`/api/notebook/${id}/permissions`, {
+                headers: { accept: 'application/json' }
+              });
+              return { body: await response.json(), status: response.status };
+            };
+            const before = await get();
+            const putResponse = await fetch(`/api/notebook/${id}/permissions`, {
+              method: 'PUT',
+              headers: { accept: 'application/json', 'content-type': 'application/json' },
+              body: JSON.stringify({ owners: [], readers: [], runners: [], writers: [] })
+            });
+            const put = { body: await putResponse.json(), status: putResponse.status };
+            const after = await get();
+            return { before, put, after };
+          }, noteId)
+      );
+
+      expect(outcome).toEqual({
+        before: { body: expect.objectContaining({ status: 'OK' }), status: 200 },
+        put: { body: expect.objectContaining({ status: 'OK' }), status: 200 },
+        after: { body: expect.objectContaining({ status: 'OK' }), status: 200 }
+      });
+      expect(fixture.metadata?.knownExclusions).toEqual([]);
+    } finally {
+      await recorderPage.close();
+      await page.request.delete(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+    }
+  });
+
+  test(
+    'captures authenticated ACL and reproducible auth/session outcomes through the isolated server',
+    { tag: '@live' },
+    async ({ browser, page }) => {
+      test.skip(liveCaptureMode !== 'auth', 'This capture belongs to capture-server.sh auth mode');
+      const credentials = Object.values(await LoginTestUtil.getTestCredentials()).filter(
+        credential => credential.username && credential.password
+      );
+      // The isolated helper copies the template; use its first credential as primary.
+      const primaryCredential = credentials[0];
+      const secondaryCredential = credentials.find(credential => credential.username !== primaryCredential?.username);
+      const logoutCredential = credentials.find(
+        credential =>
+          credential.username !== primaryCredential?.username && credential.username !== secondaryCredential?.username
+      );
+      expect(primaryCredential).toBeDefined();
+      expect(secondaryCredential).toBeDefined();
+      expect(logoutCredential).toBeDefined();
+      await page.goto('/api/version');
+      await page.evaluate(async credential => {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: `userName=${encodeURIComponent(credential.username)}&password=${encodeURIComponent(credential.password)}`
+        });
+        if (!response.ok) throw new Error(`Capture login failed with ${response.status}`);
+      }, primaryCredential!);
+      const primaryTicketResponse = await page.evaluate(async () => (await fetch('/api/security/ticket')).json());
+      const primaryTicket = primaryTicketResponse.body ?? primaryTicketResponse;
+      const primary = primaryTicket.principal as string;
+      expect(primary).toBe(primaryCredential!.username);
+      const { noteId } = await createNotebookViaRest(page, `${E2E_TEST_FOLDER}/AuthenticatedAclCapture_${Date.now()}`);
+      const openedContexts: Array<import('@playwright/test').BrowserContext> = [];
+      try {
+        const recorderPage = await page.context().newPage();
+        try {
+          await recorderPage.goto('/api/version');
+          const { outcome } = await captureRestTraffic(
+            recorderPage,
+            'authenticated-permissions.json',
+            {
+              scenario: 'Read and update notebook permissions in authenticated mode',
+              owner: 'zeppelin-web-angular',
+              captureMode: 'authenticated',
+              captureSource: 'capture-server.sh',
+              authorizationBasis: 'server principal and associated roles',
+              coveredOperations: ['GET /api/notebook/{noteId}/permissions', 'PUT /api/notebook/{noteId}/permissions'],
+              knownExclusions: []
+            },
+            () =>
+              recorderPage.evaluate(
+                async ({ id, owner }) => {
+                  const getResponse = await fetch(`/api/notebook/${id}/permissions`, {
+                    headers: { accept: 'application/json' }
+                  });
+                  const before = { body: await getResponse.json(), status: getResponse.status };
+                  const putResponse = await fetch(`/api/notebook/${id}/permissions`, {
+                    method: 'PUT',
+                    headers: { accept: 'application/json', 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      owners: [owner],
+                      readers: [owner],
+                      runners: [owner],
+                      writers: [owner]
+                    })
+                  });
+                  const put = { body: await putResponse.json(), status: putResponse.status };
+                  return { before, put };
+                },
+                { id: noteId, owner: primary }
+              )
+          );
+          expect(outcome).toEqual({
+            before: { body: expect.objectContaining({ status: 'OK' }), status: 200 },
+            put: { body: expect.objectContaining({ status: 'OK' }), status: 200 }
+          });
+        } finally {
+          await recorderPage.close();
+        }
+
+        const baseURL = process.env.PLAYWRIGHT_BASE_URL!;
+        const anonymousContext = await browser.newContext({ baseURL });
+        openedContexts.push(anonymousContext);
+        const anonymousPage = await anonymousContext.newPage();
+        await anonymousPage.goto('/api/version');
+        await anonymousPage.evaluate(async credential => {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: `userName=${encodeURIComponent(credential.username)}&password=${encodeURIComponent(credential.password)}`
+          });
+          if (!response.ok) throw new Error(`Capture login failed with ${response.status}`);
+        }, logoutCredential!);
+        const unauthorized = await captureRestTraffic(
+          anonymousPage,
+          'rest-401.json',
+          {
+            scenario: 'Explicit HTTP logout response requiring authorization-header cleanup',
+            owner: 'zeppelin-web-angular shell',
+            captureMode: 'authenticated server explicit logout',
+            captureSource: 'capture-server.sh',
+            coveredOperations: ['REST_401'],
+            knownExclusions: [
+              'The isolated form-authentication realm emits 401 without Location; a 401 carrying Location requires a redirecting authentication realm and is covered by AppHttpInterceptor unit tests'
+            ]
+          },
+          () =>
+            anonymousPage.evaluate(async () => {
+              const response = await fetch('/api/login/logout', { method: 'POST' });
+              return { location: response.headers.get('location'), status: response.status };
+            })
+        );
+        expect(unauthorized.outcome).toEqual({ location: null, status: 401 });
+
+        const expiredContext = await browser.newContext({ baseURL });
+        openedContexts.push(expiredContext);
+        const expiredPage = await expiredContext.newPage();
+        await expiredPage.goto('/api/version');
+        await expiredPage.evaluate(async credential => {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: `userName=${encodeURIComponent(credential.username)}&password=${encodeURIComponent(credential.password)}`
+          });
+          if (!response.ok) throw new Error(`Capture login failed with ${response.status}`);
+        }, logoutCredential!);
+        const expired = await captureRestTraffic(
+          expiredPage,
+          'rest-405.json',
+          {
+            scenario: 'Non-logout and logout-URL REST method-not-allowed responses',
+            owner: 'zeppelin-web-angular shell',
+            captureMode: 'authenticated server method constraints',
+            captureSource: 'capture-server.sh',
+            coveredOperations: ['REST_405_NON_LOGOUT', 'REST_405_LOGOUT_URL'],
+            knownExclusions: [
+              'A response URL is always present in browser transport; the missing-response-URL guard is covered by AppHttpInterceptor unit tests'
+            ]
+          },
+          () =>
+            expiredPage.evaluate(async () => {
+              const nonLogout = await fetch('/api/login', { method: 'DELETE' });
+              const logoutUrl = await fetch('/api/login/logout', { method: 'HEAD' });
+              return { logoutUrlStatus: logoutUrl.status, nonLogoutStatus: nonLogout.status };
+            })
+        );
+        expect(expired.outcome).toEqual({ logoutUrlStatus: 405, nonLogoutStatus: 405 });
+
+        const httpOnlyPage = await page.context().newPage();
+        await httpOnlyPage.goto('/api/version');
+        const httpOnly = await captureRestTraffic(
+          httpOnlyPage,
+          'session-http-only-expiry.json',
+          {
+            scenario: 'HTTP-only session-expiry signal',
+            owner: 'zeppelin-web-angular shell session foundation',
+            captureMode: 'authenticated server method constraint',
+            captureSource: 'capture-server.sh',
+            lifecycle: 'authenticated request receives the host session-expiry status without a WebSocket command',
+            coveredOperations: ['REST_405'],
+            knownExclusions: []
+          },
+          () => httpOnlyPage.evaluate(async () => (await fetch('/api/login', { method: 'DELETE' })).status)
+        );
+        expect(httpOnly.outcome).toBe(405);
+        expect(httpOnly.fixture.records.some(record => record.kind === 'websocket')).toBe(false);
+        await httpOnlyPage.close();
+
+        const existingTicketPage = await page.context().newPage();
+        await existingTicketPage.goto('/api/version');
+        const existingTicketRecorder = createNotebookTransportRecorder(
+          withLiveProvenance(existingTicketPage, {
+            scenario: 'HTTP expiry followed by a command on an existing WebSocket ticket',
+            owner: 'zeppelin-web-angular shell session foundation',
+            captureMode: 'authenticated server method constraint with existing ticket',
+            captureSource: 'capture-server.sh',
+            lifecycle: 'REST 405 occurs before GET_NOTE using the ticket that remains valid in TicketContainer',
+            coveredOperations: ['REST_405', 'GET_NOTE', 'NOTE'],
+            knownExclusions: []
+          })
+        );
+        existingTicketRecorder.install(existingTicketPage);
+        const existingTicketStatus = await existingTicketPage.evaluate(
+          async () => (await fetch('/api/login', { method: 'DELETE' })).status
+        );
+        await existingTicketPage.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+        const existingTicketReply = await exchangeNotebookMessage(
+          existingTicketPage,
+          {
+            op: 'GET_NOTE',
+            data: { id: noteId },
+            principal: primaryTicket.principal,
+            roles: primaryTicket.roles,
+            ticket: primaryTicket.ticket,
+            msgId: 'existing-ticket-capture'
+          },
+          'NOTE'
+        );
+        await existingTicketRecorder.stop();
+        const existingTicketFixture = await existingTicketRecorder.write(
+          liveFixturePath('session-http-expiry-existing-ticket.json')
+        );
+        expect(existingTicketStatus).toBe(405);
+        expect(existingTicketReply.op).toBe('NOTE');
+        expect(validateFixture(existingTicketFixture)).toEqual([]);
+        await existingTicketPage.close();
+
+        await anonymousPage.evaluate(async credential => {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: `userName=${encodeURIComponent(credential.username)}&password=${encodeURIComponent(credential.password)}`
+          });
+          if (!response.ok) throw new Error(`Capture login failed with ${response.status}`);
+        }, logoutCredential!);
+        const removedTicketResponse = await anonymousPage.evaluate(async () =>
+          (await fetch('/api/security/ticket')).json()
+        );
+        const removedTicket = removedTicketResponse.body ?? removedTicketResponse;
+        const removedTicketRecorder = createNotebookTransportRecorder(
+          withLiveProvenance(anonymousPage, {
+            scenario: 'Explicit logout removes a ticket before another WebSocket command',
+            owner: 'zeppelin-web-angular shell session foundation',
+            captureMode: 'authenticated explicit logout',
+            captureSource: 'capture-server.sh',
+            lifecycle: 'POST logout removes the principal from TicketContainer before GET_NOTE uses the old ticket',
+            coveredOperations: ['LOGOUT', 'GET_NOTE', 'NO_WEBSOCKET_RESPONSE'],
+            knownExclusions: []
+          })
+        );
+        removedTicketRecorder.install(anonymousPage);
+        const removedTicketLogoutStatus = await anonymousPage.evaluate(async () => {
+          const response = await fetch('/api/login/logout', { method: 'POST' });
+          await response.text();
+          return response.status;
+        });
+        await anonymousPage.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+        const removedTicketReceived = await sendNotebookMessageWithoutResponse(anonymousPage, {
+          op: 'GET_NOTE',
+          data: { id: noteId },
+          principal: removedTicket.principal,
+          roles: removedTicket.roles,
+          ticket: removedTicket.ticket,
+          msgId: 'removed-ticket-capture'
+        });
+        await removedTicketRecorder.stop();
+        const removedTicketFixture = await removedTicketRecorder.write(liveFixturePath('session-ticket-removed.json'));
+        expect(removedTicketLogoutStatus).toBe(401);
+        expect(removedTicketReceived).toBe(false);
+        expect(removedTicketFixture.records.filter(record => record.websocket?.direction === 'receive')).toHaveLength(
+          0
+        );
+        expect(validateFixture(removedTicketFixture)).toEqual([]);
+
+        if (!lifecycleStatePath) {
+          throw new Error('Auth capture requires ZEPPELIN_E2E_LIFECYCLE_STATE for the restart phase');
+        }
+        writeFileSync(
+          lifecycleStatePath,
+          JSON.stringify({
+            principal: primaryTicket.principal,
+            roles: primaryTicket.roles,
+            ticket: primaryTicket.ticket
+          }),
+          { mode: 0o600 }
+        );
+
+        const secondaryContext = await browser.newContext({ baseURL });
+        openedContexts.push(secondaryContext);
+        const secondaryPage = await secondaryContext.newPage();
+        await secondaryPage.goto('/api/version');
+        const secondaryTicketResponse = await secondaryPage.evaluate(async credential => {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: `userName=${encodeURIComponent(credential.username)}&password=${encodeURIComponent(credential.password)}`
+          });
+          return response.json();
+        }, secondaryCredential!);
+        const secondaryTicket = secondaryTicketResponse.body ?? secondaryTicketResponse;
+        expect(secondaryTicket.principal).toBe(secondaryCredential!.username);
+
+        const authRecorder = createNotebookTransportRecorder(
+          withLiveProvenance(secondaryPage, {
+            scenario: 'Forbidden notebook WebSocket command',
+            owner: 'zeppelin-web-angular shell',
+            captureMode: 'authenticated secondary user',
+            captureSource: 'capture-server.sh',
+            coveredOperations: ['AUTH_INFO'],
+            knownExclusions: []
+          })
+        );
+        authRecorder.install(secondaryPage);
+        const authInfo = await exchangeNotebookMessage(
+          secondaryPage,
+          {
+            op: 'GET_NOTE',
+            data: { id: noteId },
+            principal: secondaryTicket.principal,
+            roles: secondaryTicket.roles,
+            ticket: secondaryTicket.ticket,
+            msgId: 'auth-info-capture'
+          },
+          'AUTH_INFO'
+        );
+        await authRecorder.stop();
+        const authFixture = await authRecorder.write(liveFixturePath('websocket-auth-info.json'));
+        expect(authInfo.op).toBe('AUTH_INFO');
+        expect(authInfo.msgId).toBeUndefined();
+        expect(validateFixture(authFixture)).toEqual([]);
+
+        const errorRecorder = createNotebookTransportRecorder(
+          withLiveProvenance(page, {
+            scenario: 'Checkpoint with no revision emits a global WebSocket error',
+            owner: 'zeppelin-web-angular shell',
+            captureMode: 'authenticated primary user',
+            captureSource: 'capture-server.sh',
+            coveredOperations: ['ERROR_INFO'],
+            knownExclusions: []
+          })
+        );
+        errorRecorder.install(page);
+        const errorInfo = await exchangeNotebookMessage(
+          page,
+          {
+            op: 'CHECKPOINT_NOTE',
+            data: { commitMessage: 'no changes', noteId },
+            principal: primaryTicket.principal,
+            roles: primaryTicket.roles,
+            ticket: primaryTicket.ticket,
+            msgId: 'error-info-capture'
+          },
+          'ERROR_INFO'
+        );
+        await errorRecorder.stop();
+        const errorFixture = await errorRecorder.write(liveFixturePath('websocket-error-info.json'));
+        expect(errorInfo.op).toBe('ERROR_INFO');
+        expect(validateFixture(errorFixture)).toEqual([]);
+      } finally {
+        for (const context of openedContexts) await context.close();
+        await page.request.delete(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+      }
+    }
+  );
+
+  test('captures an old ticket after the isolated server restarts', { tag: '@live' }, async ({ page }) => {
+    test.skip(liveCaptureMode !== 'auth-restart', 'This capture belongs to the restarted auth server phase');
+    if (!lifecycleStatePath) {
+      throw new Error('Restart capture requires ZEPPELIN_E2E_LIFECYCLE_STATE');
+    }
+    const oldTicket = JSON.parse(readFileSync(lifecycleStatePath, 'utf8')) as {
+      principal: string;
+      roles: string;
+      ticket: string;
+    };
+    rmSync(lifecycleStatePath, { force: true });
+    const credential = Object.values(await LoginTestUtil.getTestCredentials()).find(
+      candidate => candidate.username === oldTicket.principal
+    );
+    expect(credential).toBeDefined();
+    await page.goto('/api/version');
+
+    const recorder = createNotebookTransportRecorder(
+      withLiveProvenance(page, {
+        scenario: 'Old WebSocket ticket after an isolated server restart',
+        owner: 'zeppelin-web-angular shell session foundation',
+        captureMode: 'authenticated restarted server',
+        capturePhase: 'after-server-restart',
+        captureSource: 'capture-server.sh',
+        lifecycle:
+          'the same principal logs in after restart to issue a replacement ticket before sending the old ticket',
+        coveredOperations: ['LOGIN_REPLACEMENT_TICKET', 'GET_NOTE_WITH_OLD_TICKET', 'SESSION_LOGOUT'],
+        knownExclusions: []
+      })
+    );
+    recorder.install(page);
+    await page.evaluate(async selected => {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: `userName=${encodeURIComponent(selected.username)}&password=${encodeURIComponent(selected.password)}`
+      });
+      if (!response.ok) throw new Error(`Capture login failed with ${response.status}`);
+      await response.text();
+    }, credential!);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    const replacementTicketResponse = await page.evaluate(async () => (await fetch('/api/security/ticket')).json());
+    const replacementTicket = replacementTicketResponse.body ?? replacementTicketResponse;
+    expect(replacementTicket.principal).toBe(oldTicket.principal);
+    expect(replacementTicket.ticket).not.toBe(oldTicket.ticket);
+    const sessionLogout = await exchangeNotebookMessage(
+      page,
+      {
+        op: 'GET_NOTE',
+        data: { id: 'restart-lifecycle-probe' },
+        principal: oldTicket.principal,
+        roles: oldTicket.roles,
+        ticket: oldTicket.ticket,
+        msgId: 'server-restart-capture'
+      },
+      'SESSION_LOGOUT'
+    );
+    await recorder.stop();
+    const fixture = await recorder.write(liveFixturePath('session-server-restart.json'));
+    expect(sessionLogout.op).toBe('SESSION_LOGOUT');
+    expect(fixture.metadata?.capturePhase).toBe('after-server-restart');
+    expect(validateFixture(fixture)).toEqual([]);
+  });
+
   test('records notebook REST and WebSocket traffic from a real Zeppelin page', { tag: '@live' }, async ({ page }) => {
+    test.skip(Boolean(liveCaptureMode), 'Dedicated ACL/auth capture tests own this isolated-server run');
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);

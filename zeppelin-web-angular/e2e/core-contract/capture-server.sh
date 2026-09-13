@@ -263,6 +263,8 @@ start_zeppelin() {
   # different notebook dir or bind address) would silently override the isolation this script
   # promises. This script never writes that file itself, so any copy here is stale.
   rm -f "${capture_root}/conf/zeppelin-env.sh"
+  cp "${build_root}/conf/log4j.properties" "${capture_root}/conf/log4j.properties"
+  cp "${build_root}/conf/log4j.properties2" "${capture_root}/conf/log4j.properties2"
   cp "${build_root}/conf/log4j2.properties" "${capture_root}/conf/log4j2.properties"
   cp "${build_root}/conf/zeppelin-site.xml.template" "${capture_root}/conf/zeppelin-site.xml"
   if [[ "${capture_mode}" == "auth" ]]; then
