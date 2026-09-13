@@ -312,6 +312,10 @@ export class NotebookParagraphCodeEditorComponent
       matchBrackets: 'always',
       wordWrap: 'on',
       inlineSuggest: { enabled: true },
+      // Monaco's buffer word suggestions auto-open asynchronously; a focused entry makes
+      // Enter accept the word instead of inserting a newline, dropping a line mid-edit.
+      // Interpreter completions (Ctrl+Space) and inline suggestions stay enabled.
+      wordBasedSuggestions: 'off',
       scrollbar: {
         handleMouseWheel: false,
         alwaysConsumeMouseWheel: false
