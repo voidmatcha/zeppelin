@@ -22,6 +22,7 @@ const { tmpdir } = require('node:os');
 const path = require('node:path');
 
 const live = process.env.ZEPPELIN_E2E_LIVE_CAPTURE === '1';
+const dedicatedCapture = Boolean(process.env.ZEPPELIN_E2E_CAPTURE_MODE);
 if (live && !process.env.PLAYWRIGHT_BASE_URL) {
   throw new Error('Live capture requires PLAYWRIGHT_BASE_URL pointing to the isolated capture server');
 }
@@ -48,7 +49,9 @@ module.exports = defineConfig({
     baseURL: live ? process.env.PLAYWRIGHT_BASE_URL : 'http://fixture.test'
   },
   projects: [
-    ...(live ? [{ name: 'setup', testMatch: /global\.setup\.ts/, metadata: { authStatePath } }] : []),
+    ...(live && !dedicatedCapture
+      ? [{ name: 'setup', testMatch: /global\.setup\.ts/, metadata: { authStatePath } }]
+      : []),
     {
       name: 'chromium',
       testMatch: '**/tests/notebook/core-contract/*.spec.ts',
@@ -56,9 +59,9 @@ module.exports = defineConfig({
       grepInvert: live ? undefined : /@live/,
       use: {
         ...devices['Desktop Chrome'],
-        ...(live ? { storageState: authStatePath } : {})
+        ...(live && !dedicatedCapture ? { storageState: authStatePath } : {})
       },
-      dependencies: live ? ['setup'] : []
+      dependencies: live && !dedicatedCapture ? ['setup'] : []
     }
   ]
 });

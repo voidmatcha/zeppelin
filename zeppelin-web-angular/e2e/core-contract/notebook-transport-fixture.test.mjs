@@ -29,6 +29,7 @@ import {
   normalizeFixtureRecord,
   createPlaywrightFixtureAdapter,
   fixtureVersion,
+  isCoreContractRestUrl,
   isNotebookRestUrl,
   parseRestBody,
   validateFixture,
@@ -424,6 +425,52 @@ test('recorder redacts WebSocket JSON payload secrets before writing fixture fil
   assert.equal(fixture.records[0].websocket.payloadText.includes('"noteId":"note-a"'), true);
 });
 
+test('recorder redacts identities embedded in server AUTH_INFO text', async () => {
+  const page = new EventEmitter();
+  const socket = new EventEmitter();
+  socket.url = () => 'http://127.0.0.1:8080/ws';
+  const recorder = createNotebookTransportRecorder(fixtureMetadata());
+
+  recorder.install(page);
+  page.emit('websocket', socket);
+  socket.emit('framereceived', {
+    payload: JSON.stringify({
+      op: 'AUTH_INFO',
+      data: {
+        info: 'Insufficient privileges.\nAllowed users or roles: [alice]\nBut the user bob belongs to: [bob, analysts]'
+      }
+    })
+  });
+  await recorder.stop();
+
+  const payload = recorder.snapshot().records[0].websocket.payloadText;
+  assert.doesNotMatch(payload, /alice|bob|analysts/);
+  assert.match(payload, /Allowed users or roles: \[<redacted>\]/);
+});
+
+test('recorder retains a header-only empty response when Chromium reports ERR_ABORTED', async () => {
+  const page = new EventEmitter();
+  const recorder = createNotebookTransportRecorder(fixtureMetadata());
+  const sourceRequest = request('DELETE', 'http://127.0.0.1:8080/api/login');
+
+  recorder.install(page);
+  page.emit('request', sourceRequest);
+  page.emit(
+    'response',
+    response(sourceRequest, 405, () => Promise.reject(new Error('body unavailable')), { 'content-length': '0' })
+  );
+  page.emit('requestfailed', sourceRequest);
+  await recorder.stop();
+
+  assert.deepEqual(recorder.snapshot().records[1].rest, {
+    bodyRaw: '',
+    direction: 'response',
+    headers: {},
+    request: { bodyRaw: '', headers: { accept: 'application/json' }, method: 'DELETE', url: '/api/login' },
+    status: 405
+  });
+});
+
 test('a recorder refuses a second install and stops listening when it stops', async () => {
   const page = new EventEmitter();
   const recorder = createNotebookTransportRecorder(fixtureMetadata());
@@ -636,6 +683,13 @@ test('notebook REST predicate excludes unrelated API traffic', async () => {
   assert.equal(isNotebookRestUrl('http://127.0.0.1:8080/api/notebook/note-a'), true);
   assert.equal(isNotebookRestUrl('http://127.0.0.1:8080/api/security/ticket'), false);
   assert.equal(isNotebookRestUrl('http://127.0.0.1:8080/api/configurations/all'), false);
+});
+
+test('core contract REST predicate includes authentication outcomes without broad API capture', () => {
+  assert.equal(isCoreContractRestUrl('http://127.0.0.1:8080/api/notebook/note-a'), true);
+  assert.equal(isCoreContractRestUrl('http://127.0.0.1:8080/api/login'), true);
+  assert.equal(isCoreContractRestUrl('http://127.0.0.1:8080/api/login/logout'), true);
+  assert.equal(isCoreContractRestUrl('http://127.0.0.1:8080/api/security/ticket'), false);
 });
 
 test('REST body parsing preserves raw non-JSON and parses JSON-looking bodies for normalization', () => {
