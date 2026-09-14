@@ -21,6 +21,7 @@ import {
 import { addPageAnnotationBeforeEach, createTestNotebook, PAGES, waitForZeppelinReady } from '../../../utils';
 
 const PERSISTENCE_TIMEOUT_MS = 15000;
+const INITIAL_PARAGRAPH_TEXT = 'E2E save baseline';
 
 test.describe('Notebook editor save timing', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
@@ -39,10 +40,18 @@ test.describe('Notebook editor save timing', () => {
     await test.step('Given a disposable notebook with an editable paragraph', async () => {
       await page.goto('/#/');
       await waitForZeppelinReady(page);
-      ({ noteId } = await createTestNotebook(page));
-      await page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
+      const notebook = await createTestNotebook(page);
+      noteId = notebook.noteId;
+      await page.goto(`/#/notebook/${notebook.noteId}`);
       await expect(notebookPage.firstParagraph).toBeVisible({ timeout: 30000 });
       await notebookPage.waitForEditorRendered(0);
+      await notebookPage.setCodeEditorContent(INITIAL_PARAGRAPH_TEXT);
+      await expect.poll(() => notebookPage.getParagraphTextByIndex(0)).toBe(INITIAL_PARAGRAPH_TEXT);
+      await expect
+        .poll(() => notebookPage.getCodeEditorContentByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS })
+        .toBe(INITIAL_PARAGRAPH_TEXT);
+      await expect(notebookPage.firstEditorInput).toBeFocused();
+      expect(commitProbe.commitCount()).toBe(0);
     });
   });
 
@@ -54,13 +63,15 @@ test.describe('Notebook editor save timing', () => {
   });
 
   test('persists the latest paragraph text after typing stops', { tag: '@NB-PARITY-050' }, async ({ page }) => {
-    const text = '%md\nIdle save keeps the latest text';
+    const text = '%md Idle save keeps the latest text';
 
     await test.step('When typing stops with the editor still focused', async () => {
-      await notebookPage.tryFocusCodeEditor();
       await notebookPage.pressSelectAll();
-      await page.keyboard.type(text);
+      await page.keyboard.insertText(text);
       await expect(notebookPage.firstEditorInput).toBeFocused();
+      await expect
+        .poll(() => notebookPage.getCodeEditorContentByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS })
+        .toBe(text);
     });
 
     await test.step('Then an automatic save persists the text without a blur or run action', async () => {
@@ -82,15 +93,18 @@ test.describe('Notebook editor save timing', () => {
   });
 
   test('keeps an edit made while an earlier save is still pending', { tag: '@NB-PARITY-051' }, async ({ page }) => {
-    const firstText = '%md\nFirst pending save';
-    const latestText = `${firstText}\nLatest edit wins`;
+    const firstText = '%md First pending save';
+    const latestEdit = '; latest edit wins';
+    const latestText = `${firstText}${latestEdit}`;
     let firstMsgId: string;
 
     await test.step('When the real server response to the first save is delayed', async () => {
       commitProbe.holdFirstCommitParagraphResponse();
-      await notebookPage.tryFocusCodeEditor();
       await notebookPage.pressSelectAll();
-      await page.keyboard.type(firstText);
+      await page.keyboard.insertText(firstText);
+      await expect
+        .poll(() => notebookPage.getCodeEditorContentByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS })
+        .toBe(firstText);
       const [firstCommit] = await commitProbe.waitForCommitCount(1);
       expect(firstCommit.data.paragraph).toBe(firstText);
       firstMsgId = firstCommit.msgId;
@@ -99,12 +113,12 @@ test.describe('Notebook editor save timing', () => {
     });
 
     await test.step('When another edit is made before the earlier response arrives', async () => {
-      await notebookPage.pressSelectAll();
-      await page.keyboard.type(latestText);
+      await page.keyboard.insertText(latestEdit);
       await expect
         .poll(() => notebookPage.getCodeEditorContentByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS })
         .toBe(latestText);
       expect(commitProbe.forwardedResponseCount(firstMsgId)).toBe(0);
+      expect(commitProbe.commitCount()).toBe(1);
     });
 
     await test.step('Then receiving the first save response preserves the unsaved edit', async () => {
@@ -114,6 +128,8 @@ test.describe('Notebook editor save timing', () => {
       await expect
         .poll(() => notebookPage.getCodeEditorContentByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS })
         .toBe(latestText);
+      expect(commitProbe.commitCount()).toBe(1);
+      commitProbe.releaseQueuedResponses();
     });
 
     await test.step('Then the subsequent automatic save persists the latest edit', async () => {

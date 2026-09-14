@@ -587,7 +587,7 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
 
       // Get the current URL to extract notebook ID
       const currentUrl = keyboardPage.page.url();
-      const notebookMatch = currentUrl.match(/\/notebook\/([^\/]+)/);
+      const notebookMatch = currentUrl.match(/\/notebook\/([^/?#]+)/);
       expect(notebookMatch).not.toBeNull();
       const notebookId = notebookMatch![1];
 
