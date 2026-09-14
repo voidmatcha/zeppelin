@@ -226,7 +226,7 @@ export abstract class ParagraphBase extends MessageListenersManager {
     if (!this.paragraph) {
       throw new Error('paragraph is not defined');
     }
-    if (data.paragraphId === this.paragraph.id) {
+    if (data.paragraphId === this.paragraph.id && typeof data.name === 'string') {
       this.angularContextManager.unsetContextValue(data.name, data.paragraphId, false);
     }
   }
