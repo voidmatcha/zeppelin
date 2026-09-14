@@ -26,7 +26,7 @@ after(async () => {
   await harness?.close();
 });
 
-test('Angular owns notebook routes and remains the default notebook renderer', async () => {
+test('Angular owns notebook routes while React renders notebook content by default', async () => {
   const page = await harness.browser.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
@@ -34,8 +34,8 @@ test('Angular owns notebook routes and remains the default notebook renderer', a
 
   await expect(page.locator('zeppelin-workspace')).toHaveCount(1);
   await expect(page.locator('zeppelin-notebook')).toHaveCount(1);
-  await expect(page.locator('zeppelin-notebook .paragraph-inner')).toHaveCount(1);
-  await expect(page.getByTestId('notebook-core-react-adapter')).toHaveCount(0);
+  await expect(page.locator('zeppelin-notebook .paragraph-inner')).toHaveCount(0);
+  await expect(page.getByTestId('notebook-core-react-adapter')).toHaveCount(1);
 
   const probe = page.getByTestId('notebook-core-port-probe');
   await expect(probe).toHaveAttribute('data-same-identity', 'true');
