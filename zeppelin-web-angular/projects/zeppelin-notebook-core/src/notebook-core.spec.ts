@@ -478,6 +478,71 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md local draft', isDirty: false });
   });
 
+  it('owns paragraph edits through the framework-neutral command port', () => {
+    const dispatchCommand = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    expect(runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md draft' })).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md draft', isDirty: true });
+    expect(dispatchCommand).not.toHaveBeenCalled();
+    expect(runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md draft' })).toBe(false);
+  });
+
+  it('keeps a local draft across reload and reconciles it against the new server base', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md local draft', source: 'local' });
+
+    runtime.apply({ type: 'load-started' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md local draft', isDirty: true });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A reloaded',
+      paragraphs: [{ id: 'p-1', text: '%md server changed', status: 'READY' }]
+    });
+
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md local draft',
+      isDirty: true
+    });
+  });
+
+  it('keeps a local draft when reloading the current route fails', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md local draft', source: 'local' });
+
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'load-failed', noteId: 'note-a', revisionId: null, error: 'offline' });
+
+    expect(runtime.port.getSnapshot()).toMatchObject({ phase: 'error', error: 'offline' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md local draft', isDirty: true });
+  });
+
   it('allows one commit for a dirty draft until the server confirms it', () => {
     const dispatchCommand = vi.fn(() => true);
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
@@ -498,6 +563,48 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md draft', source: 'server' });
     expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md draft', isDirty: false });
     expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+  });
+
+  it('keeps a newer draft when an older save is confirmed', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v1' });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v2' });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v1', source: 'server' });
+
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md v2', isDirty: true });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    expect(dispatchCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a dirty draft and permits retry when the host rejects a commit', () => {
+    const dispatchCommand = vi.fn(() => false);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md draft' });
+
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md draft', isDirty: true });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(dispatchCommand).toHaveBeenCalledTimes(2);
   });
 
   it('restores the prior status when the host rejects a Core run request', () => {

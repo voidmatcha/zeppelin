@@ -35,7 +35,6 @@ export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
 export const NotebookCoreAdapter = ({
   core,
   expectedCore,
-  onParagraphTextChange,
   onParagraphInsert,
   onParagraphRemove,
   onParagraphMove,
@@ -634,7 +633,7 @@ export const NotebookCoreAdapter = ({
                   value={paragraphDrafts[paragraph.id] ?? paragraph.text}
                   onChange={text => {
                     setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
-                    onParagraphTextChange?.(paragraph.id, text);
+                    core.dispatch({ type: 'edit-paragraph', paragraphId: paragraph.id, text });
                   }}
                   onRun={() => dispatch('run-paragraph', paragraph.id)}
                 />

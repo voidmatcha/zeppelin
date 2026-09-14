@@ -33,6 +33,7 @@ const responseForRequest: Readonly<Record<RequestOp, ResponseOp>> = {
 const trackedRequests = new Set<RequestOp>(Object.keys(responseForRequest) as RequestOp[]);
 
 interface PendingRequest {
+  readonly generation: number;
   readonly noteId: string;
   readonly responseOp: ResponseOp;
 }
@@ -40,6 +41,26 @@ interface PendingRequest {
 export class NotebookRequestCorrelation {
   private static readonly maxPendingRequests = 100;
   private readonly pendingByMsgId = new Map<string, PendingRequest>();
+  private connected: boolean | null = null;
+  private generation = 0;
+  private routeKey: string | null = null;
+
+  enterRoute(noteId: string, revisionId: string | null): void {
+    const routeKey = JSON.stringify([noteId, revisionId]);
+    if (routeKey === this.routeKey) {
+      return;
+    }
+    this.routeKey = routeKey;
+    this.advanceGeneration();
+  }
+
+  connectionChanged(connected: boolean): void {
+    if (connected === this.connected) {
+      return;
+    }
+    this.connected = connected;
+    this.advanceGeneration();
+  }
 
   record(message: WebSocketMessage<MessageSendDataTypeMap>): void {
     if (!message.msgId || !trackedRequests.has(message.op as RequestOp)) {
@@ -60,6 +81,7 @@ export class NotebookRequestCorrelation {
       }
     }
     this.pendingByMsgId.set(message.msgId, {
+      generation: this.generation,
       noteId: request.noteId,
       responseOp: responseForRequest[requestOp]
     });
@@ -70,10 +92,20 @@ export class NotebookRequestCorrelation {
       return false;
     }
     const pending = this.pendingByMsgId.get(message.msgId);
-    if (!pending || pending.noteId !== activeNoteId || pending.responseOp !== message.op) {
+    if (
+      !pending ||
+      pending.generation !== this.generation ||
+      pending.noteId !== activeNoteId ||
+      pending.responseOp !== message.op
+    ) {
       return false;
     }
     this.pendingByMsgId.delete(message.msgId);
     return true;
+  }
+
+  private advanceGeneration(): void {
+    this.generation += 1;
+    this.pendingByMsgId.clear();
   }
 }

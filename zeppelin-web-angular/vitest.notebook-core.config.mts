@@ -10,11 +10,21 @@
  * limitations under the License.
  */
 
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@zeppelin/sdk': fileURLToPath(new URL('./projects/zeppelin-sdk/src/public-api.ts', import.meta.url))
+    }
+  },
   test: {
     environment: 'node',
-    include: ['projects/zeppelin-notebook-core/**/*.spec.ts', 'test/notebook-core/**/*.spec.ts']
+    include: [
+      'projects/zeppelin-notebook-core/**/*.spec.ts',
+      'src/app/pages/workspace/notebook/notebook-request-correlation.spec.ts',
+      'test/notebook-core/**/*.spec.ts'
+    ]
   }
 });

@@ -253,7 +253,8 @@ const emptyParagraphState = (): Pick<NotebookCoreState, 'paragraphOrder' | 'para
 });
 
 const toParagraphState = (
-  paragraphs: readonly NotebookParagraphInput[]
+  paragraphs: readonly NotebookParagraphInput[],
+  previousParagraphsById: Readonly<Record<string, NotebookParagraphState>> = {}
 ): Pick<NotebookCoreState, 'paragraphOrder' | 'paragraphsById'> => {
   const paragraphsById: Record<string, NotebookParagraphState> = {};
   const paragraphOrder: string[] = [];
@@ -261,8 +262,11 @@ const toParagraphState = (
     if (paragraphsById[paragraph.id]) {
       continue;
     }
+    const previous = previousParagraphsById[paragraph.id];
+    const draftText =
+      previous && previous.snapshot.text !== previous.savedText ? previous.snapshot.text : paragraph.text;
     paragraphsById[paragraph.id] = freezeParagraph({
-      snapshot: freezeParagraphSnapshot(paragraph),
+      snapshot: freezeParagraphSnapshot({ ...paragraph, text: draftText }, paragraph.text),
       savedText: paragraph.text,
       savePending: false,
       pendingRunStatus: null,
@@ -335,16 +339,6 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         ...state,
         version,
         phase: 'loading',
-        title: null,
-        noteForms: freezeNoteForms(),
-        noteParams: freezeNoteParams(),
-        permissions: null,
-        collaborativeUsers: null,
-        scheduler: null,
-        lookAndFeel: 'default',
-        personalizedMode: false,
-        revisions: Object.freeze([]),
-        ...emptyParagraphState(),
         error: null
       });
     case 'note-loaded':
@@ -361,7 +355,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null,
         lookAndFeel: event.lookAndFeel ?? 'default',
         personalizedMode: event.personalizedMode ?? false,
-        ...toParagraphState(event.paragraphs),
+        ...toParagraphState(event.paragraphs, state.paragraphsById),
         error: null
       });
     case 'paragraph-added': {
@@ -711,16 +705,6 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         ...state,
         version,
         phase: 'error',
-        title: null,
-        noteForms: freezeNoteForms(),
-        noteParams: freezeNoteParams(),
-        permissions: null,
-        collaborativeUsers: null,
-        scheduler: null,
-        lookAndFeel: 'default',
-        personalizedMode: false,
-        revisions: Object.freeze([]),
-        ...emptyParagraphState(),
         error: event.error
       });
   }
@@ -747,6 +731,14 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
       return () => listeners.delete(listener);
     },
     dispatch: command => {
+      if (command.type === 'edit-paragraph') {
+        return apply({
+          type: 'paragraph-updated',
+          paragraphId: command.paragraphId,
+          text: command.text,
+          source: 'local'
+        });
+      }
       if (
         command.type === 'cancel-paragraph' ||
         command.type === 'patch-paragraph' ||

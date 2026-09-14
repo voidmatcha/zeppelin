@@ -323,6 +323,27 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(commitParagraph).toHaveBeenCalledTimes(1);
   });
 
+  it('runs the latest Core draft exactly once', () => {
+    const runParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: '%python\nprint("latest")' });
+
+    expect(adapter.port.dispatch({ type: 'run-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
+    expect(adapter.port.dispatch({ type: 'run-paragraph', paragraphId: 'paragraph-1' })).toBe(false);
+    expect(runParagraph).toHaveBeenCalledTimes(1);
+    expect(runParagraph).toHaveBeenCalledWith(
+      'paragraph-1',
+      'Proof paragraph',
+      '%python\nprint("latest")',
+      note.paragraphs[0].config,
+      note.paragraphs[0].settings.params
+    );
+  });
+
   it('maps a Core cancel command to one existing SDK message', () => {
     const cancelParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ cancelParagraph } as unknown as MessageService);

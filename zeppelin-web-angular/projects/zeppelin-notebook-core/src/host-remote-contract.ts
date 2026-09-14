@@ -113,6 +113,7 @@ export type NotebookCoreUnsubscribe = () => void;
 export type NotebookCoreSnapshotListener = () => void;
 
 export type NotebookCoreCommand =
+  | Readonly<{ type: 'edit-paragraph'; paragraphId: string; text: string }>
   | Readonly<{ type: 'run-paragraph'; paragraphId: string }>
   | Readonly<{ type: 'cancel-paragraph'; paragraphId: string }>
   | Readonly<{ type: 'run-all-paragraphs' }>
@@ -134,7 +135,6 @@ export type NotebookCoreRemoteProps = Readonly<{
   readOnly?: boolean;
   canEdit?: boolean;
   canRun?: boolean;
-  onParagraphTextChange?: (paragraphId: string, text: string) => void;
   onParagraphInsert?: (index: number) => void;
   onParagraphRemove?: (paragraphId: string) => void;
   onParagraphMove?: (paragraphId: string, index: number) => void;

@@ -332,7 +332,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   updateCoreParagraphText({ paragraphId, text }: { paragraphId: string; text: string }): void {
-    this.notebookCoreRouteAdapter.acceptParagraphText(paragraphId, text);
+    this.notebookCoreRouteAdapter.port.dispatch({ type: 'edit-paragraph', paragraphId, text });
   }
 
   insertCoreParagraph(index: number): void {
@@ -617,8 +617,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       canRun: this.canCurrentUserRun(),
       canManagePermissions: this.isOwner && !this.viewOnly,
       onPermissionsChange: permissions => this.saveReactPermissions(permissions),
-      onParagraphTextChange: (paragraphId, text) =>
-        this.notebookCoreRouteAdapter.updateParagraphText(paragraphId, text),
       onParagraphInsert: index => this.insertCoreParagraph(index),
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
@@ -965,6 +963,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     });
     this.activatedRoute.params.pipe(takeUntil(this.destroy$)).subscribe(param => {
       this.revisionView = !!param.revisionId;
+      this.notebookRequestCorrelation.enterRoute(param.noteId, param.revisionId ?? null);
       this.notebookCoreRouteAdapter.enterRoute(param.noteId, param.revisionId ?? null);
       this.cdr.markForCheck();
     });
@@ -980,6 +979,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     ])
       .pipe(takeUntil(this.destroy$))
       .subscribe(([connected, params]) => {
+        this.notebookRequestCorrelation.connectionChanged(connected);
         if (!connected) {
           return;
         }

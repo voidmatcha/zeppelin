@@ -292,9 +292,7 @@ describe('NotebookCoreAdapter', () => {
       permissions: { readers: [], owners: ['owner'], writers: ['writer'], runners: [] }
     });
 
-    render(
-      <NotebookCoreAdapter core={runtime.port} canManagePermissions onPermissionsChange={onPermissionsChange} />
-    );
+    render(<NotebookCoreAdapter core={runtime.port} canManagePermissions onPermissionsChange={onPermissionsChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Writers permissions' }), {
       target: { value: 'writer, analyst' }
@@ -483,12 +481,7 @@ describe('NotebookCoreAdapter', () => {
         ]
       });
     });
-    rerender(
-      <NotebookCoreAdapter
-        core={runtime.port}
-        onSetNotebookRevision={onSetNotebookRevision}
-      />
-    );
+    rerender(<NotebookCoreAdapter core={runtime.port} onSetNotebookRevision={onSetNotebookRevision} />);
     expect(screen.queryByRole('textbox', { name: 'Checkpoint message' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Set revision as head' }));
     expect(onSetNotebookRevision).toHaveBeenCalledTimes(1);
@@ -508,12 +501,7 @@ describe('NotebookCoreAdapter', () => {
     });
     runtime.apply({ type: 'collaboration-updated', users: [] });
 
-    render(
-      <NotebookCoreAdapter
-        core={runtime.port}
-        onScheduleChange={onScheduleChange}
-      />
-    );
+    render(<NotebookCoreAdapter core={runtime.port} onScheduleChange={onScheduleChange} />);
 
     expect(screen.getByLabelText('Collaborators').textContent).toBe('Collaborators: 0');
     fireEvent.change(screen.getByRole('textbox', { name: 'Cron expression' }), {
@@ -538,7 +526,6 @@ describe('NotebookCoreAdapter', () => {
   });
 
   it('keeps a local paragraph draft until a Core paragraph update arrives', () => {
-    const onParagraphTextChange = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
     runtime.apply({
@@ -549,17 +536,25 @@ describe('NotebookCoreAdapter', () => {
       paragraphs: [{ id: 'paragraph-1', text: '%python\nprint("original")', status: 'READY' }]
     });
 
-    render(<NotebookCoreAdapter core={runtime.port} onParagraphTextChange={onParagraphTextChange} />);
+    render(<NotebookCoreAdapter core={runtime.port} />);
 
     const editor = screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement;
     fireEvent.change(editor, { target: { value: '%python\nprint("local")' } });
     expect(editor.value).toBe('%python\nprint("local")');
-    expect(onParagraphTextChange).toHaveBeenCalledWith('paragraph-1', '%python\nprint("local")');
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%python\nprint("local")',
+      isDirty: true
+    });
 
     act(() => {
-      runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: '%python\nprint("remote")' });
+      runtime.apply({
+        type: 'paragraph-updated',
+        paragraphId: 'paragraph-1',
+        text: '%python\nprint("remote")',
+        source: 'server'
+      });
     });
-    expect(editor.value).toBe('%python\nprint("remote")');
+    expect(editor.value).toBe('%python\nprint("local")');
   });
 
   it('passes a React notebook search term to every Monaco editor', () => {
