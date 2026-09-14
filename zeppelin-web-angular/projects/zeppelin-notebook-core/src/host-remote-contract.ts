@@ -81,11 +81,16 @@ export type NotebookParagraphSnapshot = Readonly<{
   language?: string;
   progress: number;
   isDirty: boolean;
+  isSaving: boolean;
+  hasConflict: boolean;
   results?: readonly NotebookParagraphResult[];
   resultConfigs?: NotebookParagraphResultConfigs;
 }>;
 
-export type NotebookParagraphInput = Omit<NotebookParagraphSnapshot, 'isDirty' | 'progress'> &
+export type NotebookParagraphInput = Omit<
+  NotebookParagraphSnapshot,
+  'isDirty' | 'isSaving' | 'hasConflict' | 'progress'
+> &
   Readonly<{ progress?: number }>;
 
 export type NotebookCorePhase = 'idle' | 'loading' | 'ready' | 'error';

@@ -131,13 +131,21 @@ type NotebookCoreState = Readonly<{
   revisions: readonly NotebookRevision[];
   paragraphOrder: readonly string[];
   paragraphsById: Readonly<Record<string, NotebookParagraphState>>;
+  draftsByRoute: Readonly<Record<string, Readonly<Record<string, NotebookRetainedDraft>>>>;
   error: string | null;
+}>;
+
+type NotebookRetainedDraft = Readonly<{
+  text: string;
+  baseText: string;
+  hasConflict: boolean;
 }>;
 
 type NotebookParagraphState = Readonly<{
   snapshot: NotebookParagraphSnapshot;
   savedText: string;
-  savePending: boolean;
+  pendingSaveText: string | null;
+  hasConflict: boolean;
   pendingRunStatus: NotebookParagraphSnapshot['status'] | null;
   outputSequence: number | null;
 }>;
@@ -209,7 +217,9 @@ const freezeResultConfigs = (configs: NotebookParagraphResultConfigs): NotebookP
 
 const freezeParagraphSnapshot = (
   paragraph: NotebookParagraphInput,
-  savedText: string = paragraph.text
+  savedText: string = paragraph.text,
+  hasConflict = false,
+  isSaving = false
 ): NotebookParagraphSnapshot =>
   Object.freeze({
     id: paragraph.id,
@@ -218,6 +228,8 @@ const freezeParagraphSnapshot = (
     ...(paragraph.language ? { language: paragraph.language } : {}),
     progress: paragraph.progress ?? 0,
     isDirty: paragraph.text !== savedText,
+    isSaving,
+    hasConflict,
     ...(paragraph.results
       ? { results: Object.freeze(paragraph.results.map(result => Object.freeze({ ...result }))) }
       : {}),
@@ -228,7 +240,8 @@ const freezeState = (state: NotebookCoreState): NotebookCoreState =>
   Object.freeze({
     ...state,
     paragraphOrder: Object.freeze([...state.paragraphOrder]),
-    paragraphsById: Object.freeze({ ...state.paragraphsById })
+    paragraphsById: Object.freeze({ ...state.paragraphsById }),
+    draftsByRoute: Object.freeze({ ...state.draftsByRoute })
   });
 
 const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
@@ -257,7 +270,8 @@ const emptyParagraphState = (): Pick<NotebookCoreState, 'paragraphOrder' | 'para
 
 const toParagraphState = (
   paragraphs: readonly NotebookParagraphInput[],
-  previousParagraphsById: Readonly<Record<string, NotebookParagraphState>> = {}
+  previousParagraphsById: Readonly<Record<string, NotebookParagraphState>> = {},
+  retainedDrafts: Readonly<Record<string, NotebookRetainedDraft>> = {}
 ): Pick<NotebookCoreState, 'paragraphOrder' | 'paragraphsById'> => {
   const paragraphsById: Record<string, NotebookParagraphState> = {};
   const paragraphOrder: string[] = [];
@@ -266,12 +280,23 @@ const toParagraphState = (
       continue;
     }
     const previous = previousParagraphsById[paragraph.id];
-    const draftText =
-      previous && previous.snapshot.text !== previous.savedText ? previous.snapshot.text : paragraph.text;
+    const retainedDraft = retainedDrafts[paragraph.id];
+    const draft =
+      previous && previous.snapshot.text !== previous.savedText
+        ? {
+            text: previous.snapshot.text,
+            baseText: previous.pendingSaveText ?? previous.savedText,
+            hasConflict: previous.hasConflict
+          }
+        : retainedDraft;
+    const draftText = draft?.text ?? paragraph.text;
+    const hasConflict =
+      draftText !== paragraph.text && (draft?.hasConflict === true || draft?.baseText !== paragraph.text);
     paragraphsById[paragraph.id] = freezeParagraph({
-      snapshot: freezeParagraphSnapshot({ ...paragraph, text: draftText }, paragraph.text),
+      snapshot: freezeParagraphSnapshot({ ...paragraph, text: draftText }, paragraph.text, hasConflict),
       savedText: paragraph.text,
-      savePending: false,
+      pendingSaveText: null,
+      hasConflict,
       pendingRunStatus: null,
       outputSequence: null
     });
@@ -295,6 +320,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     lookAndFeel: 'default',
     personalizedMode: false,
     revisions: Object.freeze([]),
+    draftsByRoute: Object.freeze({}),
     ...emptyParagraphState(),
     error: null
   });
@@ -303,6 +329,23 @@ const clampIndex = (index: number, length: number): number => Math.min(Math.max(
 
 const hasSameParagraphOrder = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((paragraphId, index) => paragraphId === right[index]);
+
+const routeKey = (noteId: string, revisionId: string | null): string => JSON.stringify([noteId, revisionId]);
+
+const currentDrafts = (state: NotebookCoreState): Readonly<Record<string, NotebookRetainedDraft>> =>
+  Object.freeze(
+    state.paragraphOrder.reduce<Record<string, NotebookRetainedDraft>>((drafts, paragraphId) => {
+      const paragraph = state.paragraphsById[paragraphId];
+      if (paragraph.snapshot.text !== paragraph.savedText) {
+        drafts[paragraphId] = Object.freeze({
+          text: paragraph.snapshot.text,
+          baseText: paragraph.pendingSaveText ?? paragraph.savedText,
+          hasConflict: paragraph.hasConflict
+        });
+      }
+      return drafts;
+    }, {})
+  );
 
 const isLiveMutation = (event: NotebookCoreEvent): boolean =>
   event.type === 'paragraph-added' ||
@@ -319,7 +362,15 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
     return state;
   }
   switch (event.type) {
-    case 'route-changed':
+    case 'route-changed': {
+      const drafts = currentDrafts(state);
+      const draftsByRoute = { ...state.draftsByRoute };
+      const currentRouteKey = routeKey(state.noteId, state.revisionId);
+      if (Object.keys(drafts).length > 0) {
+        draftsByRoute[currentRouteKey] = drafts;
+      } else {
+        delete draftsByRoute[currentRouteKey];
+      }
       return freezeState({
         version,
         noteId: event.noteId,
@@ -334,9 +385,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         lookAndFeel: 'default',
         personalizedMode: false,
         revisions: Object.freeze([]),
+        draftsByRoute,
         ...emptyParagraphState(),
         error: null
       });
+    }
     case 'load-started':
       return freezeState({
         ...state,
@@ -358,7 +411,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null,
         lookAndFeel: event.lookAndFeel ?? 'default',
         personalizedMode: event.personalizedMode ?? false,
-        ...toParagraphState(event.paragraphs, state.paragraphsById),
+        ...toParagraphState(
+          event.paragraphs,
+          state.paragraphsById,
+          state.draftsByRoute[routeKey(state.noteId, state.revisionId)]
+        ),
         error: null
       });
     case 'paragraph-added': {
@@ -380,7 +437,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           [event.paragraph.id]: freezeParagraph({
             snapshot: freezeParagraphSnapshot(event.paragraph),
             savedText: event.paragraph.text,
-            savePending: false,
+            pendingSaveText: null,
+            hasConflict: false,
             pendingRunStatus: null,
             outputSequence: null
           })
@@ -422,25 +480,33 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       const { snapshot: currentSnapshot } = current;
       const isServerTextUpdate = event.source === 'server' && event.text !== undefined;
       const serverText = isServerTextUpdate ? event.text : current.savedText;
+      const serverAcknowledgedPending = isServerTextUpdate && event.text === current.pendingSaveText;
+      const localText =
+        isServerTextUpdate && currentSnapshot.text !== current.savedText
+          ? currentSnapshot.text
+          : (event.text ?? currentSnapshot.text);
+      const hasConflict = isServerTextUpdate
+        ? localText !== serverText && !serverAcknowledgedPending && serverText !== current.savedText
+        : current.hasConflict;
       const paragraph = {
         ...current,
         snapshot: freezeParagraphSnapshot(
           {
             id: currentSnapshot.id,
-            text:
-              isServerTextUpdate && currentSnapshot.text !== current.savedText
-                ? currentSnapshot.text
-                : (event.text ?? currentSnapshot.text),
+            text: localText,
             status: event.status ?? currentSnapshot.status,
             language: event.language ?? currentSnapshot.language,
             progress: currentSnapshot.progress,
             results: currentSnapshot.results,
             resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs
           },
-          serverText
+          serverText,
+          hasConflict,
+          isServerTextUpdate ? false : current.pendingSaveText !== null
         ),
         savedText: serverText,
-        savePending: isServerTextUpdate ? false : current.savePending,
+        pendingSaveText: isServerTextUpdate ? null : current.pendingSaveText,
+        hasConflict,
         pendingRunStatus: event.status !== undefined && event.status !== 'PENDING' ? null : current.pendingRunStatus,
         outputSequence: event.status === 'PENDING' ? null : current.outputSequence
       };
@@ -448,7 +514,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         paragraph.snapshot.text === currentSnapshot.text &&
         paragraph.savedText === current.savedText &&
         paragraph.snapshot.status === currentSnapshot.status &&
-        paragraph.savePending === current.savePending &&
+        paragraph.pendingSaveText === current.pendingSaveText &&
+        paragraph.hasConflict === current.hasConflict &&
         paragraph.pendingRunStatus === current.pendingRunStatus &&
         event.language === undefined &&
         event.resultConfigs === undefined
@@ -480,7 +547,12 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           ...state.paragraphsById,
           [event.paragraphId]: freezeParagraph({
             ...current,
-            snapshot: freezeParagraphSnapshot({ ...current.snapshot, progress })
+            snapshot: freezeParagraphSnapshot(
+              { ...current.snapshot, progress },
+              current.savedText,
+              current.hasConflict,
+              current.pendingSaveText !== null
+            )
           })
         }
       });
@@ -510,7 +582,12 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           [event.paragraphId]: freezeParagraph({
             ...current,
             outputSequence: event.outputSequence ?? current.outputSequence,
-            snapshot: freezeParagraphSnapshot({ ...current.snapshot, results })
+            snapshot: freezeParagraphSnapshot(
+              { ...current.snapshot, results },
+              current.savedText,
+              current.hasConflict,
+              current.pendingSaveText !== null
+            )
           })
         }
       });
@@ -541,7 +618,12 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           [event.paragraphId]: freezeParagraph({
             ...current,
             outputSequence: event.outputSequence ?? current.outputSequence,
-            snapshot: freezeParagraphSnapshot({ ...current.snapshot, results })
+            snapshot: freezeParagraphSnapshot(
+              { ...current.snapshot, results },
+              current.savedText,
+              current.hasConflict,
+              current.pendingSaveText !== null
+            )
           })
         }
       });
@@ -565,10 +647,15 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           [event.paragraphId]: freezeParagraph({
             ...current,
             outputSequence: event.outputSequence,
-            snapshot: freezeParagraphSnapshot({
-              ...current.snapshot,
-              results: event.results.map(result => Object.freeze({ ...result }))
-            })
+            snapshot: freezeParagraphSnapshot(
+              {
+                ...current.snapshot,
+                results: event.results.map(result => Object.freeze({ ...result }))
+              },
+              current.savedText,
+              current.hasConflict,
+              current.pendingSaveText !== null
+            )
           })
         }
       });
@@ -578,7 +665,12 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       const current = state.paragraphsById[event.paragraphId];
-      if (!current || current.savePending || current.snapshot.text === current.savedText) {
+      if (
+        !current ||
+        current.pendingSaveText !== null ||
+        current.hasConflict ||
+        current.snapshot.text === current.savedText
+      ) {
         return state;
       }
       return freezeState({
@@ -586,13 +678,17 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         paragraphsById: {
           ...state.paragraphsById,
-          [event.paragraphId]: freezeParagraph({ ...current, savePending: true })
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            pendingSaveText: current.snapshot.text,
+            snapshot: freezeParagraphSnapshot(current.snapshot, current.savedText, false, true)
+          })
         }
       });
     }
     case 'paragraph-save-cancelled': {
       const current = state.paragraphsById[event.paragraphId];
-      if (!current?.savePending) {
+      if (current?.pendingSaveText === null) {
         return state;
       }
       return freezeState({
@@ -600,7 +696,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         paragraphsById: {
           ...state.paragraphsById,
-          [event.paragraphId]: freezeParagraph({ ...current, savePending: false })
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            pendingSaveText: null,
+            snapshot: freezeParagraphSnapshot(current.snapshot, current.savedText, current.hasConflict, false)
+          })
         }
       });
     }
@@ -624,7 +724,12 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           ...state.paragraphsById,
           [event.paragraphId]: freezeParagraph({
             ...current,
-            snapshot: freezeParagraphSnapshot({ ...current.snapshot, status: 'PENDING' }, current.savedText),
+            snapshot: freezeParagraphSnapshot(
+              { ...current.snapshot, status: 'PENDING' },
+              current.savedText,
+              current.hasConflict,
+              current.pendingSaveText !== null
+            ),
             pendingRunStatus: current.snapshot.status
           })
         }
@@ -644,7 +749,9 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
             ...current,
             snapshot: freezeParagraphSnapshot(
               { ...current.snapshot, status: current.pendingRunStatus },
-              current.savedText
+              current.savedText,
+              current.hasConflict,
+              current.pendingSaveText !== null
             ),
             pendingRunStatus: null
           })
@@ -729,6 +836,31 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
     saveTimers.forEach(timer => route.cancelTask?.(timer));
     saveTimers.clear();
   };
+  let dispatchFromTimer: NotebookCoreCommandHandler = () => false;
+  const scheduleSave = (paragraphId: string): void => {
+    const paragraph = state.paragraphsById[paragraphId];
+    if (
+      route.autoSaveDelayMs === undefined ||
+      route.autoSaveDelayMs < 0 ||
+      !route.scheduleTask ||
+      state.phase !== 'ready' ||
+      state.revisionId !== null ||
+      !paragraph ||
+      paragraph.snapshot.text === paragraph.savedText ||
+      paragraph.pendingSaveText !== null ||
+      paragraph.hasConflict
+    ) {
+      return;
+    }
+    cancelScheduledSave(paragraphId);
+    saveTimers.set(
+      paragraphId,
+      route.scheduleTask(() => {
+        saveTimers.delete(paragraphId);
+        dispatchFromTimer({ type: 'commit-paragraph', paragraphId });
+      }, route.autoSaveDelayMs)
+    );
+  };
   const apply = (event: NotebookCoreEvent): boolean => {
     if (event.type === 'route-changed' && (event.noteId !== state.noteId || event.revisionId !== state.revisionId)) {
       cancelAllScheduledSaves();
@@ -742,6 +874,11 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
     state = nextState;
     snapshot = toSnapshot(state);
     listeners.forEach(listener => listener());
+    if (event.type === 'note-loaded') {
+      state.paragraphOrder.forEach(scheduleSave);
+    } else if (event.type === 'paragraph-updated' && event.source === 'server') {
+      scheduleSave(event.paragraphId);
+    }
     return true;
   };
   const port: NotebookCorePort = Object.freeze({
@@ -758,15 +895,8 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
           text: command.text,
           source: 'local'
         });
-        if (edited && route.autoSaveDelayMs !== undefined && route.autoSaveDelayMs >= 0 && route.scheduleTask) {
-          cancelScheduledSave(command.paragraphId);
-          saveTimers.set(
-            command.paragraphId,
-            route.scheduleTask(() => {
-              saveTimers.delete(command.paragraphId);
-              port.dispatch({ type: 'commit-paragraph', paragraphId: command.paragraphId });
-            }, route.autoSaveDelayMs)
-          );
+        if (edited) {
+          scheduleSave(command.paragraphId);
         }
         return edited;
       }
@@ -809,6 +939,7 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
       return dispatched;
     }
   });
+  dispatchFromTimer = port.dispatch;
 
   return Object.freeze({
     port,

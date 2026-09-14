@@ -56,7 +56,7 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     );
   });
 
-  it('clears the current snapshot before requesting a reconnect snapshot', () => {
+  it('preserves the current snapshot while requesting a reconnect snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
 
@@ -67,8 +67,8 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot()).toMatchObject({
       noteId: note.id,
       phase: 'loading',
-      title: null,
-      paragraphs: []
+      title: note.name,
+      paragraphs: [expect.objectContaining({ id: 'paragraph-1' })]
     });
   });
 
@@ -368,24 +368,17 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, '@@ -1,1 +1,1 @@\n-old\n+new\n');
   });
 
-  it('updates the Core and sends a collaboration patch for a React text edit', () => {
-    const patchParagraph = vi.fn();
-    const adapter = new NotebookCoreRouteAdapter({ patchParagraph } as unknown as MessageService);
+  it('updates Core state for a React text edit without bypassing the command port', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
 
     adapter.enterRoute(note.id, null);
     adapter.acceptNote(note, null);
 
-    expect(adapter.updateParagraphText('paragraph-1', 'updated from React')).toBe(true);
+    expect(
+      adapter.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: 'updated from React' })
+    ).toBe(true);
     expect(adapter.port.getSnapshot().paragraphs[0].text).toBe('updated from React');
-    expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, expect.any(String));
-    const patch = patchParagraph.mock.calls[0][2];
-    const [updatedText, applied] = new DiffMatchPatch().patch_apply(
-      new DiffMatchPatch().patch_fromText(patch),
-      note.paragraphs[0].text
-    );
-    expect(applied.every(Boolean)).toBe(true);
-    expect(updatedText).toBe('updated from React');
   });
 
   it('applies an inbound collaboration patch to the Core snapshot', () => {

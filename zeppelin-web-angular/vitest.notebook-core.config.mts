@@ -16,6 +16,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      '@zeppelin/notebook-core': fileURLToPath(
+        new URL('./projects/zeppelin-notebook-core/src/public-api.ts', import.meta.url)
+      ),
       '@zeppelin/sdk': fileURLToPath(new URL('./projects/zeppelin-sdk/src/public-api.ts', import.meta.url))
     }
   },
@@ -23,6 +26,7 @@ export default defineConfig({
     environment: 'node',
     include: [
       'projects/zeppelin-notebook-core/**/*.spec.ts',
+      'src/app/pages/workspace/notebook/notebook-core-route.adapter.spec.ts',
       'src/app/pages/workspace/notebook/notebook-request-correlation.spec.ts',
       'test/notebook-core/**/*.spec.ts'
     ]

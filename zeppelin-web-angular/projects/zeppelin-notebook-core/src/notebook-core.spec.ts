@@ -304,8 +304,24 @@ describe('notebook core runtime spike', () => {
       lookAndFeel: 'default',
       personalizedMode: false,
       paragraphs: [
-        { id: 'p-1', text: '%md shared state', status: 'FINISHED', progress: 0, isDirty: false },
-        { id: 'p-2', text: '%spark 1 + 1', status: 'READY', progress: 0, isDirty: false }
+        {
+          id: 'p-1',
+          text: '%md shared state',
+          status: 'FINISHED',
+          progress: 0,
+          isDirty: false,
+          isSaving: false,
+          hasConflict: false
+        },
+        {
+          id: 'p-2',
+          text: '%spark 1 + 1',
+          status: 'READY',
+          progress: 0,
+          isDirty: false,
+          isSaving: false,
+          hasConflict: false
+        }
       ],
       error: null
     });
@@ -450,7 +466,9 @@ describe('notebook core runtime spike', () => {
       text: '%python\nprint("updated")',
       status: 'READY',
       progress: 0,
-      isDirty: true
+      isDirty: true,
+      isSaving: false,
+      hasConflict: false
     });
 
     expect(runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', status: 'RUNNING' })).toBe(true);
@@ -459,7 +477,9 @@ describe('notebook core runtime spike', () => {
       text: '%python\nprint("updated")',
       status: 'RUNNING',
       progress: 0,
-      isDirty: true
+      isDirty: true,
+      isSaving: false,
+      hasConflict: false
     });
 
     const settled = runtime.port.getSnapshot();
@@ -494,7 +514,9 @@ describe('notebook core runtime spike', () => {
       text: '%md local draft',
       status: 'READY',
       progress: 0,
-      isDirty: true
+      isDirty: true,
+      isSaving: false,
+      hasConflict: false
     });
 
     runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md local draft', source: 'server' });
@@ -694,6 +716,167 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
     scheduler.advanceBy(10000);
     expect(dispatchCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('reschedules a newer draft after the pending save is confirmed', () => {
+    const scheduler = createTaskScheduler();
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      autoSaveDelayMs: 10000,
+      ...scheduler,
+      dispatchCommand
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v1' });
+    scheduler.advanceBy(10000);
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v2' });
+    scheduler.advanceBy(10000);
+    expect(dispatchCommand).toHaveBeenCalledTimes(1);
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v1', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md v2',
+      isDirty: true,
+      isSaving: false,
+      hasConflict: false
+    });
+    scheduler.advanceBy(10000);
+    expect(dispatchCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it('reschedules a dirty draft after reconnect completes', () => {
+    const scheduler = createTaskScheduler();
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      autoSaveDelayMs: 10000,
+      ...scheduler,
+      dispatchCommand
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md offline draft' });
+
+    runtime.apply({ type: 'load-started' });
+    scheduler.advanceBy(10000);
+    expect(dispatchCommand).not.toHaveBeenCalled();
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    scheduler.advanceBy(10000);
+
+    expect(dispatchCommand).toHaveBeenCalledOnce();
+    expect(runtime.port.getSnapshot().paragraphs[0].text).toBe('%md offline draft');
+  });
+
+  it('restores an unsaved draft after navigating away and back', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md draft' });
+
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-b',
+      revisionId: null,
+      title: 'Note B',
+      paragraphs: [{ id: 'p-b', text: '%md B', status: 'READY' }]
+    });
+    runtime.apply({ type: 'route-changed', noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md draft',
+      isDirty: true,
+      hasConflict: false
+    });
+  });
+
+  it('blocks autosave when reload detects a conflicting server edit', () => {
+    const scheduler = createTaskScheduler();
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      autoSaveDelayMs: 10000,
+      ...scheduler,
+      dispatchCommand
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md local' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md peer', status: 'READY' }]
+    });
+
+    scheduler.advanceBy(10000);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md local',
+      isDirty: true,
+      isSaving: false,
+      hasConflict: true
+    });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(dispatchCommand).not.toHaveBeenCalled();
+
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md peer', status: 'READY' }]
+    });
+    scheduler.advanceBy(10000);
+    expect(runtime.port.getSnapshot().paragraphs[0].hasConflict).toBe(true);
+    expect(dispatchCommand).not.toHaveBeenCalled();
   });
 
   it('restores the prior status when the host rejects a Core run request', () => {
