@@ -107,6 +107,20 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(paragraphClearAllOutput).toHaveBeenCalledWith(note.id);
   });
 
+  it('does not run all paragraphs while any paragraph has an unresolved edit conflict', () => {
+    const runAllParagraphs = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ runAllParagraphs } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: '%python\nlocal()' });
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: '%python\npeer()' });
+
+    expect(adapter.port.dispatch({ type: 'run-all-paragraphs' })).toBe(false);
+    expect(runAllParagraphs).not.toHaveBeenCalled();
+  });
+
   it('maps saved paragraph result configuration into the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
@@ -232,6 +246,20 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
       note.paragraphs[0].settings.params,
       note.id
     );
+  });
+
+  it('does not commit result configuration with conflicted paragraph text', () => {
+    const commitParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: '%python\nlocal()' });
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: '%python\npeer()' });
+
+    expect(adapter.updateParagraphResultConfig('paragraph-1', 0, { graph: { mode: 'lineChart' } })).toBe(false);
+    expect(commitParagraph).not.toHaveBeenCalled();
   });
 
   it('maps a progress event into the Core paragraph snapshot', () => {
@@ -368,6 +396,26 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(patchParagraph).toHaveBeenCalledWith('paragraph-1', note.id, '@@ -1,1 +1,1 @@\n-old\n+new\n');
   });
 
+  it('creates and sends a collaboration patch for a Core edit from either renderer', () => {
+    const patchParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ patchParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptCollaborativeModeStatus([]);
+
+    expect(
+      adapter.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: '%python\nprint("peer")' })
+    ).toBe(true);
+    expect(patchParagraph).toHaveBeenCalledOnce();
+    const [paragraphId, noteId, patch] = patchParagraph.mock.calls[0];
+    const dmp = new DiffMatchPatch();
+    expect(paragraphId).toBe('paragraph-1');
+    expect(noteId).toBe(note.id);
+    expect(dmp.patch_apply(dmp.patch_fromText(patch), note.paragraphs[0].text)[0]).toBe('%python\nprint("peer")');
+  });
+
   it('updates Core state for a React text edit without bypassing the command port', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
@@ -393,6 +441,45 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
 
     expect(adapter.acceptParagraphPatch('paragraph-1', patch)).toBe(true);
     expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: updatedText, isDirty: false });
+  });
+
+  it('keeps an outbound patch dirty until an inbound collaboration update confirms server state', () => {
+    const patchParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ patchParagraph } as unknown as MessageService);
+    const note = createNote();
+    const localText = '%python\nprint("local")';
+    const peerText = '%python\nprint("local and peer")';
+    const diffMatchPatch = new DiffMatchPatch();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptCollaborativeModeStatus([]);
+
+    expect(adapter.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: localText })).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: localText, isDirty: true });
+
+    const peerPatch = diffMatchPatch.patch_toText(diffMatchPatch.patch_make(localText, peerText));
+    expect(adapter.acceptParagraphPatch('paragraph-1', peerPatch)).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: peerText,
+      isDirty: true,
+      hasConflict: false
+    });
+  });
+
+  it('rejects an inbound collaboration patch while local conflict resolution is pending', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    const diffMatchPatch = new DiffMatchPatch();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', 'local draft');
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: 'server edit' });
+
+    const patch = diffMatchPatch.patch_toText(diffMatchPatch.patch_make('local draft', 'peer edit'));
+    expect(adapter.acceptParagraphPatch('paragraph-1', patch)).toBe(false);
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: 'local draft', hasConflict: true });
   });
 
   it('rejects an inbound collaboration patch for an unknown paragraph', () => {

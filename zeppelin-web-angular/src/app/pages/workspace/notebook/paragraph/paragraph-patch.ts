@@ -25,8 +25,9 @@ export function makeParagraphPatch(
     throw new Error('dirtyText is required');
   }
   const previousText = originalText ? originalText : '';
+  const patches = diffMatchPatch.patch_make(previousText, dirtyText);
   return {
-    patch: diffMatchPatch.patch_make(previousText, dirtyText).toString(),
+    patch: diffMatchPatch.patch_toText(patches),
     originalText: dirtyText
   };
 }

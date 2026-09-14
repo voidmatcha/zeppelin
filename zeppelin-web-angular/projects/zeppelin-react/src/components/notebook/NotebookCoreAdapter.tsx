@@ -132,10 +132,15 @@ export const NotebookCoreAdapter = ({
   const hasRunningParagraph = snapshot.paragraphs.some(
     paragraph => paragraph.status === 'PENDING' || paragraph.status === 'RUNNING'
   );
+  const hasParagraphConflict = snapshot.paragraphs.some(paragraph => paragraph.hasConflict);
   const canTogglePersonalizedMode = hostCanTogglePersonalizedMode && !hasRunningParagraph;
 
   const dispatch = (type: 'run-paragraph' | 'cancel-paragraph' | 'commit-paragraph', paragraphId: string): void => {
     const accepted = core.dispatch({ type, paragraphId });
+    setCommandAccepted(accepted);
+  };
+  const resolveConflict = (paragraphId: string, resolution: 'accept-server' | 'keep-local'): void => {
+    const accepted = core.dispatch({ type: 'resolve-paragraph-conflict', paragraphId, resolution });
     setCommandAccepted(accepted);
   };
   const dispatchNotebook = (
@@ -224,7 +229,12 @@ export const NotebookCoreAdapter = ({
         <button
           type="button"
           disabled={
-            !hostCanRun || readOnly || snapshot.revisionId !== null || snapshot.phase !== 'ready' || hasRunningParagraph
+            !hostCanRun ||
+            readOnly ||
+            snapshot.revisionId !== null ||
+            snapshot.phase !== 'ready' ||
+            hasRunningParagraph ||
+            hasParagraphConflict
           }
           onClick={() => dispatchNotebook('run-all-paragraphs')}
         >
@@ -621,19 +631,37 @@ export const NotebookCoreAdapter = ({
                 <strong>Paragraph {index + 1}</strong>
                 <span>{paragraph.status}</span>
               </header>
+              {paragraph.hasConflict ? (
+                <div role="alert">
+                  This paragraph changed on the server while you were editing it.
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => resolveConflict(paragraph.id, 'accept-server')}
+                  >
+                    Use server version
+                  </button>
+                  <button type="button" disabled={!canEdit} onClick={() => resolveConflict(paragraph.id, 'keep-local')}>
+                    Keep my version
+                  </button>
+                </div>
+              ) : null}
               {paragraph.status === 'RUNNING' ? (
                 <progress aria-label={`Paragraph ${index + 1} progress`} max={100} value={paragraph.progress} />
               ) : null}
               {codeHidden ? null : (
                 <NotebookMonacoEditor
                   ariaLabel={`Paragraph ${index + 1} editor`}
-                  disabled={!canEdit || paragraph.status === 'RUNNING'}
+                  disabled={!canEdit || paragraph.status === 'RUNNING' || paragraph.hasConflict}
                   language={paragraph.language}
                   searchTerm={searchTerm}
                   value={paragraphDrafts[paragraph.id] ?? paragraph.text}
                   onChange={text => {
-                    setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
-                    core.dispatch({ type: 'edit-paragraph', paragraphId: paragraph.id, text });
+                    const accepted = core.dispatch({ type: 'edit-paragraph', paragraphId: paragraph.id, text });
+                    setCommandAccepted(accepted);
+                    if (accepted) {
+                      setParagraphDrafts(drafts => ({ ...drafts, [paragraph.id]: text }));
+                    }
                   }}
                   onRun={() => dispatch('run-paragraph', paragraph.id)}
                 />
@@ -664,7 +692,7 @@ export const NotebookCoreAdapter = ({
                 </button>
                 <button
                   type="button"
-                  disabled={!canEdit || !paragraph.isDirty}
+                  disabled={!canEdit || !paragraph.isDirty || paragraph.isSaving || paragraph.hasConflict}
                   onClick={() => dispatch('commit-paragraph', paragraph.id)}
                 >
                   Save
@@ -697,9 +725,9 @@ export const NotebookCoreAdapter = ({
                         <SingleResultRenderer
                           config={paragraph.resultConfigs}
                           index={resultIndex}
-                          modeChangeDisabled={!canEdit}
+                          modeChangeDisabled={!canEdit || paragraph.hasConflict}
                           onConfigChange={
-                            canEdit
+                            canEdit && !paragraph.hasConflict
                               ? config => onParagraphResultConfigChange?.(paragraph.id, resultIndex, config)
                               : undefined
                           }

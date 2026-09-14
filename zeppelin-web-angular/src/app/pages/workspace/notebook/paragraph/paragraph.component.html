@@ -70,6 +70,29 @@
         (cloneParagraph)="cloneParagraph()"
         (cancelParagraph)="cancelParagraph()"
       ></zeppelin-notebook-paragraph-control>
+      @if (hasConflict) {
+        <div class="paragraph-conflict" role="alert">
+          <span>This paragraph changed on the server while you were editing it.</span>
+          <button
+            nz-button
+            nzSize="small"
+            type="button"
+            [disabled]="viewOnly || revisionView"
+            (click)="resolveConflict('accept-server')"
+          >
+            Use server version
+          </button>
+          <button
+            nz-button
+            nzSize="small"
+            type="button"
+            [disabled]="viewOnly || revisionView"
+            (click)="resolveConflict('keep-local')"
+          >
+            Keep my version
+          </button>
+        </div>
+      }
       @if (!paragraph.config.editorHide && !viewOnly) {
         <zeppelin-notebook-paragraph-code-editor
           [text]="paragraph.text"
@@ -81,7 +104,7 @@
           [fontSize]="paragraph.config.fontSize"
           [interpreterBindings]="interpreterBindings"
           [lineNumbers]="paragraph.config.lineNumbers"
-          [readOnly]="isEntireNoteRunning || isParagraphRunning || revisionView"
+          [readOnly]="isEntireNoteRunning || isParagraphRunning || revisionView || hasConflict"
           [language]="paragraph.config.editorSetting?.language"
           (editorBlur)="onEditorBlur()"
           (editorFocus)="onEditorFocus()"
@@ -95,7 +118,7 @@
       }
       @if (!paragraph.config.tableHide) {
         <zeppelin-notebook-paragraph-dynamic-forms
-          [disable]="paragraph.status === 'RUNNING' || paragraph.status === 'PENDING'"
+          [disable]="paragraph.status === 'RUNNING' || paragraph.status === 'PENDING' || hasConflict"
           [paramDefs]="paragraph.settings.params"
           [formDefs]="paragraph.settings.forms"
           [runOnChange]="paragraph.config.runOnSelectionChange"

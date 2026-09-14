@@ -39,6 +39,7 @@
       [(activatedExtension)]="activatedExtension"
       [collaborativeMode]="collaborativeMode"
       [collaborativeModeUsers]="collaborativeModeUsers"
+      [hasParagraphConflict]="hasParagraphConflict()"
       [noteRevisions]="noteRevisions"
       [currentRevision]="currentRevision"
       (tableHideChange)="setAllParagraphTableHide($event)"
@@ -120,6 +121,8 @@
                   [looknfeel]="note.config.looknfeel"
                   [interpreterBindings]="interpreterBindings"
                   [collaborativeMode]="collaborativeMode"
+                  [hasConflict]="paragraphHasConflict(p.id)"
+                  [hasNotebookConflict]="hasParagraphConflict()"
                   [viewOnly]="viewOnly"
                   [revisionView]="revisionView"
                   [first]="first"
@@ -129,10 +132,10 @@
                   (selectAtIndex)="onSelectAtIndex($event)"
                   (selected)="onParagraphSelect($event)"
                   (paragraphTextChanged)="updateCoreParagraphText($event)"
+                  (resolveConflictRequested)="resolveCoreParagraphConflict($event)"
                   (triggerSaveParagraph)="saveParagraph($event)"
                   (runParagraphRequested)="runParagraph($event)"
                   (cancelParagraphRequested)="cancelParagraph($event)"
-                  (patchParagraphRequested)="requestParagraphPatch($event)"
                   (openSearchMenu)="actionBar.openSearchMenu()"
                 ></zeppelin-notebook-paragraph>
               }

@@ -29,6 +29,7 @@ import type { Note, ParagraphConfigResult } from '@zeppelin/sdk';
 import { MessageService } from '@zeppelin/services';
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { Observable } from 'rxjs';
+import { makeParagraphPatch } from './paragraph/paragraph-patch';
 
 type LoadedNote = Exclude<Note['note'], undefined>;
 type LoadedParagraph = LoadedNote['paragraphs'][number];
@@ -96,6 +97,8 @@ export class NotebookCoreRouteAdapter {
       autoSaveDelayMs: 10000,
       scheduleTask: (task, delayMs) => setTimeout(task, delayMs),
       cancelTask: task => clearTimeout(task as ReturnType<typeof setTimeout>),
+      createParagraphPatch: (previousText, nextText) =>
+        makeParagraphPatch(this.diffMatchPatch, previousText, nextText).patch,
       dispatchCommand: command => this.dispatchCommand(command)
     });
     this.port = this.runtime.port;
@@ -201,7 +204,7 @@ export class NotebookCoreRouteAdapter {
 
   acceptParagraphPatch(paragraphId: string, patch: string): boolean {
     const paragraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
-    if (!paragraph) {
+    if (!paragraph || paragraph.hasConflict) {
       return false;
     }
 
@@ -213,7 +216,7 @@ export class NotebookCoreRouteAdapter {
       if (!applied.every(Boolean)) {
         return false;
       }
-      this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'server' });
+      this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'collaboration' });
       return true;
     } catch {
       return false;
@@ -316,7 +319,7 @@ export class NotebookCoreRouteAdapter {
   updateParagraphResultConfig(paragraphId: string, resultIndex: number, resultConfig: ParagraphConfigResult): boolean {
     const paragraph = this.paragraphViewsById.get(paragraphId);
     const coreParagraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
-    if (!paragraph || !coreParagraph || this.port.getSnapshot().revisionId !== null) {
+    if (!paragraph || !coreParagraph || coreParagraph.hasConflict || this.port.getSnapshot().revisionId !== null) {
       return false;
     }
     const config = { ...paragraph.config, results: { ...paragraph.config.results, [resultIndex]: resultConfig } };
@@ -345,7 +348,11 @@ export class NotebookCoreRouteAdapter {
     }
 
     if (command.type === 'run-all-paragraphs') {
-      if (snapshot.paragraphs.some(paragraph => paragraph.status === 'PENDING' || paragraph.status === 'RUNNING')) {
+      if (
+        snapshot.paragraphs.some(
+          paragraph => paragraph.hasConflict || paragraph.status === 'PENDING' || paragraph.status === 'RUNNING'
+        )
+      ) {
         return false;
       }
       const paragraphs = this.selectParagraphViews();

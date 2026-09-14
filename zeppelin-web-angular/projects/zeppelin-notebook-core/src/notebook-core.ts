@@ -52,7 +52,7 @@ export type NotebookCoreEvent =
       status?: NotebookParagraphSnapshot['status'];
       language?: string;
       resultConfigs?: NotebookParagraphResultConfigs;
-      source?: 'local' | 'server';
+      source?: 'local' | 'server' | 'collaboration';
     }>
   | Readonly<{ type: 'paragraph-progressed'; paragraphId: string; progress: number }>
   | Readonly<{
@@ -77,6 +77,11 @@ export type NotebookCoreEvent =
     }>
   | Readonly<{ type: 'paragraph-save-requested'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-save-cancelled'; paragraphId: string }>
+  | Readonly<{
+      type: 'paragraph-conflict-resolved';
+      paragraphId: string;
+      resolution: 'accept-server' | 'keep-local';
+    }>
   | Readonly<{ type: 'paragraph-run-requested'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-run-rejected'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
@@ -98,6 +103,7 @@ export type NotebookCoreInitialRoute = Readonly<{
   noteId?: string;
   revisionId?: string | null;
   dispatchCommand?: NotebookCoreCommandHandler;
+  createParagraphPatch?: (previousText: string, nextText: string) => string;
   autoSaveDelayMs?: number;
   scheduleTask?: (task: () => void, delayMs: number) => unknown;
   cancelTask?: (task: unknown) => void;
@@ -479,17 +485,28 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       const { snapshot: currentSnapshot } = current;
-      const isServerTextUpdate = event.source === 'server' && event.text !== undefined;
-      const serverText = isServerTextUpdate ? event.text : current.savedText;
+      const isCollaborationTextUpdate = event.source === 'collaboration' && event.text !== undefined;
+      const isServerTextUpdate =
+        (event.source === 'server' || event.source === 'collaboration') && event.text !== undefined;
+      const hadLocalDraft = currentSnapshot.text !== current.savedText;
+      const serverText =
+        isCollaborationTextUpdate && hadLocalDraft
+          ? current.savedText
+          : isServerTextUpdate
+            ? event.text
+            : current.savedText;
       const serverAcknowledgedPending = isServerTextUpdate && event.text === current.pendingSaveText;
-      const localText =
-        isServerTextUpdate && currentSnapshot.text !== current.savedText
+      const localText = isCollaborationTextUpdate
+        ? event.text
+        : isServerTextUpdate && currentSnapshot.text !== current.savedText
           ? currentSnapshot.text
           : (event.text ?? currentSnapshot.text);
-      const hasConflict = isServerTextUpdate
-        ? localText !== serverText &&
-          (current.hasConflict || (!serverAcknowledgedPending && serverText !== current.savedText))
-        : current.hasConflict;
+      const hasConflict = isCollaborationTextUpdate
+        ? false
+        : isServerTextUpdate
+          ? localText !== serverText &&
+            (current.hasConflict || (!serverAcknowledgedPending && serverText !== current.savedText))
+          : current.hasConflict;
       const paragraph = {
         ...current,
         snapshot: freezeParagraphSnapshot(
@@ -684,6 +701,28 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
             ...current,
             pendingSaveText: current.snapshot.text,
             snapshot: freezeParagraphSnapshot(current.snapshot, current.savedText, false, true)
+          })
+        }
+      });
+    }
+    case 'paragraph-conflict-resolved': {
+      if (state.phase !== 'ready') {
+        return state;
+      }
+      const current = state.paragraphsById[event.paragraphId];
+      if (!current || !current.hasConflict || current.pendingSaveText !== null) {
+        return state;
+      }
+      const text = event.resolution === 'accept-server' ? current.savedText : current.snapshot.text;
+      return freezeState({
+        ...state,
+        version,
+        paragraphsById: {
+          ...state.paragraphsById,
+          [event.paragraphId]: freezeParagraph({
+            ...current,
+            hasConflict: false,
+            snapshot: freezeParagraphSnapshot({ ...current.snapshot, text }, current.savedText, false, false)
           })
         }
       });
@@ -892,16 +931,56 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
     },
     dispatch: command => {
       if (command.type === 'edit-paragraph') {
+        const current = state.paragraphsById[command.paragraphId];
+        if (!current || current.hasConflict) {
+          return false;
+        }
+        const previousText = current.snapshot.text;
         const edited = apply({
           type: 'paragraph-updated',
           paragraphId: command.paragraphId,
           text: command.text,
           source: 'local'
         });
-        if (edited) {
+        if (!edited) {
+          return false;
+        }
+        if (state.collaborativeUsers !== null) {
+          cancelScheduledSave(command.paragraphId);
+          const patch = route.createParagraphPatch?.(previousText, command.text);
+          if (patch === undefined) {
+            return false;
+          }
+          return route.dispatchCommand?.({ type: 'patch-paragraph', paragraphId: command.paragraphId, patch }) ?? false;
+        }
+        scheduleSave(command.paragraphId);
+        return true;
+      }
+      if (command.type === 'resolve-paragraph-conflict') {
+        const current = state.paragraphsById[command.paragraphId];
+        if (!current || !current.hasConflict || current.pendingSaveText !== null) {
+          return false;
+        }
+        if (command.resolution === 'keep-local' && state.collaborativeUsers !== null) {
+          const patch = route.createParagraphPatch?.(current.savedText, current.snapshot.text);
+          if (patch === undefined) {
+            return false;
+          }
+          const dispatched =
+            route.dispatchCommand?.({ type: 'patch-paragraph', paragraphId: command.paragraphId, patch }) ?? false;
+          if (!dispatched) {
+            return false;
+          }
+        }
+        const resolved = apply({
+          type: 'paragraph-conflict-resolved',
+          paragraphId: command.paragraphId,
+          resolution: command.resolution
+        });
+        if (resolved && command.resolution === 'keep-local' && state.collaborativeUsers === null) {
           scheduleSave(command.paragraphId);
         }
-        return edited;
+        return resolved;
       }
       if (
         command.type === 'cancel-paragraph' ||
@@ -910,6 +989,12 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
         command.type === 'cancel-all-paragraphs' ||
         command.type === 'clear-all-paragraph-output'
       ) {
+        if (
+          command.type === 'run-all-paragraphs' &&
+          state.paragraphOrder.some(id => state.paragraphsById[id].hasConflict)
+        ) {
+          return false;
+        }
         if (command.type === 'patch-paragraph') {
           cancelScheduledSave(command.paragraphId);
         }

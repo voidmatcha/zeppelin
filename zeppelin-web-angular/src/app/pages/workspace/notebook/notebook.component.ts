@@ -39,7 +39,6 @@ import {
   type Note,
   type NoteRevisionForCompareReceived,
   type ParagraphConfigResult,
-  type ReceivedMessage,
   type RevisionListItem
 } from '@zeppelin/sdk';
 import {
@@ -319,7 +318,48 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   updateCoreParagraphText({ paragraphId, text }: { paragraphId: string; text: string }): void {
-    this.notebookCoreRouteAdapter.port.dispatch({ type: 'edit-paragraph', paragraphId, text });
+    if (!this.notebookCoreRouteAdapter.port.dispatch({ type: 'edit-paragraph', paragraphId, text })) {
+      this.syncParagraphTextFromCore(paragraphId);
+    }
+  }
+
+  paragraphHasConflict(paragraphId: string): boolean {
+    return this.notebookCoreRouteAdapter.port
+      .getSnapshot()
+      .paragraphs.some(paragraph => paragraph.id === paragraphId && paragraph.hasConflict);
+  }
+
+  hasParagraphConflict(): boolean {
+    return this.notebookCoreRouteAdapter.port.getSnapshot().paragraphs.some(paragraph => paragraph.hasConflict);
+  }
+
+  resolveCoreParagraphConflict({
+    paragraphId,
+    resolution
+  }: {
+    paragraphId: string;
+    resolution: 'accept-server' | 'keep-local';
+  }): void {
+    const resolved = this.notebookCoreRouteAdapter.port.dispatch({
+      type: 'resolve-paragraph-conflict',
+      paragraphId,
+      resolution
+    });
+    if (resolved) {
+      this.syncParagraphTextFromCore(paragraphId);
+    }
+  }
+
+  private syncParagraphTextFromCore(paragraphId: string): void {
+    const coreParagraph = this.notebookCoreRouteAdapter.port
+      .getSnapshot()
+      .paragraphs.find(paragraph => paragraph.id === paragraphId);
+    const index = this.note?.paragraphs.findIndex(paragraph => paragraph.id === paragraphId) ?? -1;
+    if (!coreParagraph || !this.note || index < 0) {
+      return;
+    }
+    this.note.paragraphs[index] = { ...this.note.paragraphs[index], text: coreParagraph.text };
+    this.cdr.markForCheck();
   }
 
   insertCoreParagraph(index: number): void {
@@ -420,10 +460,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   cancelParagraph(id: string) {
     this.notebookCoreRouteAdapter.port.dispatch({ type: 'cancel-paragraph', paragraphId: id });
-  }
-
-  requestParagraphPatch({ paragraphId, patch }: { paragraphId: string; patch: string }) {
-    this.notebookCoreRouteAdapter.sendParagraphPatch(paragraphId, patch);
   }
 
   onParagraphSelect(id: string | null) {

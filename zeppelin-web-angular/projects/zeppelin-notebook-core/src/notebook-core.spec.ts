@@ -885,6 +885,190 @@ describe('notebook core runtime spike', () => {
     expect(dispatchCommand).not.toHaveBeenCalled();
   });
 
+  it('blocks Run All until every paragraph conflict is resolved', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md local' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md peer', source: 'server' });
+
+    expect(runtime.port.dispatch({ type: 'run-all-paragraphs' })).toBe(false);
+    expect(dispatchCommand).not.toHaveBeenCalled();
+
+    expect(
+      runtime.port.dispatch({
+        type: 'resolve-paragraph-conflict',
+        paragraphId: 'p-1',
+        resolution: 'accept-server'
+      })
+    ).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md peer',
+      isDirty: false,
+      hasConflict: false
+    });
+    expect(runtime.port.dispatch({ type: 'run-all-paragraphs' })).toBe(true);
+    expect(dispatchCommand).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a local conflict resolution dirty so it can be saved', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md local' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md peer', source: 'server' });
+
+    expect(
+      runtime.port.dispatch({
+        type: 'resolve-paragraph-conflict',
+        paragraphId: 'p-1',
+        resolution: 'keep-local'
+      })
+    ).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md local',
+      isDirty: true,
+      hasConflict: false
+    });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+  });
+
+  it('sends collaborative edits and local conflict resolutions as patches from Core', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const createParagraphPatch = vi.fn((previousText: string, nextText: string) => `${previousText}->${nextText}`);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      dispatchCommand,
+      createParagraphPatch
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.apply({ type: 'collaboration-updated', users: [] });
+
+    expect(runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md local' })).toBe(true);
+    expect(dispatchCommand).toHaveBeenLastCalledWith({
+      type: 'patch-paragraph',
+      paragraphId: 'p-1',
+      patch: '%md base->%md local'
+    });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md local',
+      isDirty: true,
+      hasConflict: false
+    });
+
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md local',
+      isDirty: true,
+      hasConflict: false
+    });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md peer', source: 'collaboration' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md peer',
+      isDirty: true,
+      hasConflict: false
+    });
+
+    runtime.apply({ type: 'collaboration-updated', users: null });
+    expect(runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md local v2' })).toBe(true);
+    runtime.apply({ type: 'collaboration-updated', users: [] });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md peer v2', source: 'server' });
+    dispatchCommand.mockClear();
+
+    expect(runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md bypass' })).toBe(false);
+    expect(dispatchCommand).not.toHaveBeenCalled();
+    expect(
+      runtime.port.dispatch({
+        type: 'resolve-paragraph-conflict',
+        paragraphId: 'p-1',
+        resolution: 'keep-local'
+      })
+    ).toBe(true);
+    expect(dispatchCommand).toHaveBeenLastCalledWith({
+      type: 'patch-paragraph',
+      paragraphId: 'p-1',
+      patch: '%md peer v2->%md local v2'
+    });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md local v2',
+      isDirty: true,
+      hasConflict: false
+    });
+  });
+
+  it('retains an unconfirmed local patch when a peer patch precedes reconnect', () => {
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      dispatchCommand: () => true,
+      createParagraphPatch: (previousText, nextText) => `${previousText}->${nextText}`
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'first\nmiddle\nlast', status: 'READY' }]
+    });
+    runtime.apply({ type: 'collaboration-updated', users: [] });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'LOCAL\nmiddle\nlast' });
+    runtime.apply({
+      type: 'paragraph-updated',
+      paragraphId: 'p-1',
+      text: 'LOCAL\nmiddle\nPEER',
+      source: 'collaboration'
+    });
+
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'LOCAL\nmiddle\nPEER',
+      isDirty: true,
+      hasConflict: false
+    });
+
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'first\nmiddle\nPEER', status: 'READY' }]
+    });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'LOCAL\nmiddle\nPEER',
+      isDirty: true,
+      hasConflict: true
+    });
+  });
+
   it('does not revive a consumed route draft after newer saves complete', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand: () => true });
     runtime.apply({ type: 'load-started' });

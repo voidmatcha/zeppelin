@@ -29,4 +29,16 @@ describe('makeParagraphPatch', () => {
   it('rejects text that was never set', () => {
     expect(() => makeParagraphPatch(new DiffMatchPatch(), 'abc', undefined)).toThrow('dirtyText is required');
   });
+
+  it('serializes multiple patch hunks without array separators', () => {
+    const dmp = new DiffMatchPatch();
+    const middle = 'unchanged '.repeat(20);
+    const originalText = `before ${middle} after`;
+    const dirtyText = `changed before ${middle} changed after`;
+
+    const { patch } = makeParagraphPatch(dmp, originalText, dirtyText);
+
+    expect(patch).not.toContain('\n,@@');
+    expect(dmp.patch_apply(dmp.patch_fromText(patch), originalText)).toEqual([dirtyText, [true, true]]);
+  });
 });

@@ -63,7 +63,6 @@ import {
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NotebookParagraphResultComponent } from '../../share/result/result.component';
 import { NotebookParagraphCodeEditorComponent } from './code-editor/code-editor.component';
-import { makeParagraphPatch } from './paragraph-patch';
 
 type Mode = 'edit' | 'command';
 
@@ -97,6 +96,8 @@ export class NotebookParagraphComponent
   @Input() viewOnly!: boolean;
   @Input() last!: boolean;
   @Input() collaborativeMode = false;
+  @Input() hasConflict = false;
+  @Input() hasNotebookConflict = false;
   @Input() first!: boolean;
   @Input() interpreterBindings: InterpreterBindingItem[] = [];
   @Input() useReactFooter = false;
@@ -141,13 +142,15 @@ export class NotebookParagraphComponent
     return next;
   }
 
-  @Output() readonly saveNoteTimer = new EventEmitter();
   @Output() readonly triggerSaveParagraph = new EventEmitter<string>();
   @Output() readonly runParagraphRequested = new EventEmitter<string>();
   @Output() readonly cancelParagraphRequested = new EventEmitter<string>();
-  @Output() readonly patchParagraphRequested = new EventEmitter<{ paragraphId: string; patch: string }>();
   @Output() readonly selected = new EventEmitter<string>();
   @Output() readonly paragraphTextChanged = new EventEmitter<{ paragraphId: string; text: string }>();
+  @Output() readonly resolveConflictRequested = new EventEmitter<{
+    paragraphId: string;
+    resolution: 'accept-server' | 'keep-local';
+  }>();
   @Output() readonly selectAtIndex = new EventEmitter<number>();
   @Output() readonly openSearchMenu = new EventEmitter();
 
@@ -194,26 +197,16 @@ export class NotebookParagraphComponent
   }
 
   textChanged(text: string) {
+    if (this.hasConflict) {
+      return;
+    }
     this.dirtyText = text;
     this.paragraph.text = text;
     this.paragraphTextChanged.emit({ paragraphId: this.paragraph.id, text });
-    if (this.dirtyText !== this.originalText) {
-      if (this.collaborativeMode) {
-        this.sendPatch();
-      } else {
-        this.startSaveTimer();
-      }
+    if (this.collaborativeMode) {
+      this.originalText = text;
+      this.dirtyText = undefined;
     }
-  }
-
-  sendPatch() {
-    const { patch, originalText } = makeParagraphPatch(this.diffMatchPatch, this.originalText, this.dirtyText);
-    this.originalText = originalText;
-    this.patchParagraphRequested.emit({ paragraphId: this.paragraph.id, patch });
-  }
-
-  startSaveTimer() {
-    this.saveNoteTimer.emit();
   }
 
   @HostListener('focusin')
@@ -251,6 +244,9 @@ export class NotebookParagraphComponent
   }
 
   saveParagraph() {
+    if (this.hasConflict) {
+      return;
+    }
     const dirtyText = this.paragraph.text;
     if (dirtyText === undefined || dirtyText === this.originalText) {
       return;
@@ -290,6 +286,9 @@ export class NotebookParagraphComponent
   }
 
   runAllAbove() {
+    if (this.hasNotebookConflict) {
+      return;
+    }
     const index = this.note.paragraphs.findIndex(p => p.id === this.paragraph.id);
     const toRunParagraphs = this.note.paragraphs.filter((p, i) => i < index);
 
@@ -305,7 +304,9 @@ export class NotebookParagraphComponent
         nzTitle: 'Run all above?',
         nzContent: 'Are you sure to run all above paragraphs?',
         nzOnOk: () => {
-          this.messageService.runAllParagraphs(this.note.id, paragraphs);
+          if (!this.hasNotebookConflict) {
+            this.messageService.runAllParagraphs(this.note.id, paragraphs);
+          }
         }
       })
       .afterClose.pipe(takeUntil(this.destroy$))
@@ -329,6 +330,9 @@ export class NotebookParagraphComponent
   }
 
   runAllBelowAndCurrent() {
+    if (this.hasNotebookConflict) {
+      return;
+    }
     const index = this.note.paragraphs.findIndex(p => p.id === this.paragraph.id);
     const toRunParagraphs = this.note.paragraphs.filter((p, i) => i >= index);
 
@@ -344,7 +348,9 @@ export class NotebookParagraphComponent
         nzTitle: 'Run current and all below?',
         nzContent: 'Are you sure to run current and all below?',
         nzOnOk: () => {
-          this.messageService.runAllParagraphs(this.note.id, paragraphs);
+          if (!this.hasNotebookConflict) {
+            this.messageService.runAllParagraphs(this.note.id, paragraphs);
+          }
         }
       })
       .afterClose.pipe(takeUntil(this.destroy$))
@@ -406,6 +412,9 @@ export class NotebookParagraphComponent
   }
 
   runParagraph(paragraphText?: string, propagated: boolean = false) {
+    if (this.hasConflict) {
+      return;
+    }
     const text = paragraphText || this.paragraph.text;
     if (text && !this.isParagraphRunning) {
       const magic = SpellResult.extractMagic(text);
@@ -520,6 +529,9 @@ export class NotebookParagraphComponent
   }
 
   commitParagraph() {
+    if (this.hasConflict) {
+      return;
+    }
     const {
       id,
       title,
@@ -575,11 +587,18 @@ export class NotebookParagraphComponent
   }
 
   onConfigChange(configResult: ParagraphConfigResult, index: number) {
+    if (this.hasConflict) {
+      return;
+    }
     if (!this.paragraph.config.results) {
       throw new Error('paragraph.config.results is required');
     }
     this.paragraph.config.results[index] = configResult;
     this.commitParagraph();
+  }
+
+  resolveConflict(resolution: 'accept-server' | 'keep-local'): void {
+    this.resolveConflictRequested.emit({ paragraphId: this.paragraph.id, resolution });
   }
 
   openSingleParagraph(paragraphId: string): void {

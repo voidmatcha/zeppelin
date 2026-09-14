@@ -150,6 +150,48 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.queryByLabelText('Collaborators')).toBeNull();
   });
 
+  it('shows paragraph conflicts and lets the user choose either version', () => {
+    const runtime = createNotebookCore({
+      noteId: 'note-1',
+      dispatchCommand: () => true,
+      scheduleTask: () => 1,
+      cancelTask: () => undefined
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'paragraph-1', text: '%md local' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: '%md peer', source: 'server' });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(screen.getByRole('alert').textContent).toContain('changed on the server');
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use server version' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement).value).toBe('%md peer');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Paragraph 1 editor' }), {
+      target: { value: '%md local v2' }
+    });
+    act(() => {
+      runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: '%md peer v2', source: 'server' });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Keep my version' }));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 editor' }) as HTMLTextAreaElement).value).toBe(
+      '%md local v2'
+    );
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('reads notebook permissions from the shared Core snapshot', () => {
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });

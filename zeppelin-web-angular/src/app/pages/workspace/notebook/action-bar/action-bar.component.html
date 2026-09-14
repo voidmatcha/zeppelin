@@ -32,7 +32,7 @@
           nz-tooltip
           nzTooltipTitle="Run all paragraphs"
           (nzOnConfirm)="runAllParagraphs()"
-          [disabled]="revisionView || isNoteParagraphRunning"
+          [disabled]="revisionView || isNoteParagraphRunning || hasParagraphConflict"
         >
           <i nz-icon nzType="play-circle" nzTheme="outline"></i>
         </button>

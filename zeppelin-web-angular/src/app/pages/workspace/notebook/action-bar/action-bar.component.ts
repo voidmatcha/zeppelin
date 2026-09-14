@@ -54,6 +54,7 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
   @Input() currentRevision?: string;
   @Input() collaborativeMode = false;
   @Input() collaborativeModeUsers: string[] = [];
+  @Input() hasParagraphConflict = false;
   @Input() revisionView = false;
   @Input() reactNotebook = false;
   @Input() activatedExtension: 'interpreter' | 'permissions' | 'revisions' | 'hide' = 'hide';
@@ -143,6 +144,9 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
   }
 
   runAllParagraphs() {
+    if (this.hasParagraphConflict) {
+      return;
+    }
     this.messageService.runAllParagraphs(
       this.note.id,
       this.note.paragraphs.map(p => ({
