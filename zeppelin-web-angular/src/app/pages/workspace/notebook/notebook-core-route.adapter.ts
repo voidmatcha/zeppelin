@@ -25,7 +25,7 @@ import {
   type NotebookRevision,
   type NotebookSchedule
 } from '@zeppelin/notebook-core';
-import type { Note, ParagraphConfigResult } from '@zeppelin/sdk';
+import type { EditorSettingReceived, Note, ParagraphConfigResult } from '@zeppelin/sdk';
 import { MessageService } from '@zeppelin/services';
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { Observable } from 'rxjs';
@@ -60,12 +60,29 @@ const editorLanguage = (paragraph: LoadedParagraph): string | undefined => {
 
 const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
+  title: paragraph.title,
   text: paragraph.text ?? '',
   status: normalizeParagraphStatus(paragraph.status),
   language: editorLanguage(paragraph),
   progress: 0,
   results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
-  resultConfigs: paragraph.config?.results
+  resultConfigs: paragraph.config?.results,
+  forms: paragraph.settings.forms as NotebookDynamicForms,
+  params: paragraph.settings.params as NotebookFormParams,
+  config: {
+    editorHide: Boolean(paragraph.config.editorHide),
+    tableHide: Boolean(paragraph.config.tableHide),
+    title: Boolean(paragraph.config.title),
+    enabled: paragraph.config.enabled !== false,
+    lineNumbers: Boolean(paragraph.config.lineNumbers),
+    colWidth: Math.min(12, Math.max(1, paragraph.config.colWidth ?? 12)),
+    fontSize: paragraph.config.fontSize ?? 9,
+    runOnSelectionChange:
+      paragraph.config.runOnSelectionChange ??
+      Object.values(paragraph.settings.forms).some(form => Boolean(form.options?.length)),
+    editOnDblClick: Boolean(paragraph.config.editorSetting?.editOnDblClick),
+    completionSupport: Boolean(paragraph.config.editorSetting?.completionSupport)
+  }
 });
 
 const toNotebookSchedule = (note: LoadedNote): NotebookSchedule | undefined =>
@@ -199,12 +216,64 @@ export class NotebookCoreRouteAdapter {
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
+      title: paragraph.title,
       text: paragraph.text ?? '',
       status: normalizeParagraphStatus(paragraph.status),
       language: editorLanguage(paragraph),
       results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
       resultConfigs: paragraph.config?.results,
+      forms: paragraph.settings.forms as NotebookDynamicForms,
+      params: paragraph.settings.params as NotebookFormParams,
+      config: toParagraphSnapshot(paragraph).config,
       source: 'server'
+    });
+  }
+
+  acceptParagraphPresentation(paragraph: LoadedParagraph): void {
+    const snapshot = this.port.getSnapshot();
+    if (
+      snapshot.phase !== 'ready' ||
+      snapshot.revisionId !== null ||
+      !snapshot.paragraphs.some(candidate => candidate.id === paragraph.id)
+    ) {
+      return;
+    }
+    this.paragraphViewsById.set(paragraph.id, paragraph);
+    const next = toParagraphSnapshot(paragraph);
+    this.runtime.apply({
+      type: 'paragraph-updated',
+      paragraphId: paragraph.id,
+      title: next.title,
+      language: next.language,
+      forms: next.forms,
+      params: next.params,
+      config: next.config,
+      source: 'local'
+    });
+  }
+
+  getParagraphView(paragraphId: string): LoadedParagraph | undefined {
+    return this.paragraphViewsById.get(paragraphId);
+  }
+
+  getParagraphViews(): readonly LoadedParagraph[] {
+    return this.selectParagraphViews();
+  }
+
+  acceptEditorSetting(data: EditorSettingReceived): void {
+    const paragraph = this.paragraphViewsById.get(data.paragraphId);
+    if (!paragraph) {
+      return;
+    }
+    this.acceptParagraphPresentation({
+      ...paragraph,
+      config: {
+        ...paragraph.config,
+        editorSetting: {
+          ...(paragraph.config.editorSetting ?? { params: {}, forms: {} }),
+          ...data.editor
+        }
+      }
     });
   }
 

@@ -16,6 +16,23 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createNotebookCore, selectNotebookParagraphViews } from './notebook-core';
 
+const defaultParagraphPresentation = {
+  forms: {},
+  params: {},
+  config: {
+    editorHide: false,
+    tableHide: false,
+    title: false,
+    enabled: true,
+    lineNumbers: false,
+    fontSize: 9,
+    colWidth: 12,
+    runOnSelectionChange: false,
+    editOnDblClick: false,
+    completionSupport: false
+  }
+};
+
 const createTaskScheduler = () => {
   let now = 0;
   let nextId = 0;
@@ -340,6 +357,7 @@ describe('notebook core runtime spike', () => {
       personalizedMode: false,
       paragraphs: [
         {
+          ...defaultParagraphPresentation,
           id: 'p-1',
           text: '%md shared state',
           status: 'FINISHED',
@@ -349,6 +367,7 @@ describe('notebook core runtime spike', () => {
           hasConflict: false
         },
         {
+          ...defaultParagraphPresentation,
           id: 'p-2',
           text: '%spark 1 + 1',
           status: 'READY',
@@ -497,6 +516,7 @@ describe('notebook core runtime spike', () => {
       })
     ).toBe(true);
     expect(runtime.port.getSnapshot().paragraphs[0]).toEqual({
+      ...defaultParagraphPresentation,
       id: 'p-1',
       text: '%python\nprint("updated")',
       status: 'READY',
@@ -508,6 +528,7 @@ describe('notebook core runtime spike', () => {
 
     expect(runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', status: 'RUNNING' })).toBe(true);
     expect(runtime.port.getSnapshot().paragraphs[0]).toEqual({
+      ...defaultParagraphPresentation,
       id: 'p-1',
       text: '%python\nprint("updated")',
       status: 'RUNNING',
@@ -545,6 +566,7 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md saved', source: 'server' });
 
     expect(runtime.port.getSnapshot().paragraphs[0]).toEqual({
+      ...defaultParagraphPresentation,
       id: 'p-1',
       text: '%md local draft',
       status: 'READY',

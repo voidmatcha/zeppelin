@@ -37,6 +37,54 @@ const createNote = (status = 'READY'): LoadedNote =>
   }) as LoadedNote;
 
 describe('NotebookCoreRouteAdapter command boundary', () => {
+  it('projects paragraph presentation and dynamic forms into the shared Core snapshot', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.paragraphs[0].config = {
+      ...note.paragraphs[0].config,
+      title: true,
+      lineNumbers: true,
+      runOnSelectionChange: true,
+      editorSetting: { ...note.paragraphs[0].config.editorSetting!, completionSupport: true }
+    };
+    note.paragraphs[0].settings = {
+      forms: {
+        country: { name: 'country', type: 'Select', hidden: false, defaultValue: 'kr', options: [{ value: 'kr' }] }
+      },
+      params: { country: 'kr' }
+    };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({
+      title: 'Proof paragraph',
+      forms: { country: { name: 'country' } },
+      params: { country: 'kr' },
+      config: { title: true, lineNumbers: true, runOnSelectionChange: true, completionSupport: true }
+    });
+  });
+
+  it('updates paragraph presentation without treating an unsaved draft as a server save', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', '%python\nlocal draft');
+    note.paragraphs[0].title = 'Updated title';
+    note.paragraphs[0].config.lineNumbers = true;
+    adapter.acceptParagraphPresentation(note.paragraphs[0]);
+
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%python\nlocal draft',
+      isDirty: true,
+      hasConflict: false,
+      title: 'Updated title',
+      config: { lineNumbers: true }
+    });
+  });
+
   it('maps a Core run command to one existing SDK message with the Core text', () => {
     const runParagraph = vi.fn();
     const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as MessageService);
@@ -203,6 +251,32 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     adapter.acceptNote(note, null);
 
     expect(adapter.port.getSnapshot().paragraphs[0].language).toBe('sql');
+  });
+
+  it('projects editor capabilities returned for a React paragraph without changing its text state', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', '%scala\nprintln(1)');
+    adapter.acceptEditorSetting({
+      paragraphId: 'paragraph-1',
+      editor: { completionSupport: true, editOnDblClick: true, language: 'scala' }
+    });
+
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%scala\nprintln(1)',
+      isDirty: true,
+      hasConflict: false,
+      language: 'scala',
+      config: { completionSupport: true, editOnDblClick: true }
+    });
+    expect(adapter.getParagraphView('paragraph-1')?.config.editorSetting).toMatchObject({
+      completionSupport: true,
+      editOnDblClick: true,
+      language: 'scala'
+    });
   });
 
   it('maps collaborative-mode status into the Core snapshot for the React adapter', () => {

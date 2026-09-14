@@ -78,6 +78,7 @@ export type NotebookInterpreterBinding = Readonly<{
 
 export type NotebookParagraphSnapshot = Readonly<{
   id: string;
+  title?: string;
   text: string;
   status: NotebookParagraphStatus;
   language?: string;
@@ -87,13 +88,40 @@ export type NotebookParagraphSnapshot = Readonly<{
   hasConflict: boolean;
   results?: readonly NotebookParagraphResult[];
   resultConfigs?: NotebookParagraphResultConfigs;
+  forms: NotebookDynamicForms;
+  params: NotebookFormParams;
+  config: NotebookParagraphConfig;
+}>;
+
+export type NotebookParagraphConfig = Readonly<{
+  editorHide: boolean;
+  tableHide: boolean;
+  title: boolean;
+  enabled: boolean;
+  lineNumbers: boolean;
+  fontSize: number;
+  colWidth: number;
+  runOnSelectionChange: boolean;
+  editOnDblClick: boolean;
+  completionSupport: boolean;
+}>;
+
+export type NotebookCompletionItem = Readonly<{
+  name: string;
+  value?: string;
+  meta?: string;
 }>;
 
 export type NotebookParagraphInput = Omit<
   NotebookParagraphSnapshot,
-  'isDirty' | 'isSaving' | 'hasConflict' | 'progress'
+  'isDirty' | 'isSaving' | 'hasConflict' | 'progress' | 'forms' | 'params' | 'config'
 > &
-  Readonly<{ progress?: number }>;
+  Readonly<{
+    progress?: number;
+    forms?: NotebookDynamicForms;
+    params?: NotebookFormParams;
+    config?: Partial<NotebookParagraphConfig>;
+  }>;
 
 export type NotebookCorePhase = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -150,6 +178,26 @@ export type NotebookCoreRemoteProps = Readonly<{
   onParagraphInsert?: (index: number) => void;
   onParagraphRemove?: (paragraphId: string) => void;
   onParagraphMove?: (paragraphId: string, index: number) => void;
+  onParagraphClone?: (paragraphId: string) => void;
+  onParagraphOpen?: (paragraphId: string) => void;
+  onParagraphClearOutput?: (paragraphId: string) => void;
+  onParagraphRunRange?: (paragraphId: string, range: 'above' | 'below-and-current') => void;
+  onParagraphTitleChange?: (paragraphId: string, title: string) => void;
+  onParagraphConfigChange?: (paragraphId: string, config: Partial<NotebookParagraphConfig>) => void;
+  onParagraphFormsChange?: (paragraphId: string, params: NotebookFormParams, run: boolean) => void;
+  onCompletionRequest?: (
+    paragraphId: string,
+    buffer: string,
+    cursor: number
+  ) => Promise<readonly NotebookCompletionItem[]>;
+  onEditorSettingRequest?: (paragraphId: string, text: string) => void;
+  onHostResultMount?: (
+    host: unknown,
+    paragraphId: string,
+    resultIndex: number,
+    result: NotebookParagraphResult,
+    config?: NotebookParagraphResultConfig
+  ) => () => void;
   onNotebookTitleChange?: (title: string) => void;
   onCloneNotebook?: () => void;
   onExportNotebook?: () => void;

@@ -67,6 +67,7 @@ import {
   ScatterChartVisualization,
   TableVisualization
 } from '@zeppelin/visualizations';
+import { destroyOwnedClassicVisualizations } from './destroy-owned-classic-visualizations';
 
 interface VisualizationItem {
   id: string;
@@ -510,24 +511,20 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
     modernVisualizationItem.instance!.render(transformed);
   }
 
-  destroyVisualizations(omit?: string) {
+  destroyVisualizations(omit?: string, forceCleanBootstrap = false) {
+    destroyOwnedClassicVisualizations(this.id, this.visualizations, omit, targetElementId =>
+      this.classicVisualizationService.destroyInstance(targetElementId, forceCleanBootstrap)
+    );
     this.visualizations.forEach(v => {
-      if (v.id !== omit && v.instance) {
-        if (v.isClassic) {
-          // Destroy classic visualization through service
-          const targetElementId = `p${this.id}_${v.id}`;
-          this.classicVisualizationService.destroyInstance(targetElementId);
-          v.instance = undefined;
-        } else {
-          if (v.changeSubscription instanceof Subscription) {
-            v.changeSubscription.unsubscribe();
-            v.changeSubscription = null;
-          }
-          if (typeof v.instance.destroy === 'function') {
-            v.instance.destroy();
-          }
-          v.instance = undefined;
+      if (v.id !== omit && v.instance && !v.isClassic) {
+        if (v.changeSubscription instanceof Subscription) {
+          v.changeSubscription.unsubscribe();
+          v.changeSubscription = null;
         }
+        if (typeof v.instance.destroy === 'function') {
+          v.instance.destroy();
+        }
+        v.instance = undefined;
       }
     });
   }
@@ -590,8 +587,7 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   }
 
   ngOnDestroy(): void {
-    this.destroyVisualizations();
-    this.classicVisualizationService.destroyAllInstances(true);
+    this.destroyVisualizations(undefined, true);
     this.destroy$.next();
     this.destroy$.complete();
   }

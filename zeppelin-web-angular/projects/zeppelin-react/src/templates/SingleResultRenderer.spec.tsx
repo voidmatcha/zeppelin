@@ -11,7 +11,7 @@
  */
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { NotebookParagraphResult, NotebookParagraphResultConfigs } from '@zeppelin/notebook-core';
 import { DatasetType } from '@zeppelin/sdk';
 import { SingleResultRenderer } from './SingleResultRenderer';
@@ -38,8 +38,6 @@ describe('SingleResultRenderer', () => {
   it('renders TABLE through the visualization', () => {
     render(<SingleResultRenderer index={0} result={result(DatasetType.TABLE, TABLE_DATA)} />);
 
-    // Only that the arm was taken. The visualization's display-mode state is a
-    // known defect (projects/zeppelin-react/AGENTS.md), so nothing here pins it.
     expect(screen.getByText('alice')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Bar Chart/ })).toBeTruthy();
   });
@@ -58,6 +56,26 @@ describe('SingleResultRenderer', () => {
     expect(screen.queryByText('alice')).toBeNull();
   });
 
+  it('delegates TABLE output to the notebook host when it is available', () => {
+    const mount = vi.fn(() => () => undefined);
+    render(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, 'name\tvalue\nfirst\t1')}
+        onHostResultMount={mount}
+      />
+    );
+
+    expect(mount).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      'paragraph-1',
+      0,
+      result(DatasetType.TABLE, 'name\tvalue\nfirst\t1'),
+      undefined
+    );
+  });
+
   it('renders IMG as a base64 png', () => {
     render(<SingleResultRenderer index={0} result={result(DatasetType.IMG, 'QUJD')} />);
 
@@ -70,11 +88,125 @@ describe('SingleResultRenderer', () => {
     expect(screen.getByText('markup output').tagName).toBe('P');
   });
 
-  it('tells the user that ANGULAR results are unsupported here', () => {
-    render(<SingleResultRenderer index={0} result={result(DatasetType.ANGULAR, 'anything')} />);
+  it('delegates ANGULAR result lifecycle to the Angular host', () => {
+    const cleanup = vi.fn();
+    const mount = vi.fn(() => cleanup);
+    const { unmount } = render(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.ANGULAR, '<div>{{value}}</div>')}
+        onHostResultMount={mount}
+      />
+    );
 
-    expect(screen.getByText('Angular Component')).toBeTruthy();
-    expect(screen.getByText(/not supported in React environment/)).toBeTruthy();
+    expect(mount).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      'paragraph-1',
+      0,
+      result(DatasetType.ANGULAR, '<div>{{value}}</div>'),
+      undefined
+    );
+    unmount();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an equivalent host result mounted across unrelated renders', () => {
+    const cleanup = vi.fn();
+    const mount = vi.fn(() => cleanup);
+    const replacementMount = vi.fn(() => cleanup);
+    const { rerender, unmount } = render(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, TABLE_DATA)}
+        config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
+        onHostResultMount={mount}
+      />
+    );
+
+    rerender(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, TABLE_DATA)}
+        config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
+        onHostResultMount={replacementMount}
+      />
+    );
+
+    expect(mount).toHaveBeenCalledTimes(1);
+    expect(replacementMount).not.toHaveBeenCalled();
+    expect(cleanup).not.toHaveBeenCalled();
+    unmount();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('remounts the host result when its data or display config changes', () => {
+    const cleanup = vi.fn();
+    const mount = vi.fn(() => cleanup);
+    const { rerender } = render(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, TABLE_DATA)}
+        config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
+        onHostResultMount={mount}
+      />
+    );
+
+    rerender(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, `${TABLE_DATA}\nbob\t40`)}
+        config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
+        onHostResultMount={mount}
+      />
+    );
+    expect(mount).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, `${TABLE_DATA}\nbob\t40`)}
+        config={{ 0: { graph: { mode: 'multiBarChart' } } } as NotebookParagraphResultConfigs}
+        onHostResultMount={mount}
+      />
+    );
+    expect(mount).toHaveBeenCalledTimes(3);
+    expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives every host mount a fresh element without losing the React-owned container', () => {
+    const mount = vi.fn(() => () => undefined);
+    const { rerender } = render(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, TABLE_DATA)}
+        onHostResultMount={mount}
+      />
+    );
+    const container = screen.getByLabelText('Host result');
+    const firstHost = mount.mock.calls[0][0] as HTMLElement;
+
+    rerender(
+      <SingleResultRenderer
+        index={0}
+        paragraphId="paragraph-1"
+        result={result(DatasetType.TABLE, `${TABLE_DATA}\nbob\t40`)}
+        onHostResultMount={mount}
+      />
+    );
+
+    const secondHost = mount.mock.calls[1][0] as HTMLElement;
+    expect(secondHost).not.toBe(firstHost);
+    expect(container.isConnected).toBe(true);
+    expect(container.firstElementChild).toBe(secondHost);
+    expect(firstHost.isConnected).toBe(false);
   });
 
   it('renders nothing for a type it has no renderer for', () => {

@@ -11,10 +11,14 @@
  */
 
 import {
+  ApplicationRef,
   AfterViewInit,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  createComponent,
+  EnvironmentInjector,
+  NgZone,
   OnDestroy,
   OnInit,
   QueryList,
@@ -22,8 +26,8 @@ import {
 } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
-import { isNil } from 'lodash';
-import { combineLatest, firstValueFrom, merge, Subject } from 'rxjs';
+import { cloneDeep, isNil } from 'lodash';
+import { combineLatest, firstValueFrom, merge, Subject, Subscription } from 'rxjs';
 import {
   distinctUntilChanged,
   distinctUntilKeyChanged,
@@ -41,17 +45,21 @@ import { NzModalService } from 'ng-zorro-antd/modal';
 import { MessageListener, MessageListenersManager } from '@zeppelin/core';
 import { Permissions } from '@zeppelin/interfaces';
 import {
+  getAngularObjectRemoveName,
   OP,
+  type AngularObjectUpdate,
   type DynamicFormParams,
   type InterpreterBindingItem,
   type MessageReceiveDataTypeMap,
   type Note,
   type NoteRevisionForCompareReceived,
   type ParagraphConfigResult,
+  type ParagraphIResultsMsgItem,
   type RevisionListItem
 } from '@zeppelin/sdk';
 import {
   MessageService,
+  CompletionService,
   ConfigurationService,
   NgZService,
   NoteStatusService,
@@ -68,10 +76,14 @@ import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
 import type {
   NotebookCoreRemoteProps,
   NotebookCoreSnapshot,
+  NotebookFormParams,
+  NotebookParagraphConfig,
+  NotebookParagraphResultConfig,
   NotebookPermissions,
   NotebookRevisionComparison,
   NotebookRevisionParagraph
 } from '@zeppelin/notebook-core';
+import { NotebookParagraphResultComponent } from '../share/result/result.component';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
 
@@ -179,6 +191,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (!this.renderParagraphProjection(paragraphs)) {
       return;
     }
+    this.ngZService.removeParagraph(data.id);
     const adjustedCursorIndex =
       paragraphIndex === this.note.paragraphs.length ? paragraphIndex - 1 : paragraphIndex + 1;
     const targetParagraph = this.listOfNotebookParagraphComponent.find((_, index) => index === adjustedCursorIndex);
@@ -286,6 +299,32 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.acceptParagraphUpdated(data.paragraph);
   }
 
+  @MessageListener(OP.EDITOR_SETTING)
+  updateCoreEditorSetting(data: MessageReceiveDataTypeMap[OP.EDITOR_SETTING]) {
+    if (this.useReactNotebook) {
+      this.notebookCoreRouteAdapter.acceptEditorSetting(data);
+    }
+  }
+
+  @MessageListener(OP.ANGULAR_OBJECT_UPDATE)
+  updateCoreAngularObject(data: AngularObjectUpdate): void {
+    if (this.acceptsReactAngularObject(data.noteId, data.paragraphId)) {
+      const { name, object } = data.angularObject;
+      this.ngZService.setContextValue(name, object, data.paragraphId, false);
+    }
+  }
+
+  @MessageListener(OP.ANGULAR_OBJECT_REMOVE)
+  removeCoreAngularObject(data: MessageReceiveDataTypeMap[OP.ANGULAR_OBJECT_REMOVE]): void {
+    if (!this.acceptsReactAngularObject(data.noteId, data.paragraphId)) {
+      return;
+    }
+    const name = getAngularObjectRemoveName(data);
+    if (name !== undefined) {
+      this.ngZService.unsetContextValue(name, data.paragraphId, false);
+    }
+  }
+
   @MessageListener(OP.PARAGRAPH_STATUS)
   updateCoreParagraphStatus(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_STATUS]) {
     this.notebookCoreRouteAdapter.acceptParagraphStatus(data.id, data.status);
@@ -390,15 +429,227 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   removeCoreParagraph(paragraphId: string): void {
-    if (!this.revisionView) {
-      this.messageService.paragraphRemove(paragraphId);
+    if (this.revisionView || !this.note) {
+      return;
     }
+    if (this.note.paragraphs.length === 1) {
+      this.nzModalService.warning({
+        nzTitle: 'Warning',
+        nzContent: "All the paragraphs can't be deleted"
+      });
+      return;
+    }
+    this.nzModalService.confirm({
+      nzTitle: 'Delete Paragraph',
+      nzContent: 'Do you want to delete this paragraph?',
+      nzAutofocus: null,
+      nzOnOk: () => this.messageService.paragraphRemove(paragraphId)
+    });
   }
 
   moveCoreParagraph(paragraphId: string, index: number): void {
     if (!this.revisionView) {
       this.messageService.moveParagraph(paragraphId, index);
     }
+  }
+
+  private getCoreParagraph(paragraphId: string): LoadedParagraph | undefined {
+    return this.notebookCoreRouteAdapter.getParagraphView(paragraphId);
+  }
+
+  private canMutateCoreParagraph(paragraphId: string, run = false): boolean {
+    const snapshot = this.notebookCoreRouteAdapter.port.getSnapshot();
+    const paragraph = snapshot.paragraphs.find(candidate => candidate.id === paragraphId);
+    return Boolean(
+      this.useReactNotebook &&
+      !this.reactNotebookFailed &&
+      snapshot.phase === 'ready' &&
+      snapshot.revisionId === null &&
+      paragraph &&
+      !paragraph.hasConflict &&
+      !this.viewOnly &&
+      (run ? this.canCurrentUserRun() : this.canCurrentUserWrite())
+    );
+  }
+
+  private commitCoreParagraph(paragraph: LoadedParagraph): void {
+    if (!this.canMutateCoreParagraph(paragraph.id)) {
+      return;
+    }
+    const snapshot = this.notebookCoreRouteAdapter.port.getSnapshot();
+    const coreParagraph = snapshot.paragraphs.find(candidate => candidate.id === paragraph.id);
+    if (!coreParagraph) {
+      return;
+    }
+    this.notebookCoreRouteAdapter.acceptParagraphPresentation(paragraph);
+    this.messageService.commitParagraph(
+      paragraph.id,
+      paragraph.title,
+      coreParagraph.text,
+      paragraph.config,
+      paragraph.settings.params,
+      snapshot.noteId
+    );
+    this.refreshCoreProofReactProps();
+    this.cdr.markForCheck();
+  }
+
+  private cloneCoreParagraph(paragraphId: string): void {
+    const paragraph = this.getCoreParagraph(paragraphId);
+    const paragraphs = this.notebookCoreRouteAdapter.getParagraphViews();
+    const index = paragraphs.findIndex(candidate => candidate.id === paragraphId);
+    const coreParagraph = this.notebookCoreRouteAdapter.port
+      .getSnapshot()
+      .paragraphs.find(candidate => candidate.id === paragraphId);
+    if (!paragraph || !coreParagraph || index < 0 || !this.canMutateCoreParagraph(paragraphId)) {
+      return;
+    }
+    this.messageService.copyParagraph(
+      index + 1,
+      paragraph.title,
+      coreParagraph.text,
+      { ...paragraph.config, editorHide: false },
+      paragraph.settings.params
+    );
+  }
+
+  private runCoreParagraphRange(paragraphId: string, range: 'above' | 'below-and-current'): void {
+    if (!this.canMutateCoreParagraph(paragraphId, true) || this.hasParagraphConflict()) {
+      return;
+    }
+    const paragraphViews = this.notebookCoreRouteAdapter.getParagraphViews();
+    const index = paragraphViews.findIndex(paragraph => paragraph.id === paragraphId);
+    if (index < 0) {
+      return;
+    }
+    const paragraphIds = paragraphViews
+      .filter((_, candidateIndex) => (range === 'above' ? candidateIndex < index : candidateIndex >= index))
+      .map(paragraph => paragraph.id);
+    this.nzModalService.confirm({
+      nzTitle: range === 'above' ? 'Run all above?' : 'Run current and all below?',
+      nzContent:
+        range === 'above' ? 'Are you sure to run all above paragraphs?' : 'Are you sure to run current and all below?',
+      nzOnOk: () => {
+        if (!this.canMutateCoreParagraph(paragraphId, true) || this.hasParagraphConflict()) {
+          return;
+        }
+        const snapshot = this.notebookCoreRouteAdapter.port.getSnapshot();
+        const currentViews = new Map(
+          this.notebookCoreRouteAdapter.getParagraphViews().map(paragraph => [paragraph.id, paragraph])
+        );
+        const paragraphs = paragraphIds
+          .map(id => {
+            const paragraph = currentViews.get(id);
+            const coreParagraph = snapshot.paragraphs.find(candidate => candidate.id === id);
+            return paragraph && coreParagraph
+              ? {
+                  id,
+                  title: paragraph.title,
+                  paragraph: coreParagraph.text,
+                  config: paragraph.config,
+                  params: paragraph.settings.params
+                }
+              : null;
+          })
+          .filter((paragraph): paragraph is NonNullable<typeof paragraph> => paragraph !== null);
+        if (paragraphs.length === paragraphIds.length) {
+          this.messageService.runAllParagraphs(snapshot.noteId, paragraphs);
+        }
+      }
+    });
+  }
+
+  private updateCoreParagraphTitle(paragraphId: string, title: string): void {
+    const paragraph = this.getCoreParagraph(paragraphId);
+    if (!paragraph) {
+      return;
+    }
+    this.commitCoreParagraph({ ...paragraph, title });
+  }
+
+  private updateCoreParagraphConfig(paragraphId: string, config: Partial<NotebookParagraphConfig>): void {
+    const paragraph = this.getCoreParagraph(paragraphId);
+    if (!paragraph) {
+      return;
+    }
+    this.commitCoreParagraph({ ...paragraph, config: { ...paragraph.config, ...config } });
+  }
+
+  private updateCoreParagraphForms(paragraphId: string, params: NotebookFormParams, run: boolean): void {
+    const paragraph = this.getCoreParagraph(paragraphId);
+    if (!paragraph || !this.canMutateCoreParagraph(paragraphId, true)) {
+      return;
+    }
+    const paragraphParams = Object.entries(params).reduce<DynamicFormParams>((next, [name, value]) => {
+      next[name] = value;
+      return next;
+    }, {});
+    const updatedParagraph = {
+      ...paragraph,
+      settings: { ...paragraph.settings, params: paragraphParams }
+    };
+    this.notebookCoreRouteAdapter.acceptParagraphPresentation(updatedParagraph);
+    if (run) {
+      this.notebookCoreRouteAdapter.port.dispatch({ type: 'run-paragraph', paragraphId });
+    }
+    this.refreshCoreProofReactProps();
+    this.cdr.markForCheck();
+  }
+
+  private mountAngularResult(
+    host: unknown,
+    paragraphId: string,
+    resultIndex: number,
+    result: ParagraphIResultsMsgItem,
+    config?: NotebookParagraphResultConfig
+  ): () => void {
+    if (!(host instanceof HTMLElement)) {
+      throw new Error('Angular result host must be an HTML element.');
+    }
+    const componentRef = createComponent(NotebookParagraphResultComponent, {
+      hostElement: host,
+      environmentInjector: this.environmentInjector
+    });
+    let attached = false;
+    let configSubscription: Subscription | undefined;
+    try {
+      componentRef.setInput('id', paragraphId);
+      componentRef.setInput('result', cloneDeep(result));
+      componentRef.setInput('config', cloneDeep(config) as ParagraphConfigResult | undefined);
+      componentRef.setInput('isPending', false);
+      configSubscription = componentRef.instance.configChange.subscribe(nextConfig =>
+        this.notebookCoreRouteAdapter.updateParagraphResultConfig(paragraphId, resultIndex, nextConfig)
+      );
+      this.applicationRef.attachView(componentRef.hostView);
+      attached = true;
+      componentRef.changeDetectorRef.detectChanges();
+    } catch (error) {
+      configSubscription?.unsubscribe();
+      if (attached) {
+        this.applicationRef.detachView(componentRef.hostView);
+      }
+      componentRef.destroy();
+      throw error;
+    }
+    return () => {
+      configSubscription?.unsubscribe();
+      if (attached) {
+        this.applicationRef.detachView(componentRef.hostView);
+      }
+      componentRef.destroy();
+    };
+  }
+
+  private acceptsReactAngularObject(noteId: string, paragraphId: string): boolean {
+    const snapshot = this.notebookCoreRouteAdapter.port.getSnapshot();
+    return (
+      this.useReactNotebook &&
+      !this.reactNotebookFailed &&
+      snapshot.phase === 'ready' &&
+      snapshot.revisionId === null &&
+      snapshot.noteId === noteId &&
+      snapshot.paragraphs.some(paragraph => paragraph.id === paragraphId)
+    );
   }
 
   renameCoreNotebook(title: string): void {
@@ -618,7 +869,11 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private saveAsService: SaveAsService,
     private nzModalService: NzModalService,
     private reactFeature: ReactFeatureService,
-    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter
+    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter,
+    private completionService: CompletionService,
+    private applicationRef: ApplicationRef,
+    private environmentInjector: EnvironmentInjector,
+    private ngZone: NgZone
   ) {
     super(messageService);
     this.coreProofReactProps = this.createCoreProofReactProps();
@@ -640,6 +895,26 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onParagraphInsert: index => this.insertCoreParagraph(index),
       onParagraphRemove: paragraphId => this.removeCoreParagraph(paragraphId),
       onParagraphMove: (paragraphId, index) => this.moveCoreParagraph(paragraphId, index),
+      onParagraphClone: paragraphId => this.cloneCoreParagraph(paragraphId),
+      onParagraphOpen: paragraphId => {
+        if (this.note) {
+          window.open(
+            `${location.protocol}//${location.host}${location.pathname}#/notebook/${this.note.id}/paragraph/${paragraphId}`
+          );
+        }
+      },
+      onParagraphClearOutput: paragraphId => this.messageService.paragraphClearOutput(paragraphId),
+      onParagraphRunRange: (paragraphId, range) => this.runCoreParagraphRange(paragraphId, range),
+      onParagraphTitleChange: (paragraphId, title) => this.updateCoreParagraphTitle(paragraphId, title),
+      onParagraphConfigChange: (paragraphId, config) => this.updateCoreParagraphConfig(paragraphId, config),
+      onParagraphFormsChange: (paragraphId, params, run) => this.updateCoreParagraphForms(paragraphId, params, run),
+      onCompletionRequest: (paragraphId, buffer, cursor) =>
+        this.completionService.requestCompletion(paragraphId, buffer, cursor),
+      onEditorSettingRequest: (paragraphId, text) => this.messageService.editorSetting(paragraphId, text),
+      onHostResultMount: (host, paragraphId, resultIndex, result, config) =>
+        this.ngZone.run(() =>
+          this.mountAngularResult(host, paragraphId, resultIndex, result as ParagraphIResultsMsgItem, config)
+        ),
       onNotebookTitleChange: title => this.renameCoreNotebook(title),
       onCloneNotebook: () => this.cloneReactNotebook(),
       onExportNotebook: () => this.exportReactNotebook(),
@@ -975,6 +1250,28 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       .receive(OP.PARAGRAPH_OUTPUT_SNAPSHOT)
       .pipe(takeUntil(this.destroy$))
       .subscribe(data => this.updateCoreParagraphOutputSnapshot(data));
+    this.ngZService
+      .runParagraphAction()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(paragraphId => {
+        if (this.canMutateCoreParagraph(paragraphId, true)) {
+          this.notebookCoreRouteAdapter.port.dispatch({ type: 'run-paragraph', paragraphId });
+        }
+      });
+    this.ngZService
+      .contextChanged()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(change => {
+        const noteId = this.notebookCoreRouteAdapter.port.getSnapshot().noteId;
+        if (!change.emit || !this.acceptsReactAngularObject(noteId, change.paragraphId)) {
+          return;
+        }
+        if (change.set) {
+          this.messageService.angularObjectClientBind(noteId, change.key, change.value, change.paragraphId);
+        } else {
+          this.messageService.angularObjectClientUnbind(noteId, change.key, change.paragraphId);
+        }
+      });
     this.activatedRoute.queryParamMap
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(params => {

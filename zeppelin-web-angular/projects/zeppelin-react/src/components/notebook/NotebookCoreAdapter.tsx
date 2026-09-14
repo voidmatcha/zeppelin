@@ -16,13 +16,14 @@ import type {
   NotebookFormValue,
   NotebookPermissions
 } from '@zeppelin/notebook-core';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
 import { ReactErrorBoundary } from '../paragraph/ReactErrorBoundary';
 import { SingleResultRenderer } from '../../templates/SingleResultRenderer';
 import { useHostThemeMode, ZeppelinThemeProvider } from '../../theme/ZeppelinThemeProvider';
 import { NotebookMonacoEditor } from './NotebookMonacoEditor';
+import { ParagraphDynamicForms } from './ParagraphDynamicForms';
 
 const EMPTY_INTERPRETER_BINDINGS = Object.freeze([]);
 
@@ -38,6 +39,16 @@ export const NotebookCoreAdapter = ({
   onParagraphInsert,
   onParagraphRemove,
   onParagraphMove,
+  onParagraphClone,
+  onParagraphOpen,
+  onParagraphClearOutput,
+  onParagraphRunRange,
+  onParagraphTitleChange,
+  onParagraphConfigChange,
+  onParagraphFormsChange,
+  onCompletionRequest,
+  onEditorSettingRequest,
+  onHostResultMount,
   onParagraphResultConfigChange,
   onNotebookTitleChange,
   onCloneNotebook,
@@ -106,16 +117,64 @@ export const NotebookCoreAdapter = ({
   const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text]))
   );
+  const [paragraphParams, setParagraphParams] = useState(() =>
+    Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.params]))
+  );
+  const [paragraphTitles, setParagraphTitles] = useState(() =>
+    Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.title ?? '']))
+  );
+  const serverParagraphTitles = useRef(
+    Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.title ?? '']))
+  );
+  const requestedInterpreterNames = useRef(new Map<string, string>());
   const canEdit = hostCanEdit && !readOnly && snapshot.revisionId === null;
   useEffect(() => {
     setTitleDraft(snapshot.title ?? '');
   }, [snapshot.noteId, snapshot.title]);
   useEffect(() => {
     setParagraphDrafts(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text])));
+    setParagraphParams(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.params])));
+  }, [snapshot.noteId, snapshot.paragraphs]);
+  useEffect(() => {
+    const nextServerTitles = Object.fromEntries(
+      snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.title ?? ''])
+    );
+    setParagraphTitles(current =>
+      Object.fromEntries(
+        snapshot.paragraphs.map(paragraph => {
+          const title = paragraph.title ?? '';
+          return [
+            paragraph.id,
+            current[paragraph.id] === serverParagraphTitles.current[paragraph.id]
+              ? title
+              : (current[paragraph.id] ?? title)
+          ];
+        })
+      )
+    );
+    serverParagraphTitles.current = nextServerTitles;
   }, [snapshot.noteId, snapshot.paragraphs]);
   useEffect(() => {
     setPermissionDraft(snapshot.permissions ?? null);
   }, [snapshot.noteId, snapshot.permissions]);
+  useEffect(() => {
+    if (!onEditorSettingRequest || snapshot.phase !== 'ready' || snapshot.revisionId !== null) {
+      return;
+    }
+    const paragraphIds = new Set(snapshot.paragraphs.map(paragraph => paragraph.id));
+    for (const paragraphId of requestedInterpreterNames.current.keys()) {
+      if (!paragraphIds.has(paragraphId)) {
+        requestedInterpreterNames.current.delete(paragraphId);
+      }
+    }
+    for (const paragraph of snapshot.paragraphs) {
+      const interpreterName = paragraph.text.match(/^\s*%([^\s(]+)/)?.[1] ?? '';
+      if (requestedInterpreterNames.current.get(paragraph.id) !== interpreterName) {
+        requestedInterpreterNames.current.set(paragraph.id, interpreterName);
+        onEditorSettingRequest(paragraph.id, paragraph.text);
+      }
+    }
+  }, [onEditorSettingRequest, snapshot.noteId, snapshot.paragraphs, snapshot.phase, snapshot.revisionId]);
   useEffect(() => setInterpreterBindingDraft(interpreterBindings), [interpreterBindings]);
   useEffect(() => {
     setCronDraft(coreScheduler?.cron ?? '');
@@ -127,6 +186,8 @@ export const NotebookCoreAdapter = ({
     snapshot.revisionId === null &&
     snapshot.phase === 'ready' &&
     Boolean(paragraph.text) &&
+    paragraph.config.enabled &&
+    !paragraph.hasConflict &&
     paragraph.status !== 'PENDING' &&
     paragraph.status !== 'RUNNING';
   const hasRunningParagraph = snapshot.paragraphs.some(
@@ -633,14 +694,40 @@ export const NotebookCoreAdapter = ({
           })}
         </fieldset>
       ) : null}
-      <ol aria-label="Notebook paragraphs">
+      <ol
+        aria-label="Notebook paragraphs"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' }}
+      >
         {snapshot.paragraphs.map((paragraph, index) => (
-          <li key={paragraph.id} data-testid={`notebook-core-paragraph-${paragraph.id}`}>
-            <article id={`react-notebook-paragraph-${paragraph.id}`} aria-label={`Paragraph ${index + 1}`}>
+          <li
+            key={paragraph.id}
+            data-testid={`notebook-core-paragraph-${paragraph.id}`}
+            style={{ gridColumn: `span ${paragraph.config.colWidth}` }}
+          >
+            <article
+              id={`react-notebook-paragraph-${paragraph.id}`}
+              aria-label={`Paragraph ${index + 1}`}
+              onDoubleClick={() => {
+                if (canEdit && !paragraph.hasConflict && paragraph.config.editOnDblClick) {
+                  onParagraphConfigChange?.(paragraph.id, { editorHide: false, tableHide: true });
+                }
+              }}
+            >
               <header>
                 <strong>Paragraph {index + 1}</strong>
                 <span>{paragraph.status}</span>
               </header>
+              {paragraph.config.title ? (
+                <input
+                  aria-label={`Paragraph ${index + 1} title`}
+                  disabled={!canEdit || paragraph.hasConflict}
+                  value={paragraphTitles[paragraph.id] ?? ''}
+                  onChange={event =>
+                    setParagraphTitles(current => ({ ...current, [paragraph.id]: event.target.value }))
+                  }
+                  onBlur={() => onParagraphTitleChange?.(paragraph.id, paragraphTitles[paragraph.id] ?? '')}
+                />
+              ) : null}
               {paragraph.hasConflict ? (
                 <div role="alert">
                   This paragraph changed on the server while you were editing it.
@@ -659,10 +746,18 @@ export const NotebookCoreAdapter = ({
               {paragraph.status === 'RUNNING' ? (
                 <progress aria-label={`Paragraph ${index + 1} progress`} max={100} value={paragraph.progress} />
               ) : null}
-              {codeHidden ? null : (
+              {codeHidden || paragraph.config.editorHide ? null : (
                 <NotebookMonacoEditor
                   ariaLabel={`Paragraph ${index + 1} editor`}
-                  disabled={!canEdit || paragraph.status === 'RUNNING' || paragraph.hasConflict}
+                  disabled={
+                    !canEdit ||
+                    !paragraph.config.enabled ||
+                    paragraph.status === 'PENDING' ||
+                    paragraph.status === 'RUNNING' ||
+                    paragraph.hasConflict
+                  }
+                  fontSize={paragraph.config.fontSize}
+                  lineNumbers={paragraph.config.lineNumbers}
                   language={paragraph.language}
                   searchTerm={searchTerm}
                   value={paragraphDrafts[paragraph.id] ?? paragraph.text}
@@ -674,8 +769,32 @@ export const NotebookCoreAdapter = ({
                     }
                   }}
                   onRun={() => dispatch('run-paragraph', paragraph.id)}
+                  requestCompletions={
+                    paragraph.config.completionSupport && onCompletionRequest
+                      ? (buffer, cursor) => onCompletionRequest(paragraph.id, buffer, cursor)
+                      : undefined
+                  }
                 />
               )}
+              {!paragraph.config.tableHide && Object.keys(paragraph.forms).length > 0 ? (
+                <ParagraphDynamicForms
+                  disabled={
+                    !hostCanRun ||
+                    readOnly ||
+                    snapshot.revisionId !== null ||
+                    paragraph.hasConflict ||
+                    paragraph.status === 'RUNNING' ||
+                    paragraph.status === 'PENDING'
+                  }
+                  forms={paragraph.forms}
+                  params={paragraphParams[paragraph.id] ?? paragraph.params}
+                  runOnSelectionChange={paragraph.config.runOnSelectionChange}
+                  onChange={(params, run) => {
+                    setParagraphParams(current => ({ ...current, [paragraph.id]: params }));
+                    onParagraphFormsChange?.(paragraph.id, params, run);
+                  }}
+                />
+              ) : null}
               <div>
                 <button type="button" disabled={!canEdit} onClick={() => onParagraphInsert?.(index)}>
                   Add above
@@ -699,6 +818,33 @@ export const NotebookCoreAdapter = ({
                 </button>
                 <button type="button" disabled={!canEdit} onClick={() => onParagraphRemove?.(paragraph.id)}>
                   Delete
+                </button>
+                <button
+                  type="button"
+                  disabled={!canEdit || paragraph.hasConflict}
+                  onClick={() => onParagraphClone?.(paragraph.id)}
+                >
+                  Clone
+                </button>
+                <button type="button" onClick={() => onParagraphOpen?.(paragraph.id)}>
+                  Open paragraph
+                </button>
+                <button type="button" disabled={!canEdit} onClick={() => onParagraphClearOutput?.(paragraph.id)}>
+                  Clear output
+                </button>
+                <button
+                  type="button"
+                  disabled={!canRun(paragraph) || index === 0}
+                  onClick={() => onParagraphRunRange?.(paragraph.id, 'above')}
+                >
+                  Run all above
+                </button>
+                <button
+                  type="button"
+                  disabled={!canRun(paragraph)}
+                  onClick={() => onParagraphRunRange?.(paragraph.id, 'below-and-current')}
+                >
+                  Run current and below
                 </button>
                 <button
                   type="button"
@@ -726,11 +872,68 @@ export const NotebookCoreAdapter = ({
                 >
                   Cancel
                 </button>
+                <details>
+                  <summary>Paragraph settings</summary>
+                  {(
+                    [
+                      ['Show title', 'title'],
+                      ['Hide editor', 'editorHide'],
+                      ['Hide output', 'tableHide'],
+                      ['Line numbers', 'lineNumbers'],
+                      ['Run forms on change', 'runOnSelectionChange'],
+                      ['Enable paragraph', 'enabled']
+                    ] as const
+                  ).map(([label, key]) => (
+                    <label key={key}>
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit || paragraph.hasConflict}
+                        checked={paragraph.config[key]}
+                        onChange={event => onParagraphConfigChange?.(paragraph.id, { [key]: event.target.checked })}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                  <label>
+                    Font size
+                    <select
+                      aria-label={`Paragraph ${index + 1} font size`}
+                      disabled={!canEdit || paragraph.hasConflict}
+                      value={paragraph.config.fontSize}
+                      onChange={event =>
+                        onParagraphConfigChange?.(paragraph.id, { fontSize: Number(event.target.value) })
+                      }
+                    >
+                      {Array.from({ length: 12 }, (_, offset) => offset + 9).map(size => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Paragraph width
+                    <select
+                      aria-label={`Paragraph ${index + 1} width`}
+                      disabled={!canEdit || paragraph.hasConflict}
+                      value={paragraph.config.colWidth}
+                      onChange={event =>
+                        onParagraphConfigChange?.(paragraph.id, { colWidth: Number(event.target.value) })
+                      }
+                    >
+                      {Array.from({ length: 12 }, (_, width) => width + 1).map(width => (
+                        <option key={width} value={width}>
+                          {width}/12
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </details>
               </div>
-              {!outputHidden && paragraph.results && paragraph.results.length > 0 ? (
+              {!outputHidden && !paragraph.config.tableHide && paragraph.results && paragraph.results.length > 0 ? (
                 <div data-testid="react-notebook-core-results">
                   {paragraph.results.map((result, resultIndex) => (
-                    <div key={resultIndex} data-testid="react-notebook-core-result">
+                    <div key={resultIndex} data-testid="react-notebook-core-result" data-result-type={result.type}>
                       {canRenderResult(result.type) ? (
                         <SingleResultRenderer
                           config={paragraph.resultConfigs}
@@ -742,6 +945,8 @@ export const NotebookCoreAdapter = ({
                               : undefined
                           }
                           result={result}
+                          paragraphId={paragraph.id}
+                          onHostResultMount={onHostResultMount}
                         />
                       ) : (
                         <pre>{result.data}</pre>

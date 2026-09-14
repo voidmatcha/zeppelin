@@ -22,6 +22,8 @@ vi.mock('./NotebookMonacoEditor', () => ({
     language,
     searchTerm,
     onChange,
+    onRun,
+    requestCompletions,
     value
   }: {
     ariaLabel: string;
@@ -29,6 +31,8 @@ vi.mock('./NotebookMonacoEditor', () => ({
     language?: string;
     searchTerm?: string;
     onChange: (value: string) => void;
+    onRun?: () => void;
+    requestCompletions?: (buffer: string, cursor: number) => Promise<readonly unknown[]>;
     value: string;
   }) => (
     <textarea
@@ -37,6 +41,10 @@ vi.mock('./NotebookMonacoEditor', () => ({
       data-search-term={searchTerm}
       disabled={disabled}
       onChange={event => onChange(event.target.value)}
+      onKeyDown={event => {
+        if (event.shiftKey && event.key === 'Enter') onRun?.();
+      }}
+      data-completion-enabled={String(Boolean(requestCompletions))}
       value={value}
     />
   )
@@ -877,5 +885,162 @@ describe('NotebookCoreAdapter', () => {
     render(<NotebookCoreAdapter core={runtime.port} />);
 
     expect(screen.getByTestId('react-notebook-core-result').textContent).toContain('graph');
+  });
+
+  it('exposes paragraph actions and persists title and configuration through host callbacks', () => {
+    const callbacks = {
+      onParagraphClone: vi.fn(),
+      onParagraphOpen: vi.fn(),
+      onParagraphClearOutput: vi.fn(),
+      onParagraphRunRange: vi.fn(),
+      onParagraphTitleChange: vi.fn(),
+      onParagraphConfigChange: vi.fn()
+    };
+    const runtime = createNotebookCore({ noteId: 'note-1', dispatchCommand: () => true });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          title: 'Old title',
+          text: '%python',
+          status: 'READY',
+          config: { title: true, completionSupport: true }
+        }
+      ]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} {...callbacks} onCompletionRequest={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open paragraph' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear output' }));
+    expect((screen.getByRole('button', { name: 'Run all above' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Run current and below' }));
+    expect(callbacks.onParagraphClone).toHaveBeenCalledWith('paragraph-1');
+    expect(callbacks.onParagraphOpen).toHaveBeenCalledWith('paragraph-1');
+    expect(callbacks.onParagraphClearOutput).toHaveBeenCalledWith('paragraph-1');
+    expect(callbacks.onParagraphRunRange).toHaveBeenCalledWith('paragraph-1', 'below-and-current');
+
+    const title = screen.getByRole('textbox', { name: 'Paragraph 1 title' });
+    fireEvent.change(title, { target: { value: 'New title' } });
+    runtime.apply({ type: 'paragraph-progressed', paragraphId: 'paragraph-1', progress: 25 });
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 title' }) as HTMLInputElement).value).toBe('New title');
+    fireEvent.blur(title);
+    expect(callbacks.onParagraphTitleChange).toHaveBeenCalledWith('paragraph-1', 'New title');
+
+    fireEvent.click(screen.getByLabelText('Line numbers'));
+    expect(callbacks.onParagraphConfigChange).toHaveBeenCalledWith('paragraph-1', { lineNumbers: true });
+    expect(screen.getByRole('textbox', { name: 'Paragraph 1 editor' }).dataset.completionEnabled).toBe('true');
+  });
+
+  it('keeps paragraph form values locally and debounces run-on-change', () => {
+    vi.useFakeTimers();
+    const onParagraphFormsChange = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          text: '%python',
+          status: 'READY',
+          forms: {
+            country: {
+              name: 'country',
+              displayName: 'Country',
+              type: 'Select',
+              hidden: false,
+              defaultValue: 'kr',
+              options: [{ value: 'kr' }, { value: 'us', displayName: 'United States' }]
+            }
+          },
+          params: { country: 'kr' },
+          config: { runOnSelectionChange: true }
+        }
+      ]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onParagraphFormsChange={onParagraphFormsChange} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Country' }), { target: { value: '1' } });
+    expect(onParagraphFormsChange).toHaveBeenCalledWith('paragraph-1', { country: 'us' }, false);
+    expect(onParagraphFormsChange).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(800);
+    expect(onParagraphFormsChange).toHaveBeenLastCalledWith('paragraph-1', { country: 'us' }, true);
+    vi.useRealTimers();
+  });
+
+  it('requests editor capabilities on load and when the interpreter directive changes', () => {
+    const onEditorSettingRequest = vi.fn();
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%spark\nprintln(1)', status: 'READY' }]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} onEditorSettingRequest={onEditorSettingRequest} />);
+    expect(onEditorSettingRequest).toHaveBeenCalledWith('paragraph-1', '%spark\nprintln(1)');
+
+    act(() => {
+      runtime.apply({ type: 'paragraph-progressed', paragraphId: 'paragraph-1', progress: 10 });
+    });
+    expect(onEditorSettingRequest).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Paragraph 1 editor' }), {
+      target: { value: '%spark.sql\nselect 1' }
+    });
+    expect(onEditorSettingRequest).toHaveBeenLastCalledWith('paragraph-1', '%spark.sql\nselect 1');
+    expect(onEditorSettingRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('disables paragraph presentation and form controls while a conflict is unresolved', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          title: 'Title',
+          text: '%python',
+          status: 'READY',
+          forms: {
+            country: {
+              name: 'country',
+              displayName: 'Country',
+              type: 'Select',
+              hidden: false,
+              defaultValue: 'kr',
+              options: [{ value: 'kr' }]
+            }
+          },
+          params: { country: 'kr' },
+          config: { title: true }
+        }
+      ]
+    });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: 'local', source: 'local' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'paragraph-1', text: 'server', source: 'server' });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+
+    expect((screen.getByRole('textbox', { name: 'Paragraph 1 title' }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('combobox', { name: 'Country' }) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Clone' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Line numbers') as HTMLInputElement).disabled).toBe(true);
   });
 });

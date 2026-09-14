@@ -12,11 +12,11 @@
 
 import { Injectable } from '@angular/core';
 import { editor, languages, Position } from 'monaco-editor';
-import { firstValueFrom, Subject } from 'rxjs';
-import { filter, map, take } from 'rxjs/operators';
+import { firstValueFrom, from, Subject } from 'rxjs';
+import { filter, map, take, takeUntil, timeout } from 'rxjs/operators';
 
 import { MessageListener, MessageListenersManager } from '@zeppelin/core';
-import { CompletionReceived, OP } from '@zeppelin/sdk';
+import { CompletionItem, CompletionReceived, OP } from '@zeppelin/sdk';
 
 import { MessageService } from './message.service';
 
@@ -26,11 +26,25 @@ import { MessageService } from './message.service';
 export class CompletionService extends MessageListenersManager {
   private completionLanguages = ['python', 'scala'];
   private completionItem$ = new Subject<CompletionReceived>();
+  private completionReset$ = new Subject<void>();
+  private completionRequests = new Map<string, Promise<void>>();
+  private completionGeneration = 0;
   private receivers = new WeakMap<editor.ITextModel, string>();
   private bound = false;
 
   constructor(messageService: MessageService) {
     super(messageService);
+    this.__zeppelinMessageListeners$__?.add(
+      messageService.closed().subscribe(() => {
+        this.resetCompletionRequests();
+      })
+    );
+  }
+
+  override ngOnDestroy(): void {
+    this.resetCompletionRequests();
+    this.completionReset$.complete();
+    super.ngOnDestroy();
   }
 
   @MessageListener(OP.COMPLETION_LIST)
@@ -55,6 +69,63 @@ export class CompletionService extends MessageListenersManager {
     this.receivers.delete(model);
   }
 
+  requestCompletion(paragraphId: string, buffer: string, cursor: number): Promise<readonly CompletionItem[]> {
+    const previousRequest = this.completionRequests.get(paragraphId);
+    const generation = this.completionGeneration;
+    const start = () => {
+      if (generation !== this.completionGeneration) {
+        throw new Error('Completion request was cancelled because the WebSocket disconnected.');
+      }
+      return this.startCompletionRequest(paragraphId, buffer, cursor);
+    };
+    const startedRequest = previousRequest ? previousRequest.then(start) : Promise.resolve(start());
+    const requestLane = startedRequest.then(({ response }) => response);
+    const settledRequest = requestLane.then(
+      () => undefined,
+      () => undefined
+    );
+
+    this.completionRequests.set(paragraphId, settledRequest);
+    void settledRequest.then(() => {
+      if (this.completionRequests.get(paragraphId) === settledRequest) {
+        this.completionRequests.delete(paragraphId);
+      }
+    });
+
+    return startedRequest.then(({ result }) => result);
+  }
+
+  private startCompletionRequest(
+    paragraphId: string,
+    buffer: string,
+    cursor: number
+  ): {
+    response: Promise<CompletionReceived>;
+    result: Promise<readonly CompletionItem[]>;
+  } {
+    const response = firstValueFrom(
+      this.completionItem$.pipe(
+        filter(data => data.id === paragraphId),
+        take(1),
+        takeUntil(this.completionReset$)
+      )
+    );
+    const result = firstValueFrom(
+      from(response).pipe(
+        timeout(30000),
+        map(data => data.completions)
+      )
+    );
+    this.messageService.completion(paragraphId, buffer, cursor);
+    return { response, result };
+  }
+
+  private resetCompletionRequests(): void {
+    this.completionGeneration += 1;
+    this.completionRequests.clear();
+    this.completionReset$.next();
+  }
+
   private bindMonacoCompletion(): void {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const that = this;
@@ -69,29 +140,21 @@ export class CompletionService extends MessageListenersManager {
             return { suggestions: [] };
           }
 
-          that.messageService.completion(id, model.getValue(), model.getOffsetAt(position));
-
-          return firstValueFrom(
-            that.completionItem$.pipe(
-              filter(d => d.id === id),
-              take(1),
-              map(d => ({
-                suggestions: d.completions.map(
-                  (i): languages.CompletionItem => ({
-                    kind: languages.CompletionItemKind.Keyword,
-                    label: i.name,
-                    insertText: i.name,
-                    range: {
-                      startLineNumber: position.lineNumber,
-                      endLineNumber: position.lineNumber,
-                      startColumn: word.startColumn,
-                      endColumn: word.endColumn
-                    }
-                  })
-                )
-              }))
+          return that.requestCompletion(id, model.getValue(), model.getOffsetAt(position)).then(completions => ({
+            suggestions: completions.map(
+              (i): languages.CompletionItem => ({
+                kind: languages.CompletionItemKind.Keyword,
+                label: i.name,
+                insertText: i.name,
+                range: {
+                  startLineNumber: position.lineNumber,
+                  endLineNumber: position.lineNumber,
+                  startColumn: word.startColumn,
+                  endColumn: word.endColumn
+                }
+              })
             )
-          );
+          }));
         }
       });
     });

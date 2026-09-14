@@ -77,7 +77,7 @@ Each React surface is behind a URL query flag, resolved by `ReactFeatureService`
 | `?react=false` | disabled |
 | flag absent | disabled |
 
-Append `?react=true` to any published paragraph URL, `?reactFooter=true` to a notebook URL, or `?reactConfiguration=true` to the configuration URL to activate React mode.
+Append `?react=true` to any published paragraph URL, `?reactNotebook=true` to a notebook URL, `?reactFooter=true` to a notebook URL, or `?reactConfiguration=true` to the configuration URL to activate React mode. The React notebook uses the host-owned Shared Notebook Core and delegates table visualizations and legacy `ANGULAR` results to the Angular renderer so existing display plugins and configuration continue to work.
 
 ## Setup
 
@@ -166,4 +166,3 @@ export function mount(element: HTMLElement, props: Props): ReactMountHandle;
    an inline object literal) so identity is stable when nothing changed.
 
 Every exposed module must return the handle contract from `mount`. The directive assigns the return value straight to its handle, so returning a bare unmount function makes the next prop change throw.
-

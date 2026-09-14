@@ -10,7 +10,6 @@
  * limitations under the License.
  */
 
-import { Alert } from 'antd';
 import { HTMLRenderer } from '@/components/renderers/HTMLRenderer';
 import { ImageRenderer } from '@/components/renderers/ImageRenderer';
 import { TextRenderer } from '@/components/renderers/TextRenderer';
@@ -21,6 +20,7 @@ import type {
   NotebookParagraphResultConfig,
   NotebookParagraphResultConfigs
 } from '@zeppelin/notebook-core';
+import { useEffect, useRef } from 'react';
 
 interface SingleResultRendererProps {
   result: NotebookParagraphResult;
@@ -28,20 +28,100 @@ interface SingleResultRendererProps {
   config?: NotebookParagraphResultConfigs;
   modeChangeDisabled?: boolean;
   onConfigChange?: (config: NotebookParagraphResultConfig) => void;
+  paragraphId?: string;
+  onHostResultMount?: (
+    host: unknown,
+    paragraphId: string,
+    resultIndex: number,
+    result: NotebookParagraphResult,
+    config?: NotebookParagraphResultConfig
+  ) => () => void;
 }
+
+const isStructurallyEqual = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true;
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => isStructurallyEqual(value, right[index]))
+    );
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  return (
+    leftKeys.length === Object.keys(rightRecord).length &&
+    leftKeys.every(
+      key =>
+        Object.prototype.hasOwnProperty.call(rightRecord, key) && isStructurallyEqual(leftRecord[key], rightRecord[key])
+    )
+  );
+};
+
+const useStructurallyStableValue = <T,>(value: T): T => {
+  const stableValue = useRef(value);
+  if (!isStructurallyEqual(stableValue.current, value)) stableValue.current = value;
+  return stableValue.current;
+};
+
+const HostResult = ({
+  paragraphId,
+  index,
+  result,
+  config,
+  mount
+}: Readonly<{
+  paragraphId: string;
+  index: number;
+  result: NotebookParagraphResult;
+  config?: NotebookParagraphResultConfig;
+  mount: NonNullable<SingleResultRendererProps['onHostResultMount']>;
+}>) => {
+  const container = useRef<HTMLDivElement>(null);
+  const mountRef = useRef(mount);
+  const stableResult = useStructurallyStableValue(result);
+  const stableConfig = useStructurallyStableValue(config);
+  useEffect(() => {
+    mountRef.current = mount;
+  }, [mount]);
+  useEffect(() => {
+    if (!container.current) return;
+    const host = document.createElement('div');
+    container.current.replaceChildren(host);
+    const unmount = mountRef.current(host, paragraphId, index, stableResult, stableConfig);
+    return () => {
+      unmount();
+      host.remove();
+    };
+  }, [index, paragraphId, stableConfig, stableResult]);
+  return <div aria-label="Host result" ref={container} />;
+};
 
 export const SingleResultRenderer = ({
   result,
   index,
   config,
   modeChangeDisabled,
-  onConfigChange
+  onConfigChange,
+  paragraphId,
+  onHostResultMount
 }: SingleResultRendererProps) => {
   const resultConfig = config?.[index];
 
   switch (result.type) {
     case 'TABLE':
-      return (
+      return paragraphId && onHostResultMount ? (
+        <HostResult
+          paragraphId={paragraphId}
+          index={index}
+          result={result}
+          config={resultConfig}
+          mount={onHostResultMount}
+        />
+      ) : (
         <TableVisualization
           result={result}
           config={resultConfig}
@@ -56,13 +136,16 @@ export const SingleResultRenderer = ({
     case 'IMG':
       return <ImageRenderer imageData={result.data} />;
     case 'ANGULAR':
-      return (
-        <Alert
-          message="Angular Component"
-          description="Angular components are not supported in React environment"
-          type="warning"
-          showIcon
+      return paragraphId && onHostResultMount ? (
+        <HostResult
+          paragraphId={paragraphId}
+          index={index}
+          result={result}
+          config={resultConfig}
+          mount={onHostResultMount}
         />
+      ) : (
+        <div role="alert">Angular output requires the Angular notebook host.</div>
       );
     default:
       return null;

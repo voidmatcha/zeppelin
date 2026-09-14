@@ -539,6 +539,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
   });
 
   test('renders and operates the editable notebook body in React', async ({ page }) => {
+    const sentOperations = observeSentOperations(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -556,6 +557,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
+      await expect
+        .poll(() => sentOperations.filter(operation => operation === 'EDITOR_SETTING').length)
+        .toBeGreaterThan(0);
       await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
       await expect(page.locator('zeppelin-notebook-action-bar')).toHaveCount(1);
       await expect(page.getByTestId('notebook-title')).toHaveCount(0);
@@ -580,6 +584,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .getByRole('article', { name: 'Paragraph 1', exact: true })
         .getByRole('button', { name: 'Delete', exact: true })
         .click();
+      const deleteConfirmation = page.getByRole('dialog');
+      await expect(deleteConfirmation).toContainText('Do you want to delete this paragraph?');
+      await deleteConfirmation.getByRole('button', { name: 'OK', exact: true }).click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(1);
 
       await editor.fill(code);
@@ -656,7 +663,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'play-circle' })
       ).toHaveCount(0);
-      await expect(reactNotebook.getByRole('button', { name: 'Run all' })).toBeVisible();
+      await expect(reactNotebook.getByRole('button', { name: 'Run all', exact: true })).toBeVisible();
       await expect(page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'delete' })).toHaveCount(0);
       await expect(
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'info-circle' })
@@ -741,11 +748,16 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(editor).toBeVisible({ timeout: 30000 });
       await editor.fill(code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await editor.press('Shift+Enter');
-      await expect(reactNotebook.getByRole('button', { name: /Line Chart$/ })).toBeVisible({
+      await reactNotebook.getByRole('button', { name: 'Run', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).status).toBe('FINISHED');
+      await expect(reactNotebook.getByTestId('react-notebook-core-result')).toHaveAttribute(
+        'data-result-type',
+        'TABLE'
+      );
+      await expect(reactNotebook.getByRole('img', { name: 'line-chart', exact: true })).toBeVisible({
         timeout: coldInterpreterExecutionTimeout
       });
-      await reactNotebook.getByRole('button', { name: /Line Chart$/ }).click();
+      await reactNotebook.getByRole('img', { name: 'line-chart', exact: true }).click();
       await expect
         .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).config?.results?.['0']?.graph?.mode)
         .toBe('lineChart');

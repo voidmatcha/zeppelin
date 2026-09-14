@@ -48,11 +48,15 @@ export type NotebookCoreEvent =
   | Readonly<{
       type: 'paragraph-updated';
       paragraphId: string;
+      title?: string;
       text?: string;
       status?: NotebookParagraphSnapshot['status'];
       language?: string;
       results?: readonly NotebookParagraphResult[];
       resultConfigs?: NotebookParagraphResultConfigs;
+      forms?: NotebookDynamicForms;
+      params?: NotebookFormParams;
+      config?: Partial<NotebookParagraphSnapshot['config']>;
       source?: 'local' | 'server' | 'collaboration';
     }>
   | Readonly<{ type: 'paragraph-progressed'; paragraphId: string; progress: number }>
@@ -230,6 +234,7 @@ const freezeParagraphSnapshot = (
 ): NotebookParagraphSnapshot =>
   Object.freeze({
     id: paragraph.id,
+    ...(paragraph.title ? { title: paragraph.title } : {}),
     text: paragraph.text,
     status: paragraph.status,
     ...(paragraph.language ? { language: paragraph.language } : {}),
@@ -237,6 +242,21 @@ const freezeParagraphSnapshot = (
     isDirty: paragraph.text !== savedText,
     isSaving,
     hasConflict,
+    forms: freezeNoteForms(paragraph.forms),
+    params: freezeNoteParams(paragraph.params),
+    config: Object.freeze({
+      editorHide: false,
+      tableHide: false,
+      title: false,
+      enabled: true,
+      lineNumbers: false,
+      fontSize: 9,
+      colWidth: 12,
+      runOnSelectionChange: false,
+      editOnDblClick: false,
+      completionSupport: false,
+      ...paragraph.config
+    }),
     ...(paragraph.results
       ? { results: Object.freeze(paragraph.results.map(result => Object.freeze({ ...result }))) }
       : {}),
@@ -515,12 +535,16 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         snapshot: freezeParagraphSnapshot(
           {
             id: currentSnapshot.id,
+            title: event.title ?? currentSnapshot.title,
             text: localText,
             status: event.status ?? currentSnapshot.status,
             language: event.language ?? currentSnapshot.language,
             progress: currentSnapshot.progress,
             results: hasResultsUpdate ? event.results : currentSnapshot.results,
-            resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs
+            resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs,
+            forms: event.forms ?? currentSnapshot.forms,
+            params: event.params ?? currentSnapshot.params,
+            config: event.config ? { ...currentSnapshot.config, ...event.config } : currentSnapshot.config
           },
           serverText,
           hasConflict,
@@ -541,7 +565,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         paragraph.pendingRunStatus === current.pendingRunStatus &&
         event.language === undefined &&
         !hasResultsUpdate &&
-        event.resultConfigs === undefined
+        event.resultConfigs === undefined &&
+        event.title === undefined &&
+        event.forms === undefined &&
+        event.params === undefined &&
+        event.config === undefined
       ) {
         return state;
       }
