@@ -114,6 +114,7 @@ export interface ParagraphAppendOutput {
   paragraphId: string;
   index: number;
   data: string;
+  outputSequence?: number;
 }
 
 export interface ParagraphUpdateOutput extends ParagraphAppendOutput {
@@ -367,18 +368,6 @@ export interface ParagraphStatus {
 }
 
 export type ParagraphStatusValue = 'UNKNOWN' | 'READY' | 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'ABORT';
-
-export interface ParagraphAppendOutput {
-  noteId: string;
-  paragraphId: string;
-  index: number;
-  data: string;
-  outputSequence?: number;
-}
-
-export interface ParagraphUpdateOutput extends ParagraphAppendOutput {
-  type: DatasetType;
-}
 
 export interface ParagraphOutputSnapshot {
   noteId: string;
