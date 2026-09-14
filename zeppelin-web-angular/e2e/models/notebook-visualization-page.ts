@@ -83,6 +83,27 @@ export class NotebookVisualizationPage extends BasePage {
     return this.scatterAvailableFields.getByText(name, { exact: true });
   }
 
+  async dragField(source: Locator, target: Locator): Promise<void> {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+
+    const sourceBox = await source.boundingBox();
+    const targetBox = await target.boundingBox();
+    if (!sourceBox || !targetBox) {
+      throw new Error('Visualization drag source and target must be visible');
+    }
+
+    const sourceX = sourceBox.x + sourceBox.width / 2;
+    const sourceY = sourceBox.y + sourceBox.height / 2;
+    await this.page.mouse.move(sourceX, sourceY);
+    await this.page.mouse.down();
+    await this.page.mouse.move(sourceX + 10, sourceY, { steps: 5 });
+    await this.page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+      steps: 10
+    });
+    await this.page.mouse.up();
+  }
+
   async renderedPixelCount(canvas: Locator): Promise<number> {
     return canvas.evaluate((element: HTMLCanvasElement) => {
       const context = element.getContext('2d');

@@ -182,8 +182,8 @@ test.describe('Notebook Visualization Rendering', () => {
     });
 
     await test.step('When assigning fields to the pivot configuration', async () => {
-      await visualizationPage.availablePivotField('city').dragTo(visualizationPage.pivotKeys);
-      await visualizationPage.availablePivotField('sales').dragTo(visualizationPage.pivotValues);
+      await visualizationPage.dragField(visualizationPage.availablePivotField('city'), visualizationPage.pivotKeys);
+      await visualizationPage.dragField(visualizationPage.availablePivotField('sales'), visualizationPage.pivotValues);
     });
 
     await test.step('Then the selected pivot fields are displayed', async () => {
@@ -224,7 +224,10 @@ test.describe('Notebook Visualization Rendering', () => {
     });
 
     await test.step('When assigning cost to the x-axis', async () => {
-      await visualizationPage.availableScatterField('cost').dragTo(visualizationPage.scatterXAxis);
+      await visualizationPage.dragField(
+        visualizationPage.availableScatterField('cost'),
+        visualizationPage.scatterXAxis
+      );
     });
 
     await test.step('Then the scatter axes show the selected fields', async () => {
