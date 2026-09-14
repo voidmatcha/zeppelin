@@ -437,8 +437,12 @@ export class MessageService extends Message implements OnDestroy {
     return message;
   }
 
-  noteRevisionForCompare(noteId: string, revisionId: string, position: string): void {
-    super.noteRevisionForCompare(noteId, revisionId, position);
+  noteRevisionForCompare(
+    noteId: string,
+    revisionId: string,
+    position: string
+  ): SendReceipt<OP.NOTE_REVISION_FOR_COMPARE> {
+    return super.noteRevisionForCompare(noteId, revisionId, position);
   }
 
   editorSetting(paragraphId: string, replName: string): void {

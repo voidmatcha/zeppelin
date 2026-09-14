@@ -549,7 +549,17 @@ export const NotebookCoreAdapter = ({
         <ol>
           {snapshot.paragraphs.map((paragraph, index) => (
             <li key={paragraph.id}>
-              <a href={`#react-notebook-paragraph-${paragraph.id}`}>Paragraph {index + 1}</a>
+              <a
+                href={`#react-notebook-paragraph-${paragraph.id}`}
+                onClick={event => {
+                  event.preventDefault();
+                  document
+                    .getElementById(`react-notebook-paragraph-${paragraph.id}`)
+                    ?.scrollIntoView({ block: 'start' });
+                }}
+              >
+                Paragraph {index + 1}
+              </a>
             </li>
           ))}
         </ol>

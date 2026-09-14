@@ -243,6 +243,11 @@ export class Message {
     this.destroyed = true;
     this.manuallyClosed = true;
     this.clearReconnectTimer();
+    this.pingIntervalSubscription.unsubscribe();
+    if (this.connectedStatus) {
+      this.connectedStatus = false;
+      this.connectedStatus$.next(false);
+    }
     this.disconnectSocket();
   }
 
@@ -613,8 +618,12 @@ export class Message {
     });
   }
 
-  noteRevisionForCompare(noteId: string, revisionId: string, position: string): void {
-    this.send<OP.NOTE_REVISION_FOR_COMPARE>(OP.NOTE_REVISION_FOR_COMPARE, {
+  noteRevisionForCompare(
+    noteId: string,
+    revisionId: string,
+    position: string
+  ): SendReceipt<OP.NOTE_REVISION_FOR_COMPARE> {
+    return this.send<OP.NOTE_REVISION_FOR_COMPARE>(OP.NOTE_REVISION_FOR_COMPARE, {
       noteId,
       revisionId,
       position

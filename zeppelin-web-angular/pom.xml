@@ -189,6 +189,17 @@
           </execution>
 
           <execution>
+            <id>npm test react</id>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <phase>test</phase>
+            <configuration>
+              <arguments>run test:react</arguments>
+            </configuration>
+          </execution>
+
+          <execution>
             <id>npm build notebook core port identity proof</id>
             <goals>
               <goal>npm</goal>

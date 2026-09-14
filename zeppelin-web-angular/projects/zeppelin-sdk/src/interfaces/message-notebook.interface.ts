@@ -182,7 +182,7 @@ export interface SetNoteRevisionStatus {
 }
 
 export interface ListRevision {
-  revisionList: RevisionListItem[];
+  revisionList?: RevisionListItem[];
 }
 
 export interface RevisionListItem {

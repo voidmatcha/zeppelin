@@ -27,6 +27,7 @@ const asReceivedMessage = (message: unknown): WebSocketMessage<MessageReceiveDat
   message as WebSocketMessage<MessageReceiveDataTypeMap>;
 
 type SocketConfig = Readonly<{
+  openObserver?: Readonly<{ next: (event: Event) => void }>;
   closeObserver?: Readonly<{ next: (event: CloseEvent) => void }>;
 }>;
 
@@ -130,6 +131,28 @@ describe('Message reconnect lifecycle', () => {
     message.destroy();
     vi.advanceTimersByTime(30000);
     expect(webSocket).toHaveBeenCalledOnce();
+    expect(socket.complete).toHaveBeenCalledOnce();
+  });
+
+  it('stops pinging and publishes disconnected state on destroy', () => {
+    const socket = createSocket();
+    webSocket.mockReturnValue(socket);
+    const message = new Message();
+    const connected = vi.fn();
+    const ping = vi.spyOn(message, 'ping');
+    message.connectedStatus$.subscribe(connected);
+    message.setWsUrl('ws://example.test/ws');
+    message.connect();
+    const config = webSocket.mock.calls[0][0] as SocketConfig;
+    config.openObserver?.next(new Event('open'));
+
+    expect(message.connectedStatus).toBe(true);
+    message.destroy();
+    vi.advanceTimersByTime(30000);
+
+    expect(message.connectedStatus).toBe(false);
+    expect(connected).toHaveBeenLastCalledWith(false);
+    expect(ping).not.toHaveBeenCalled();
     expect(socket.complete).toHaveBeenCalledOnce();
   });
 

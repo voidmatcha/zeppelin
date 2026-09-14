@@ -29,6 +29,7 @@
     "test:notebook-core-port-identity": "node --test e2e/core-contract/notebook-core-port-identity.test.mjs",
     "test:notebook-route-boundary": "node --test e2e/core-contract/notebook-route-boundary.test.mjs",
     "test:notebook-core": "vitest run --config vitest.notebook-core.config.mts",
+    "test:react": "cd projects/zeppelin-react && npm test",
     "test:shell": "vitest run --config vitest.shell.config.mts",
     "test:eslint-rules": "node --test eslint-rules/*.test.js",
     "e2e": "playwright test",

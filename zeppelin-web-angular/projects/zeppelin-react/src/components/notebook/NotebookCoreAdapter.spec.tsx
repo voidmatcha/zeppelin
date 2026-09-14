@@ -102,6 +102,27 @@ describe('NotebookCoreAdapter', () => {
     expect(screen.getByRole('article', { name: 'Paragraph 1' }).textContent).toContain('FINISHED');
   });
 
+  it('scrolls from the outline without replacing the Angular hash route', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Outline notebook',
+      paragraphs: [{ id: 'paragraph-1', text: '%md outline', status: 'READY' }]
+    });
+    window.location.hash = '#/notebook/note-1?reactNotebook=true';
+    render(<NotebookCoreAdapter core={runtime.port} />);
+    const paragraph = screen.getByRole('article', { name: 'Paragraph 1' });
+    paragraph.scrollIntoView = vi.fn();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Paragraph 1' }));
+
+    expect(paragraph.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+    expect(window.location.hash).toBe('#/notebook/note-1?reactNotebook=true');
+  });
+
   it('dispatches React notebook-wide execution and cancellation through the shared Port', () => {
     const dispatchCommand = vi.fn(() => true);
     const runtime = createNotebookCore({ noteId: 'note-1', dispatchCommand });

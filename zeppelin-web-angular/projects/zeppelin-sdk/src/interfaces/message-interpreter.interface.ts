@@ -26,7 +26,7 @@ export interface InterpreterItem {
 }
 
 export interface InterpreterBindings {
-  interpreterBindings: InterpreterBindingItem[];
+  interpreterBindings?: InterpreterBindingItem[];
 }
 
 export interface InterpreterBindingItem {

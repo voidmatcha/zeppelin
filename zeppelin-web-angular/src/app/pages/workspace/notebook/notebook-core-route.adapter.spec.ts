@@ -56,6 +56,68 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     );
   });
 
+  it('uses current server paragraph metadata for subsequent commands', () => {
+    const runParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ runParagraph } as unknown as MessageService);
+    const note = createNote();
+    const updatedParagraph = {
+      ...note.paragraphs[0],
+      title: 'Updated title',
+      config: { ...note.paragraphs[0].config, colWidth: 6 },
+      settings: { ...note.paragraphs[0].settings, params: { current: 'value' } }
+    };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphUpdated(updatedParagraph);
+
+    expect(adapter.port.dispatch({ type: 'run-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
+    expect(runParagraph).toHaveBeenCalledWith(
+      'paragraph-1',
+      'Updated title',
+      '%python\nprint("from React")',
+      updatedParagraph.config,
+      updatedParagraph.settings.params
+    );
+  });
+
+  it('applies terminal output snapshots and output clearing from paragraph updates', () => {
+    const adapter = new NotebookCoreRouteAdapter({ getParagraphOutput: vi.fn() } as unknown as MessageService);
+    const note = createNote('RUNNING');
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphUpdated({
+      ...note.paragraphs[0],
+      status: 'FINISHED',
+      results: { code: 'SUCCESS', msg: [{ type: 'TEXT', data: 'complete' }] }
+    });
+
+    expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'complete' }]);
+
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], status: 'FINISHED', results: undefined });
+    expect(adapter.port.getSnapshot().paragraphs[0].results).toBeUndefined();
+  });
+
+  it('projects an unsaved Core draft back into the Angular paragraph view', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', '%python\nprint("retained draft")');
+    adapter.acceptParagraphStatus('paragraph-1', 'RUNNING');
+    adapter.acceptParagraphProgress('paragraph-1', 40);
+    adapter.acceptParagraphOutputUpdate(note.id, 'paragraph-1', 0, 'TEXT', 'retained output');
+
+    expect(adapter.projectParagraphViewsFromCore()?.[0]).toMatchObject({
+      text: '%python\nprint("retained draft")',
+      status: 'RUNNING',
+      progress: 40,
+      results: { msg: [{ type: 'TEXT', data: 'retained output' }] }
+    });
+  });
+
   it('preserves the current snapshot while requesting a reconnect snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
@@ -292,19 +354,32 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     adapter.enterRoute(note.id, null);
     adapter.acceptNote(note, null);
     adapter.acceptParagraphStatus('paragraph-1', 'PENDING');
-    adapter.acceptParagraphOutputAppend('paragraph-1', 0, 'second frame', 2);
+    adapter.acceptParagraphOutputAppend(note.id, 'paragraph-1', 0, 'second frame', 2);
 
     expect(getParagraphOutput).toHaveBeenCalledWith(note.id, 'paragraph-1');
     expect(adapter.port.getSnapshot().paragraphs[0].results).toBeUndefined();
 
-    adapter.acceptParagraphOutputSnapshot('paragraph-1', [{ type: 'TEXT', data: 'recovered output' }], 2);
+    adapter.acceptParagraphOutputSnapshot(note.id, 'paragraph-1', [{ type: 'TEXT', data: 'recovered output' }], 2);
     expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'recovered output' }]);
 
-    adapter.acceptParagraphOutputAppend('paragraph-1', 0, ' duplicate', 2);
+    adapter.acceptParagraphOutputAppend(note.id, 'paragraph-1', 0, ' duplicate', 2);
     expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'recovered output' }]);
 
-    adapter.acceptParagraphOutputSnapshot('paragraph-1', [{ type: 'TEXT', data: 'stale snapshot' }], 1);
+    adapter.acceptParagraphOutputSnapshot(note.id, 'paragraph-1', [{ type: 'TEXT', data: 'stale snapshot' }], 1);
     expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'recovered output' }]);
+  });
+
+  it('rejects output snapshots from another note and from the live note while viewing a revision', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    note.paragraphs[0].results = { code: 0, msg: [{ type: 'TEXT', data: 'historical output' }] };
+
+    adapter.enterRoute(note.id, 'revision-1');
+    adapter.acceptNote(note, 'revision-1');
+    adapter.acceptParagraphOutputSnapshot(note.id, 'paragraph-1', [{ type: 'TEXT', data: 'live output' }], 1);
+    adapter.acceptParagraphOutputSnapshot('other-note', 'paragraph-1', [{ type: 'TEXT', data: 'other output' }], 2);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'historical output' }]);
   });
 
   it('rejects run commands for revisions, missing paragraphs, and active paragraphs', () => {

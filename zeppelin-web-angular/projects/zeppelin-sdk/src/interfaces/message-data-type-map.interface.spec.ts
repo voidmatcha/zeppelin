@@ -16,6 +16,20 @@ import { MessageReceiveDataTypeMap } from './message-data-type-map.interface';
 import { OP } from './message-operator.interface';
 import { DatasetType, ParagraphAppendOutput, ParagraphUpdateOutput } from './message-paragraph.interface';
 
+it('accepts server responses that omit empty notebook lists', () => {
+  const revisions: MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY] = {};
+  const bindings: MessageReceiveDataTypeMap[OP.INTERPRETER_BINDINGS] = {};
+
+  expect(revisions.revisionList).toBeUndefined();
+  expect(bindings.interpreterBindings).toBeUndefined();
+  expectTypeOf<MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY]>()
+    .toHaveProperty('revisionList')
+    .toEqualTypeOf<import('./message-notebook.interface').RevisionListItem[] | undefined>();
+  expectTypeOf<MessageReceiveDataTypeMap[OP.INTERPRETER_BINDINGS]>()
+    .toHaveProperty('interpreterBindings')
+    .toEqualTypeOf<import('./message-interpreter.interface').InterpreterBindingItem[] | undefined>();
+});
+
 it('declares the asymmetric paragraph output payloads sent by the server', () => {
   const append: MessageReceiveDataTypeMap[OP.PARAGRAPH_APPEND_OUTPUT] = {
     noteId: 'note',

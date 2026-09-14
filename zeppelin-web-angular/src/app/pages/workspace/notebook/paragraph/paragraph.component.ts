@@ -63,6 +63,7 @@ import {
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NotebookParagraphResultComponent } from '../../share/result/result.component';
 import { NotebookParagraphCodeEditorComponent } from './code-editor/code-editor.component';
+import { removeParagraphAfterConfirmation } from './paragraph-removal';
 
 type Mode = 'edit' | 'command';
 
@@ -265,22 +266,20 @@ export class NotebookParagraphComponent
           nzContent: `All the paragraphs can't be deleted`
         });
       } else {
-        this.nzModalService
-          .confirm({
-            nzTitle: 'Delete Paragraph',
-            nzContent: 'Do you want to delete this paragraph?',
-            nzAutofocus: null,
-            nzOnOk: () => true
-          })
-          .afterClose.pipe(takeUntil(this.destroy$))
-          .subscribe(result => {
-            // In the modal, clicking "Cancel" makes result undefined.
-            // Clicking "OK" makes result defined and passes the condition below.
-            if (result) {
-              this.messageService.paragraphRemove(this.paragraph.id);
-              this.cdr.markForCheck();
-            }
-          });
+        const paragraphId = this.paragraph.id;
+        const afterClose = this.nzModalService.confirm({
+          nzTitle: 'Delete Paragraph',
+          nzContent: 'Do you want to delete this paragraph?',
+          nzAutofocus: null,
+          nzOnOk: () => true
+        }).afterClose;
+        removeParagraphAfterConfirmation(
+          afterClose,
+          this.destroy$,
+          paragraphId,
+          id => this.messageService.paragraphRemove(id),
+          () => this.cdr.markForCheck()
+        );
       }
     }
   }

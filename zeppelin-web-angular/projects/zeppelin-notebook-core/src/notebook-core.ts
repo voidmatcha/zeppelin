@@ -51,6 +51,7 @@ export type NotebookCoreEvent =
       text?: string;
       status?: NotebookParagraphSnapshot['status'];
       language?: string;
+      results?: readonly NotebookParagraphResult[];
       resultConfigs?: NotebookParagraphResultConfigs;
       source?: 'local' | 'server' | 'collaboration';
     }>
@@ -360,6 +361,7 @@ const isLiveMutation = (event: NotebookCoreEvent): boolean =>
   event.type === 'paragraph-updated' ||
   event.type === 'paragraph-output-updated' ||
   event.type === 'paragraph-output-appended' ||
+  event.type === 'paragraph-output-snapshotted' ||
   event.type === 'note-updated';
 
 const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): NotebookCoreState => {
@@ -485,6 +487,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       const { snapshot: currentSnapshot } = current;
+      const hasResultsUpdate = Object.prototype.hasOwnProperty.call(event, 'results');
       const isCollaborationTextUpdate = event.source === 'collaboration' && event.text !== undefined;
       const isServerTextUpdate =
         (event.source === 'server' || event.source === 'collaboration') && event.text !== undefined;
@@ -516,7 +519,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
             status: event.status ?? currentSnapshot.status,
             language: event.language ?? currentSnapshot.language,
             progress: currentSnapshot.progress,
-            results: currentSnapshot.results,
+            results: hasResultsUpdate ? event.results : currentSnapshot.results,
             resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs
           },
           serverText,
@@ -537,6 +540,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         paragraph.hasConflict === current.hasConflict &&
         paragraph.pendingRunStatus === current.pendingRunStatus &&
         event.language === undefined &&
+        !hasResultsUpdate &&
         event.resultConfigs === undefined
       ) {
         return state;
@@ -584,6 +588,9 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       if (!current) {
         return state;
       }
+      if (current.snapshot.status !== 'PENDING' && current.snapshot.status !== 'RUNNING') {
+        return state;
+      }
       if (
         event.outputSequence !== undefined &&
         (!Number.isSafeInteger(event.outputSequence) ||
@@ -617,6 +624,9 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       }
       const current = state.paragraphsById[event.paragraphId];
       if (!current) {
+        return state;
+      }
+      if (current.snapshot.status !== 'PENDING' && current.snapshot.status !== 'RUNNING') {
         return state;
       }
       if (
@@ -653,6 +663,9 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       }
       const current = state.paragraphsById[event.paragraphId];
       if (!current) {
+        return state;
+      }
+      if (current.snapshot.status !== 'PENDING' && current.snapshot.status !== 'RUNNING') {
         return state;
       }
       if (current.outputSequence !== null && event.outputSequence < current.outputSequence) {
@@ -821,7 +834,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       }
       return freezeState({ ...state, version, permissions: freezePermissions(event.permissions) });
     case 'collaboration-updated':
-      if (state.phase !== 'ready') {
+      if (state.phase !== 'loading' && state.phase !== 'ready') {
         return state;
       }
       return freezeState({

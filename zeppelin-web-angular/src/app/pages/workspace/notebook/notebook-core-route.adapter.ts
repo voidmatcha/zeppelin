@@ -187,12 +187,22 @@ export class NotebookCoreRouteAdapter {
   }
 
   acceptParagraphUpdated(paragraph: LoadedParagraph): void {
+    const snapshot = this.port.getSnapshot();
+    if (
+      snapshot.phase !== 'ready' ||
+      snapshot.revisionId !== null ||
+      !snapshot.paragraphs.some(candidate => candidate.id === paragraph.id)
+    ) {
+      return;
+    }
+    this.paragraphViewsById.set(paragraph.id, paragraph);
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
       text: paragraph.text ?? '',
       status: normalizeParagraphStatus(paragraph.status),
       language: editorLanguage(paragraph),
+      results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
       resultConfigs: paragraph.config?.results,
       source: 'server'
     });
@@ -200,6 +210,35 @@ export class NotebookCoreRouteAdapter {
 
   acceptParagraphText(paragraphId: string, text: string): void {
     this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'local' });
+  }
+
+  projectParagraphViewsFromCore(): readonly LoadedParagraph[] | null {
+    const snapshot = this.port.getSnapshot();
+    if (snapshot.phase !== 'ready') {
+      return null;
+    }
+    const paragraphs = this.selectParagraphViews().map(paragraph => {
+      const coreParagraph = snapshot.paragraphs.find(candidate => candidate.id === paragraph.id)!;
+      const projected = {
+        ...paragraph,
+        text: coreParagraph.text,
+        status: coreParagraph.status as LoadedParagraph['status'],
+        progress: coreParagraph.progress,
+        results: coreParagraph.results
+          ? ({
+              code: paragraph.results?.code ?? 'SUCCESS',
+              msg: coreParagraph.results.map(result => ({ type: result.type, data: result.data }))
+            } as LoadedParagraph['results'])
+          : undefined,
+        config: {
+          ...paragraph.config,
+          results: coreParagraph.resultConfigs as LoadedParagraph['config']['results']
+        }
+      };
+      this.paragraphViewsById.set(paragraph.id, projected);
+      return projected;
+    });
+    return paragraphs;
   }
 
   acceptParagraphPatch(paragraphId: string, patch: string): boolean {
@@ -241,12 +280,16 @@ export class NotebookCoreRouteAdapter {
   }
 
   acceptParagraphOutputUpdate(
+    noteId: string,
     paragraphId: string,
     index: number,
     type: string,
     data: string,
     outputSequence?: number
   ): void {
+    if (!this.acceptsLiveOutput(noteId)) {
+      return;
+    }
     if (!this.acceptOutputSequence(paragraphId, outputSequence)) {
       return;
     }
@@ -259,7 +302,16 @@ export class NotebookCoreRouteAdapter {
     });
   }
 
-  acceptParagraphOutputAppend(paragraphId: string, index: number, data: string, outputSequence?: number): void {
+  acceptParagraphOutputAppend(
+    noteId: string,
+    paragraphId: string,
+    index: number,
+    data: string,
+    outputSequence?: number
+  ): void {
+    if (!this.acceptsLiveOutput(noteId)) {
+      return;
+    }
     if (!this.acceptOutputSequence(paragraphId, outputSequence)) {
       return;
     }
@@ -267,10 +319,14 @@ export class NotebookCoreRouteAdapter {
   }
 
   acceptParagraphOutputSnapshot(
+    noteId: string,
     paragraphId: string,
     results: readonly Readonly<{ type: string; data: string }>[],
     outputSequence: number
   ): void {
+    if (!this.acceptsLiveOutput(noteId)) {
+      return;
+    }
     if (!Number.isSafeInteger(outputSequence) || outputSequence < 0) {
       return;
     }
@@ -448,6 +504,11 @@ export class NotebookCoreRouteAdapter {
     for (const paragraph of paragraphs) {
       this.paragraphViewsById.set(paragraph.id, paragraph);
     }
+  }
+
+  private acceptsLiveOutput(noteId: string): boolean {
+    const snapshot = this.port.getSnapshot();
+    return snapshot.phase === 'ready' && snapshot.revisionId === null && snapshot.noteId === noteId;
   }
 
   private acceptOutputSequence(paragraphId: string, outputSequence: number | undefined): boolean {

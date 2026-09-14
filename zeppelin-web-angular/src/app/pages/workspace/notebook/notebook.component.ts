@@ -23,8 +23,17 @@ import {
 import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { isNil } from 'lodash';
-import { combineLatest, firstValueFrom, Subject } from 'rxjs';
-import { distinctUntilChanged, distinctUntilKeyChanged, filter, startWith, take, takeUntil } from 'rxjs/operators';
+import { combineLatest, firstValueFrom, merge, Subject } from 'rxjs';
+import {
+  distinctUntilChanged,
+  distinctUntilKeyChanged,
+  filter,
+  map,
+  startWith,
+  take,
+  takeUntil,
+  timeout
+} from 'rxjs/operators';
 
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NzModalService } from 'ng-zorro-antd/modal';
@@ -103,6 +112,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   useReactFooter = false;
   private destroy$ = new Subject<void>();
   private searchTerm = '';
+  private revisionComparisonRequestSequence = 0;
 
   @MessageListener(OP.NOTE)
   getNote(data: MessageReceiveDataTypeMap[OP.NOTE]) {
@@ -116,6 +126,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       }
       this.removeParagraphFromNgZ();
       this.note = { ...note, paragraphs: [...paragraphs] };
+      this.notebookCoreRouteAdapter.acceptCollaborativeModeStatus(
+        this.collaborativeMode ? this.collaborativeModeUsers : null
+      );
       this.refreshCoreProofReactProps();
       const { paragraphId } = this.activatedRoute.snapshot.params;
       if (paragraphId) {
@@ -143,10 +156,11 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   loadInterpreterBindings(data: MessageReceiveDataTypeMap[OP.INTERPRETER_BINDINGS]) {
-    this.interpreterBindings = data.interpreterBindings;
+    this.interpreterBindings = data.interpreterBindings ?? [];
     if (!this.interpreterBindings.some(item => item.selected)) {
       this.activatedExtension = 'interpreter';
     }
+    this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
   }
 
@@ -284,6 +298,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   updateCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_UPDATE_OUTPUT]) {
     this.notebookCoreRouteAdapter.acceptParagraphOutputUpdate(
+      data.noteId,
       data.paragraphId,
       data.index,
       data.type,
@@ -295,6 +310,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   appendCoreParagraphOutput(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_APPEND_OUTPUT]) {
     this.notebookCoreRouteAdapter.acceptParagraphOutputAppend(
+      data.noteId,
       data.paragraphId,
       data.index,
       data.data,
@@ -304,7 +320,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   updateCoreParagraphOutputSnapshot(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_OUTPUT_SNAPSHOT]) {
-    this.notebookCoreRouteAdapter.acceptParagraphOutputSnapshot(data.paragraphId, data.results, data.outputSequence);
+    this.notebookCoreRouteAdapter.acceptParagraphOutputSnapshot(
+      data.noteId,
+      data.paragraphId,
+      data.results,
+      data.outputSequence
+    );
     this.cdr.markForCheck();
   }
 
@@ -406,21 +427,19 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   listRevisionHistory(data: MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY]) {
-    this.noteRevisions = data.revisionList;
-    if (this.noteRevisions) {
-      if (this.noteRevisions.length === 0 || this.noteRevisions[0].id !== 'Head') {
-        this.noteRevisions.splice(0, 0, { id: 'Head', message: 'Head' });
+    this.noteRevisions = data.revisionList ?? [];
+    if (this.noteRevisions.length === 0 || this.noteRevisions[0].id !== 'Head') {
+      this.noteRevisions.splice(0, 0, { id: 'Head', message: 'Head' });
+    }
+    const { revisionId } = this.activatedRoute.snapshot.params;
+    if (revisionId) {
+      const revisionItemFound = this.noteRevisions.find(r => r.id === revisionId);
+      if (!revisionItemFound) {
+        throw new Error(`Revision ${revisionId} not found`);
       }
-      const { revisionId } = this.activatedRoute.snapshot.params;
-      if (revisionId) {
-        const revisionItemFound = this.noteRevisions.find(r => r.id === revisionId);
-        if (!revisionItemFound) {
-          throw new Error(`Revision ${revisionId} not found`);
-        }
-        this.currentRevision = revisionItemFound.message;
-      } else {
-        this.currentRevision = 'Head';
-      }
+      this.currentRevision = revisionItemFound.message;
+    } else {
+      this.currentRevision = 'Head';
     }
     this.notebookCoreRouteAdapter.acceptRevisions(
       this.noteRevisions.map(revision => ({ id: revision.id, message: revision.message, time: revision.time }))
@@ -680,6 +699,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
           config as ParagraphConfigResult
         ),
       onError: () => {
+        this.renderParagraphProjection(this.notebookCoreRouteAdapter.projectParagraphViewsFromCore());
         this.reactNotebookFailed = true;
         this.cdr.markForCheck();
       }
@@ -761,17 +781,35 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (!this.note) {
       throw new Error('Notebook is not loaded.');
     }
-    const receiveRevision = (position: 'first' | 'second') =>
-      firstValueFrom(
-        this.messageService.receive(OP.NOTE_REVISION_FOR_COMPARE).pipe(
-          filter((data: NoteRevisionForCompareReceived) => data.position === position),
-          take(1)
-        )
+    const noteId = this.note.id;
+    const receiveRevision = (revisionId: string, position: 'first' | 'second') => {
+      const requestPosition = `${position}-${++this.revisionComparisonRequestSequence}`;
+      let requestMsgId: string | undefined;
+      const response = this.messageService
+        .receive(OP.NOTE_REVISION_FOR_COMPARE)
+        .pipe(
+          filter(
+            (data: NoteRevisionForCompareReceived) =>
+              data.noteId === noteId && data.revisionId === revisionId && data.position === requestPosition
+          )
+        );
+      const failure = merge(
+        this.messageService.receiveEnvelope(OP.AUTH_INFO),
+        this.messageService.receiveEnvelope(OP.ERROR_INFO)
+      ).pipe(
+        filter(message => Boolean(requestMsgId) && message.msgId === requestMsgId),
+        map(() => {
+          throw new Error(`Failed to load notebook revision ${revisionId}.`);
+        })
       );
-    const firstResponse = receiveRevision('first');
-    const secondResponse = receiveRevision('second');
-    this.messageService.noteRevisionForCompare(this.note.id, firstRevisionId, 'first');
-    this.messageService.noteRevisionForCompare(this.note.id, secondRevisionId, 'second');
+      const result = firstValueFrom(
+        merge(response, failure).pipe(take(1), timeout(30000), takeUntil(this.destroy$))
+      ) as Promise<NoteRevisionForCompareReceived>;
+      requestMsgId = this.messageService.noteRevisionForCompare(noteId, revisionId, requestPosition).msgId;
+      return result;
+    };
+    const firstResponse = receiveRevision(firstRevisionId, 'first');
+    const secondResponse = receiveRevision(secondRevisionId, 'second');
     const [first, second] = await Promise.all([firstResponse, secondResponse]);
     const paragraphs = (response: NoteRevisionForCompareReceived): readonly NotebookRevisionParagraph[] =>
       (response.note?.paragraphs ?? []).map(paragraph => ({
@@ -948,8 +986,12 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.activatedRoute.queryParamMap
       .pipe(startWith(this.activatedRoute.snapshot.queryParamMap), takeUntil(this.destroy$))
       .subscribe(data => {
+        const wasRenderingReact = this.useReactNotebook && !this.reactNotebookFailed;
         this.useReactFooter = this.reactFeature.isEnabled('paragraphFooter', data);
         this.useReactNotebook = this.reactFeature.isEnabled('notebook', data);
+        if (wasRenderingReact && !this.useReactNotebook) {
+          this.renderParagraphProjection(this.notebookCoreRouteAdapter.projectParagraphViewsFromCore());
+        }
         this.reactNotebookFailed = false;
         this.coreProofEnabled = data.get('coreProof') === 'true';
         this.cdr.markForCheck();

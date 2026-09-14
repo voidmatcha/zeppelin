@@ -119,6 +119,41 @@ describe('notebook core runtime spike', () => {
     runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', status: 'FINISHED' });
 
     expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'first second' }]);
+    expect(runtime.apply({ type: 'paragraph-output-appended', paragraphId: 'p-1', index: 0, data: ' too late' })).toBe(
+      false
+    );
+  });
+
+  it('applies authoritative terminal results and cleared results from a paragraph update', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Terminal output',
+      paragraphs: [{ id: 'p-1', text: '%python', status: 'RUNNING', results: [{ type: 'TEXT', data: 'old' }] }]
+    });
+
+    expect(
+      runtime.apply({
+        type: 'paragraph-updated',
+        paragraphId: 'p-1',
+        status: 'FINISHED',
+        results: [{ type: 'TEXT', data: 'complete' }],
+        source: 'server'
+      })
+    ).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'complete' }]);
+    expect(
+      runtime.apply({
+        type: 'paragraph-updated',
+        paragraphId: 'p-1',
+        results: undefined,
+        source: 'server'
+      })
+    ).toBe(true);
+    expect(runtime.port.getSnapshot().paragraphs[0].results).toBeUndefined();
   });
 
   it('ignores duplicate output frames and accepts an authoritative output snapshot after a gap', () => {
@@ -1025,6 +1060,38 @@ describe('notebook core runtime spike', () => {
     });
   });
 
+  it('preserves collaboration status received before the note snapshot', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      dispatchCommand,
+      createParagraphPatch: (previousText, nextText) => `${previousText}->${nextText}`
+    });
+
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'collaboration-updated', users: ['user1', 'user2'] });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+
+    expect(runtime.port.getSnapshot().collaborativeUsers).toEqual(['user1', 'user2']);
+    expect(runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md peer' })).toBe(true);
+    expect(dispatchCommand).toHaveBeenCalledWith({
+      type: 'patch-paragraph',
+      paragraphId: 'p-1',
+      patch: '%md base->%md peer'
+    });
+
+    runtime.apply({ type: 'load-failed', noteId: 'note-a', revisionId: null, error: 'offline' });
+    expect(runtime.apply({ type: 'collaboration-updated', users: ['stale-user'] })).toBe(false);
+    expect(runtime.port.getSnapshot().collaborativeUsers).toEqual(['user1', 'user2']);
+  });
+
   it('retains an unconfirmed local patch when a peer patch precedes reconnect', () => {
     const runtime = createNotebookCore({
       noteId: 'note-a',
@@ -1158,6 +1225,14 @@ describe('notebook core runtime spike', () => {
     expect(runtime.apply({ type: 'paragraph-removed', paragraphId: 'p-1' })).toBe(false);
     expect(runtime.apply({ type: 'paragraph-moved', paragraphId: 'p-1', index: 1 })).toBe(false);
     expect(runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md changed' })).toBe(false);
+    expect(
+      runtime.apply({
+        type: 'paragraph-output-snapshotted',
+        paragraphId: 'p-1',
+        results: [{ type: 'TEXT', data: 'live output' }],
+        outputSequence: 1
+      })
+    ).toBe(false);
     expect(runtime.port.getSnapshot()).toBe(revisionSnapshot);
     expect(runtime.port.getSnapshot().title).toBe('Historical title');
   });
