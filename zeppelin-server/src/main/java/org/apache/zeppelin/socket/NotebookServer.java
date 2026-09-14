@@ -933,11 +933,12 @@ public class NotebookServer implements AngularObjectRegistryListener,
             if (paragraph == null) {
               return;
             }
+            Paragraph.OutputBufferSnapshot snapshot = paragraph.getOutputBufferSnapshot();
             conn.send(serializeMessage(new Message(OP.PARAGRAPH_OUTPUT_SNAPSHOT)
                 .put("noteId", noteId)
                 .put("paragraphId", paragraphId)
-                .put("outputSequence", paragraph.getOutputSequence())
-                .put("results", paragraph.getOutputSnapshot())));
+                .put("outputSequence", snapshot.getSequence())
+                .put("results", snapshot.getResults())));
           }
         }, null);
   }
@@ -1857,13 +1858,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
           LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
           return null;
         }
-        paragraph.appendOutputBuffer(index, output);
+        long outputSequence = paragraph.appendOutputBuffer(index, output);
         Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
             .put("noteId", noteId)
             .put("paragraphId", paragraphId)
             .put("index", index)
             .put("data", output)
-            .put("outputSequence", paragraph.nextOutputSequence());
+            .put("outputSequence", outputSequence);
         connectionManager.broadcast(noteId, msg);
         return null;
       });
@@ -1902,14 +1903,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
             LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
             return null;
           }
-          paragraph.updateOutputBuffer(index, type, output);
+          long outputSequence = paragraph.updateOutputBuffer(index, type, output);
           Message msg = new Message(OP.PARAGRAPH_UPDATE_OUTPUT)
               .put("noteId", noteId)
               .put("paragraphId", paragraphId)
               .put("index", index)
               .put("type", type)
               .put("data", output)
-              .put("outputSequence", paragraph.nextOutputSequence());
+              .put("outputSequence", outputSequence);
           connectionManager.broadcast(noteId, msg);
           return null;
         });

@@ -99,6 +99,23 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
   private transient List<InterpreterResultMessage> outputBuffer = new ArrayList<>();
   private transient long outputSequence;
 
+  public static final class OutputBufferSnapshot {
+    private final long sequence;
+    private final List<InterpreterResultMessage> results;
+
+    private OutputBufferSnapshot(long sequence, List<InterpreterResultMessage> results) {
+      this.sequence = sequence;
+      this.results = results;
+    }
+
+    public long getSequence() {
+      return sequence;
+    }
+
+    public List<InterpreterResultMessage> getResults() {
+      return results;
+    }
+  }
 
   @VisibleForTesting
   Paragraph() {
@@ -340,7 +357,7 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
 
       // clear output
       setResult(null);
-      cleanOutputBuffer();
+      resetOutputBuffer();
       cleanRuntimeInfos();
 
       setStatus(Status.PENDING);
@@ -695,6 +712,10 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
 
   public synchronized void cleanOutputBuffer() {
     this.outputBuffer.clear();
+  }
+
+  public synchronized void resetOutputBuffer() {
+    this.outputBuffer.clear();
     this.outputSequence = 0;
   }
 
@@ -794,8 +815,8 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     return note.getNoteParser().fromJson(json);
   }
 
-  public synchronized void updateOutputBuffer(int index, InterpreterResult.Type type, String output) {
-    InterpreterResultMessage interpreterResultMessage = new InterpreterResultMessage(type, output);;
+  public synchronized long updateOutputBuffer(int index, InterpreterResult.Type type, String output) {
+    InterpreterResultMessage interpreterResultMessage = new InterpreterResultMessage(type, output);
     if (outputBuffer.size() == index) {
       outputBuffer.add(interpreterResultMessage);
     } else if (outputBuffer.size() > index) {
@@ -803,9 +824,10 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     } else {
       LOGGER.warn("Get output of index: {}, but there's only {} output in outputBuffer", index, outputBuffer.size());
     }
+    return ++outputSequence;
   }
 
-  public synchronized void appendOutputBuffer(int index, String output) {
+  public synchronized long appendOutputBuffer(int index, String output) {
     if (outputBuffer.size() == index) {
       outputBuffer.add(new InterpreterResultMessage(InterpreterResult.Type.TEXT, output));
     } else if (outputBuffer.size() > index) {
@@ -814,9 +836,6 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     } else {
       LOGGER.warn("Get output of index: {}, but there's only {} output in outputBuffer", index, outputBuffer.size());
     }
-  }
-
-  public synchronized long nextOutputSequence() {
     return ++outputSequence;
   }
 
@@ -826,6 +845,10 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
 
   public synchronized List<InterpreterResultMessage> getOutputSnapshot() {
     return new ArrayList<>(outputBuffer);
+  }
+
+  public synchronized OutputBufferSnapshot getOutputBufferSnapshot() {
+    return new OutputBufferSnapshot(outputSequence, new ArrayList<>(outputBuffer));
   }
 
   public void recover() {
