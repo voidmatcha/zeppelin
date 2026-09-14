@@ -142,8 +142,9 @@ const verifyRemovalParity = async (
     const ownerJobManager = new JobManagerPage(ownerPage);
     const observerJobManager = new JobManagerPage(observerPage);
 
-    await Promise.all([ownerJobManager.navigate(), observerJobManager.navigate()]);
+    await ownerJobManager.navigate();
     await expect.poll(() => ownerRecorder.hasInitialList()).toBe(true);
+    await observerJobManager.navigate();
     await expect.poll(() => observerRecorder.hasInitialList()).toBe(true);
 
     expect(ownerRecorder.initialNoteIds()).toEqual(expect.arrayContaining([targetNote.noteId, barrierNote.noteId]));
