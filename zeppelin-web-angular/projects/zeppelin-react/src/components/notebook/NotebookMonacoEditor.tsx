@@ -158,5 +158,5 @@ export const NotebookMonacoEditor = ({
     return () => action.dispose();
   }, []);
 
-  return <div className="zeppelin-react-notebook-editor" ref={host} />;
+  return <div className="zeppelin-react-notebook-editor" ref={host} style={{ height: 180 }} />;
 };
