@@ -29,6 +29,17 @@ it('separates received wire fields from backward-compatible import input', () =>
     | undefined
   >();
   expectTypeOf<AngularObjectRemove>().toHaveProperty('interpreterGroupId').toEqualTypeOf<string | undefined>();
+  const nestedAngularObjectRemove = {
+    noteId: 'note-1',
+    paragraphId: 'paragraph-1',
+    interpreterGroupId: 'group-1',
+    angularObject: {
+      name: 'binding',
+      object: 'value',
+      noteId: 'note-1',
+      paragraphId: 'paragraph-1'
+    }
+  } satisfies AngularObjectRemove;
   const legacyImportParagraph = {
     text: '%md legacy import',
     user: 'anonymous',
@@ -72,6 +83,7 @@ it('separates received wire fields from backward-compatible import input', () =>
     .toEqualTypeOf<number | undefined>();
   expect(importWithoutVersion.note).not.toHaveProperty('version');
   expect(importWithoutVersion.note.paragraphs[0]).not.toHaveProperty('progress');
+  expect(nestedAngularObjectRemove.angularObject.name).toBe('binding');
 });
 
 it('accepts the personalized GET_NOTE response without a version', () => {

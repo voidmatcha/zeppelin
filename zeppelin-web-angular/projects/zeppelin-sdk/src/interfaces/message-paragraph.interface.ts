@@ -215,29 +215,29 @@ export interface AngularObjectUpdated {
   interpreterGroupId: string;
 }
 
-export interface AngularObjectRemove {
+export interface AngularObjectPayload {
+  name: string;
+  object: unknown;
   noteId: string;
   paragraphId: string;
-  name: string;
-  angularObject?: {
-    name: string;
-    object: unknown;
-    noteId: string;
-    paragraphId: string;
-  };
-  interpreterGroupId?: string;
 }
+
+interface AngularObjectRemoveBase {
+  noteId: string;
+  paragraphId: string;
+}
+
+export type AngularObjectRemove = AngularObjectRemoveBase &
+  (
+    | { name: string; angularObject?: AngularObjectPayload; interpreterGroupId?: string }
+    | { name?: undefined; angularObject: AngularObjectPayload; interpreterGroupId: string }
+  );
 
 export interface AngularObjectUpdate {
   noteId: string;
   paragraphId: string;
   interpreterGroupId: string;
-  angularObject: {
-    name: string;
-    object: unknown;
-    noteId: string;
-    paragraphId: string;
-  };
+  angularObject: AngularObjectPayload;
 }
 
 export interface AngularObjectClientBind {
