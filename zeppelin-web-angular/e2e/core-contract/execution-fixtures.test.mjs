@@ -116,7 +116,7 @@ test('committed captures bind the canonical source and artifact manifest', async
       manifest => (manifest.sourceTree.sha256 = '0'.repeat(64)),
       manifest => (manifest.artifacts[0].sha256 = '0'.repeat(64))
     ]) {
-      const changed = structuredClone(fixture);
+      const changed = globalThis.structuredClone(fixture);
       mutation(changed.metadata.provenance.buildManifest);
       assert.match(validateFixture(changed).join('\n'), /verified artifacts/, `${name} accepted changed manifest`);
     }
@@ -127,11 +127,11 @@ test('execution coverage cannot claim absent operations or omit represented oper
   const fixture = await loadFixture('execution-streaming-disabled');
   assert.deepEqual(validateFixture(fixture), []);
 
-  const falseCoverage = structuredClone(fixture);
+  const falseCoverage = globalThis.structuredClone(fixture);
   falseCoverage.metadata.coveredOperations.push('PROGRESS');
   assert.match(validateFixture(falseCoverage).join('\n'), /exactly match operations represented/);
 
-  const missingCoverage = structuredClone(fixture);
+  const missingCoverage = globalThis.structuredClone(fixture);
   missingCoverage.metadata.coveredOperations = missingCoverage.metadata.coveredOperations.filter(
     operation => operation !== 'RUN_PARAGRAPH'
   );
