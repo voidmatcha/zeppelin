@@ -16,6 +16,29 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createNotebookCore, selectNotebookParagraphViews } from './notebook-core';
 
+const createTaskScheduler = () => {
+  let now = 0;
+  let nextId = 0;
+  const tasks = new Map<number, { dueAt: number; task: () => void }>();
+  return {
+    scheduleTask: (task: () => void, delayMs: number) => {
+      const id = ++nextId;
+      tasks.set(id, { dueAt: now + delayMs, task });
+      return id;
+    },
+    cancelTask: (id: unknown) => tasks.delete(id as number),
+    advanceBy: (delayMs: number) => {
+      now += delayMs;
+      for (const [id, scheduled] of [...tasks]) {
+        if (scheduled.dueAt <= now) {
+          tasks.delete(id);
+          scheduled.task();
+        }
+      }
+    }
+  };
+};
+
 describe('notebook core runtime spike', () => {
   it('delegates commands to the host without giving the remote direct transport access', () => {
     const dispatched: unknown[] = [];
@@ -605,6 +628,72 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md draft', isDirty: true });
     expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
     expect(dispatchCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it('debounces paragraph saves in Core and commits the latest draft', () => {
+    const scheduler = createTaskScheduler();
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      autoSaveDelayMs: 10000,
+      ...scheduler,
+      dispatchCommand
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v1' });
+    scheduler.advanceBy(9000);
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v2' });
+    scheduler.advanceBy(9999);
+    expect(dispatchCommand).not.toHaveBeenCalled();
+
+    scheduler.advanceBy(1);
+    expect(dispatchCommand).toHaveBeenCalledOnce();
+    expect(dispatchCommand).toHaveBeenCalledWith({ type: 'commit-paragraph', paragraphId: 'p-1' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md v2', isDirty: true });
+  });
+
+  it('cancels scheduled saves when a route changes or collaboration sends a patch', () => {
+    const scheduler = createTaskScheduler();
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      autoSaveDelayMs: 10000,
+      ...scheduler,
+      dispatchCommand
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md patched' });
+    runtime.port.dispatch({ type: 'patch-paragraph', paragraphId: 'p-1', patch: 'patch' });
+    scheduler.advanceBy(10000);
+    expect(dispatchCommand).toHaveBeenCalledTimes(1);
+    expect(dispatchCommand).toHaveBeenLastCalledWith({
+      type: 'patch-paragraph',
+      paragraphId: 'p-1',
+      patch: 'patch'
+    });
+
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md route draft' });
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    scheduler.advanceBy(10000);
+    expect(dispatchCommand).toHaveBeenCalledTimes(1);
   });
 
   it('restores the prior status when the host rejects a Core run request', () => {

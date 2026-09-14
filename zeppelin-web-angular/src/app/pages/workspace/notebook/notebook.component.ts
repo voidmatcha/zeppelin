@@ -96,9 +96,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   collaborativeMode = false;
   revisionView = false;
   collaborativeModeUsers: string[] = [];
-  isNoteDirty: boolean | null = false;
   isShowNoteForms = false;
-  saveTimer: ReturnType<typeof setTimeout> | null = null;
   interpreterBindings: InterpreterBindingItem[] = [];
   activatedExtension: 'interpreter' | 'permissions' | 'revisions' | 'hide' = 'hide';
   sidebarWidth = 370;
@@ -444,21 +442,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.sendParagraphPatch(paragraphId, patch);
   }
 
-  killSaveTimer() {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
-  }
-
-  startSaveTimer() {
-    this.killSaveTimer();
-    this.isNoteDirty = true;
-    this.saveTimer = setTimeout(() => {
-      this.saveNote();
-    }, 10000);
-  }
-
   onParagraphSelect(id: string | null) {
     this.selectId = id;
   }
@@ -482,7 +465,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       this.listOfNotebookParagraphComponent.toArray().forEach(p => {
         p.saveParagraph();
       });
-      this.isNoteDirty = null;
       this.cdr.markForCheck();
     }
   }
@@ -1009,7 +991,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   ngOnDestroy(): void {
     super.ngOnDestroy();
-    this.killSaveTimer();
     this.saveNote();
     this.destroy$.next();
     this.destroy$.complete();

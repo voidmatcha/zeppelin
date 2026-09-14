@@ -92,7 +92,12 @@ export class NotebookCoreRouteAdapter {
   private readonly outputSequencesExpectedFromStart = new Set<string>();
 
   constructor(private readonly messageService: MessageService) {
-    this.runtime = createNotebookCore({ dispatchCommand: command => this.dispatchCommand(command) });
+    this.runtime = createNotebookCore({
+      autoSaveDelayMs: 10000,
+      scheduleTask: (task, delayMs) => setTimeout(task, delayMs),
+      cancelTask: task => clearTimeout(task as ReturnType<typeof setTimeout>),
+      dispatchCommand: command => this.dispatchCommand(command)
+    });
     this.port = this.runtime.port;
     this.snapshot$ = new Observable<NotebookCoreSnapshot>(subscriber => {
       subscriber.next(this.port.getSnapshot());

@@ -98,6 +98,9 @@ export type NotebookCoreInitialRoute = Readonly<{
   noteId?: string;
   revisionId?: string | null;
   dispatchCommand?: NotebookCoreCommandHandler;
+  autoSaveDelayMs?: number;
+  scheduleTask?: (task: () => void, delayMs: number) => unknown;
+  cancelTask?: (task: unknown) => void;
 }>;
 
 export const selectNotebookParagraphViews = <T extends Readonly<{ id: string }>>(
@@ -714,7 +717,24 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
   let state = initialState(route);
   let snapshot = toSnapshot(state);
   const listeners = new Set<NotebookCoreSnapshotListener>();
+  const saveTimers = new Map<string, unknown>();
+  const cancelScheduledSave = (paragraphId: string): void => {
+    const timer = saveTimers.get(paragraphId);
+    if (timer !== undefined) {
+      route.cancelTask?.(timer);
+      saveTimers.delete(paragraphId);
+    }
+  };
+  const cancelAllScheduledSaves = (): void => {
+    saveTimers.forEach(timer => route.cancelTask?.(timer));
+    saveTimers.clear();
+  };
   const apply = (event: NotebookCoreEvent): boolean => {
+    if (event.type === 'route-changed' && (event.noteId !== state.noteId || event.revisionId !== state.revisionId)) {
+      cancelAllScheduledSaves();
+    } else if (event.type === 'paragraph-removed') {
+      cancelScheduledSave(event.paragraphId);
+    }
     const nextState = reduceState(state, event);
     if (nextState === state) {
       return false;
@@ -732,12 +752,23 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
     },
     dispatch: command => {
       if (command.type === 'edit-paragraph') {
-        return apply({
+        const edited = apply({
           type: 'paragraph-updated',
           paragraphId: command.paragraphId,
           text: command.text,
           source: 'local'
         });
+        if (edited && route.autoSaveDelayMs !== undefined && route.autoSaveDelayMs >= 0 && route.scheduleTask) {
+          cancelScheduledSave(command.paragraphId);
+          saveTimers.set(
+            command.paragraphId,
+            route.scheduleTask(() => {
+              saveTimers.delete(command.paragraphId);
+              port.dispatch({ type: 'commit-paragraph', paragraphId: command.paragraphId });
+            }, route.autoSaveDelayMs)
+          );
+        }
+        return edited;
       }
       if (
         command.type === 'cancel-paragraph' ||
@@ -746,7 +777,13 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
         command.type === 'cancel-all-paragraphs' ||
         command.type === 'clear-all-paragraph-output'
       ) {
+        if (command.type === 'patch-paragraph') {
+          cancelScheduledSave(command.paragraphId);
+        }
         return route.dispatchCommand?.(command) ?? false;
+      }
+      if (command.type === 'commit-paragraph') {
+        cancelScheduledSave(command.paragraphId);
       }
       const requestedEvent =
         command.type === 'commit-paragraph'
