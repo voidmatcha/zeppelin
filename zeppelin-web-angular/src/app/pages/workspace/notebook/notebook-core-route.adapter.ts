@@ -20,6 +20,7 @@ import {
   type NotebookDynamicForms,
   type NotebookFormParams,
   type NotebookLookAndFeel,
+  type NotebookFormValue,
   type NotebookParagraphStatus,
   type NotebookPermissions,
   type NotebookRevision,
@@ -56,6 +57,25 @@ const editorLanguage = (paragraph: LoadedParagraph): string | undefined => {
   const directive = paragraph.text?.replace(/^\s+/, '').match(/^%(\w+)/)?.[1];
   return directive === 'md' ? 'markdown' : directive;
 };
+
+const toNotebookFormValue = (value: unknown): NotebookFormValue =>
+  Array.isArray(value) ? value.map(item => String(item)) : value == null ? '' : String(value);
+
+const toNotebookForms = (forms: LoadedNote['noteForms']): NotebookDynamicForms =>
+  Object.entries(forms ?? {}).reduce<Record<string, NotebookDynamicForms[string]>>((result, [key, form]) => {
+    result[key] = {
+      ...form,
+      defaultValue: toNotebookFormValue(form.defaultValue),
+      options: form.options?.map(option => ({ ...option, value: String(option.value) }))
+    };
+    return result;
+  }, {});
+
+const toNotebookFormParams = (params: LoadedNote['noteParams']): NotebookFormParams =>
+  Object.entries(params ?? {}).reduce<Record<string, NotebookFormValue>>((result, [key, value]) => {
+    result[key] = toNotebookFormValue(value);
+    return result;
+  }, {});
 
 const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
@@ -117,8 +137,8 @@ export class NotebookCoreRouteAdapter {
       noteId: note.id,
       revisionId,
       title: note.name,
-      noteForms: note.noteForms as NotebookDynamicForms | undefined,
-      noteParams: note.noteParams as NotebookFormParams | undefined,
+      noteForms: toNotebookForms(note.noteForms),
+      noteParams: toNotebookFormParams(note.noteParams),
       scheduler: toNotebookSchedule(note),
       lookAndFeel: toNotebookLookAndFeel(note),
       personalizedMode: note.config?.personalizedMode === 'true',
@@ -293,8 +313,12 @@ export class NotebookCoreRouteAdapter {
     this.runtime.apply({ type: 'note-updated', title });
   }
 
-  acceptNoteForms(noteForms: NotebookDynamicForms, noteParams: NotebookFormParams): void {
-    this.runtime.apply({ type: 'note-forms-updated', noteForms, noteParams });
+  acceptNoteForms(noteForms: LoadedNote['noteForms'], noteParams: LoadedNote['noteParams']): void {
+    this.runtime.apply({
+      type: 'note-forms-updated',
+      noteForms: toNotebookForms(noteForms),
+      noteParams: toNotebookFormParams(noteParams)
+    });
   }
 
   acceptPermissions(permissions: NotebookPermissions): void {

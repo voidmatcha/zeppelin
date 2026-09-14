@@ -67,11 +67,7 @@
         </div>
       }
       <div class="notebook-area">
-        @if (
-          activatedExtension !== 'hide' &&
-          permissions &&
-          (!useReactNotebook || reactNotebookFailed || activatedExtension === 'hide')
-        ) {
+        @if (activatedExtension !== 'hide' && permissions && (!useReactNotebook || reactNotebookFailed)) {
           <div class="extension-area">
             @switch (activatedExtension) {
               @case ('interpreter') {

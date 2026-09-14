@@ -118,6 +118,8 @@ test('Angular owns notebook route parsing and passes one port to the React remot
       title: 'Fixture note-route-updated',
       noteForms: {},
       noteParams: {},
+      lookAndFeel: 'default',
+      personalizedMode: false,
       paragraphs: [
         { id: 'paragraph-1', text: '%md shared state', status: 'FINISHED', progress: 0, isDirty: false },
         { id: 'paragraph-2', text: '%spark 1 + 1', status: 'READY', progress: 0, isDirty: false }

@@ -29,7 +29,7 @@ export type NotebookParagraphResult = Readonly<{
 }>;
 
 export type NotebookParagraphResultConfig = Readonly<{
-  graph: Readonly<{ mode?: NotebookVisualizationMode; [key: string]: unknown }>;
+  graph: Readonly<object> & Readonly<{ mode?: NotebookVisualizationMode }>;
 }>;
 
 export type NotebookParagraphResultConfigs = Readonly<Record<string, NotebookParagraphResultConfig>>;

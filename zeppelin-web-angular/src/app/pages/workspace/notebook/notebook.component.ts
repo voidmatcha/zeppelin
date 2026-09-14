@@ -39,7 +39,6 @@ import {
   type Note,
   type NoteRevisionForCompareReceived,
   type ParagraphConfigResult,
-  type ReceivedMessage,
   type RevisionListItem
 } from '@zeppelin/sdk';
 import {
@@ -661,7 +660,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
         this.notebookCoreRouteAdapter.updateParagraphResultConfig(
           paragraphId,
           resultIndex,
-          config as ParagraphConfigResult
+          config as unknown as ParagraphConfigResult
         ),
       onError: () => {
         this.reactNotebookFailed = true;
@@ -910,12 +909,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   ngOnInit() {
     this.subscribeNotebookScopedReplies();
     this.messageService
-      .sent()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(message => {
-        this.notebookRequestCorrelation.record(message);
-      });
-    this.messageService
       .receive(OP.PARAGRAPH_UPDATE_OUTPUT)
       .pipe(takeUntil(this.destroy$))
       .subscribe(data => this.updateCoreParagraphOutput(data));
@@ -1067,6 +1060,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       this.activatedRoute.snapshot.params.noteId,
       this.activatedRoute.snapshot.params.revisionId
     );
+  }
+
   private requestCurrentNote(): void {
     const { noteId, revisionId } = this.activatedRoute.snapshot.params;
     if (!noteId) {
