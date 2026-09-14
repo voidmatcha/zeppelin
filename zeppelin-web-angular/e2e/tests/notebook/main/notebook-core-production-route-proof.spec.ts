@@ -83,17 +83,18 @@ const getPersistedParagraph = async (page: Page, noteId: string, index: number):
 };
 
 const replaceMonacoText = async (page: Page, editor: Locator, text: string): Promise<void> => {
-  await editor.click();
-  await page.keyboard.press('Control+A');
+  await editor.focus();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
   await page.keyboard.insertText(text);
 };
 
 const readMonacoText = async (editor: Locator): Promise<string> =>
-  editor.locator('xpath=ancestor::div[contains(@class, "zeppelin-react-notebook-editor")]').evaluate(element => {
-    const lines = Array.from(element.querySelectorAll('.view-line')) as HTMLElement[];
-    lines.sort((a, b) => parseInt(a.style.top || '0', 10) - parseInt(b.style.top || '0', 10));
-    return lines.map(line => (line.textContent || '').replace(/\p{Zs}/gu, ' ')).join('\n');
-  });
+  editor
+    .locator('xpath=ancestor::div[contains(@class, "zeppelin-react-notebook-editor")]')
+    .evaluate(
+      element =>
+        (element as HTMLElement & { __zeppelinNotebookEditorValue?: string }).__zeppelinNotebookEditorValue ?? ''
+    );
 
 const expectMonacoText = async (editor: Locator, text: string, timeout = 30000): Promise<void> => {
   await expect.poll(() => readMonacoText(editor), { timeout }).toBe(text);

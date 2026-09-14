@@ -144,7 +144,7 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-react-revision \
             xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
             ./node/npm run e2e -- tests/notebook/main/notebook-core-production-route-proof.spec.ts \
-            --grep "creates a notebook checkpoint from React with Git storage" \
+            --grep "opens historical revisions and compares checkpoints from React with Git storage" \
             --output=test-results-react-revision --reporter=github,html
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v6
