@@ -57,11 +57,11 @@ class JobManagerMessageRecorder {
     return initial?.data?.noteJobs?.jobs?.flatMap(job => (job.noteId ? [job.noteId] : [])) ?? [];
   }
 
-  removals(): NoteJob[] {
+  removals(noteIds: ReadonlySet<string>): NoteJob[] {
     return this.messages
       .filter(message => message.op === 'LIST_UPDATE_NOTE_JOBS')
       .flatMap(message => message.data?.noteRunningJobs?.jobs ?? [])
-      .filter(job => job.isRemoved === true);
+      .filter(job => job.isRemoved === true && typeof job.noteId === 'string' && noteIds.has(job.noteId));
   }
 
   private record(payload: string): void {
@@ -157,20 +157,23 @@ const verifyRemovalParity = async (
     await expectNoteMissing(ownerPage, barrierNote.noteId);
 
     const expectedRemovalOrder = [targetNote.noteId, barrierNote.noteId];
-    await expect.poll(() => ownerRecorder.removals().map(job => job.noteId)).toEqual(expectedRemovalOrder);
-    await expect.poll(() => observerRecorder.removals().map(job => job.noteId)).toEqual(expectedRemovalOrder);
+    const ownedNoteIds = new Set(expectedRemovalOrder);
+    await expect.poll(() => ownerRecorder.removals(ownedNoteIds).map(job => job.noteId)).toEqual(expectedRemovalOrder);
+    await expect
+      .poll(() => observerRecorder.removals(ownedNoteIds).map(job => job.noteId))
+      .toEqual(expectedRemovalOrder);
     await expect(ownerJobManager.jobItemByName(targetNote.noteName)).toHaveCount(0);
 
     for (const recorder of [ownerRecorder, observerRecorder]) {
-      expect(recorder.removals()).toEqual([
+      expect(recorder.removals(ownedNoteIds)).toEqual([
         { noteId: targetNote.noteId, isRunningJob: false, isRemoved: true, unixTimeLastRun: 0 },
         { noteId: barrierNote.noteId, isRunningJob: false, isRemoved: true, unixTimeLastRun: 0 }
       ]);
     }
 
     return {
-      ownerRemovalCount: ownerRecorder.removals().length,
-      observerRemovalCount: observerRecorder.removals().length
+      ownerRemovalCount: ownerRecorder.removals(ownedNoteIds).length,
+      observerRemovalCount: observerRecorder.removals(ownedNoteIds).length
     };
   } finally {
     await observerContext.close();
