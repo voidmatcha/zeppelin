@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "../../out-tsc/spec/notebook-core",
+    "rootDir": "../..",
     "types": ["node"]
   },
   "include": ["src/**/*.spec.ts", "../../test/notebook-core/**/*.ts"],

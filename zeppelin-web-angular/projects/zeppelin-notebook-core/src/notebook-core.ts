@@ -20,6 +20,7 @@ import type {
   NotebookLookAndFeel,
   NotebookParagraphInput,
   NotebookParagraphResult,
+  NotebookParagraphResultConfig,
   NotebookParagraphResultConfigs,
   NotebookParagraphSnapshot,
   NotebookPermissions,
@@ -198,8 +199,10 @@ const freezeResultConfigValue = (value: unknown): unknown => {
 
 const freezeResultConfigs = (configs: NotebookParagraphResultConfigs): NotebookParagraphResultConfigs =>
   Object.freeze(
-    Object.entries(configs).reduce<Record<string, Readonly<{ graph: unknown }>>>((result, [index, config]) => {
-      result[index] = Object.freeze({ graph: freezeResultConfigValue(config.graph) });
+    Object.entries(configs).reduce<Record<string, NotebookParagraphResultConfig>>((result, [index, config]) => {
+      result[index] = Object.freeze({
+        graph: freezeResultConfigValue(config.graph) as NotebookParagraphResultConfig['graph']
+      });
       return result;
     }, {})
   );

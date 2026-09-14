@@ -11,17 +11,18 @@
  */
 
 import { createRoot, Root } from 'react-dom/client';
-import { Empty, ReactErrorBoundary } from '@/components';
+import { Empty } from '@/components/common/Empty';
+import { ReactErrorBoundary } from '@/components/paragraph/ReactErrorBoundary';
 import { SingleResultRenderer } from '@/templates';
 import { ZeppelinThemeProvider } from '@/theme';
-import type { ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import type { ResultRendererConfigs, ResultRendererResult } from '@/templates/SingleResultRenderer';
 
 const RESULT_FONT_FAMILY = "'Lucida Console', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace";
 
 export interface PublishedParagraphProps {
   paragraphId: string;
-  results?: ParagraphIResultsMsgItem[];
-  config?: ParagraphConfigResults;
+  results?: ResultRendererResult[];
+  config?: ResultRendererConfigs;
   onError?: (error: unknown) => void;
 }
 

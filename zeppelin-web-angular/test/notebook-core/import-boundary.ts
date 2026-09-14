@@ -196,7 +196,7 @@ export const findReactNotebookConsumerViolations = (
     for (const target of module.dependencies) {
       if (target === main) {
         violations.push(`${path}: notebook consumer must use the contract bridge instead of the public aggregator`);
-      } else {
+      } else if (!target.includes('/node_modules/') || target.includes('/node_modules/.zeppelin-notebook-boundary-')) {
         check(target);
       }
     }

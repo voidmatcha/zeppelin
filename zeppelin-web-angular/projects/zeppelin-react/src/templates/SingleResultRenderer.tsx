@@ -16,16 +16,42 @@ import { ImageRenderer } from '@/components/renderers/ImageRenderer';
 import { TextRenderer } from '@/components/renderers/TextRenderer';
 import { TableVisualization } from '@/components/visualizations/TableVisualization';
 import { checkAndReplaceCarriageReturn } from '@/utils';
-import type { NotebookParagraphResult, NotebookParagraphResultConfigs } from '@zeppelin/notebook-core';
-import { DatasetType, ParagraphConfigResult, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+
+export type ResultRendererMode =
+  | 'table'
+  | 'multiBarChart'
+  | 'pieChart'
+  | 'lineChart'
+  | 'stackedAreaChart'
+  | 'scatterChart'
+  | string;
+
+export type ResultRendererResult = Readonly<{
+  type: string;
+  data: string;
+}>;
+
+export type ResultRendererConfig = Readonly<{
+  graph: Readonly<{ mode?: ResultRendererMode; [key: string]: unknown }>;
+}>;
+
+export type ResultRendererConfigs = Readonly<Record<string, ResultRendererConfig>>;
 
 interface SingleResultRendererProps {
-  result: NotebookParagraphResult;
+  result: ResultRendererResult;
   index: number;
-  config?: NotebookParagraphResultConfigs;
+  config?: ResultRendererConfigs;
   modeChangeDisabled?: boolean;
-  onConfigChange?: (config: ParagraphConfigResult) => void;
+  onConfigChange?: (config: ResultRendererConfig) => void;
 }
+
+const DatasetType = {
+  TABLE: 'TABLE',
+  HTML: 'HTML',
+  TEXT: 'TEXT',
+  IMG: 'IMG',
+  ANGULAR: 'ANGULAR'
+} as const;
 
 export const SingleResultRenderer = ({
   result,
@@ -34,14 +60,13 @@ export const SingleResultRenderer = ({
   modeChangeDisabled,
   onConfigChange
 }: SingleResultRendererProps) => {
-  const resultConfig = config?.[index] as ParagraphConfigResult | undefined;
-  const visualizationResult: ParagraphIResultsMsgItem = { type: result.type as DatasetType, data: result.data };
+  const resultConfig = config?.[index];
 
   switch (result.type) {
     case DatasetType.TABLE:
       return (
         <TableVisualization
-          result={visualizationResult}
+          result={result}
           config={resultConfig}
           modeChangeDisabled={modeChangeDisabled}
           onConfigChange={onConfigChange}

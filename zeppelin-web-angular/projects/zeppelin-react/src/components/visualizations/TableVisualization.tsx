@@ -15,18 +15,23 @@ import { Table } from 'antd';
 import { VisualizationControls } from './VisualizationControls';
 import { applyChartTheme, useHostThemeMode } from '@/theme';
 import { parseTableData, exportFile } from '@/utils';
-import type { ParagraphConfigResult, ParagraphIResultsMsgItem, VisualizationMode } from '@zeppelin/sdk';
+import type { ResultRendererConfig, ResultRendererMode, ResultRendererResult } from '@/templates/SingleResultRenderer';
 import type { Chart, ChartConfiguration } from 'chart.js';
 
 interface TableVisualizationProps {
-  result: ParagraphIResultsMsgItem;
-  config?: ParagraphConfigResult;
+  result: ResultRendererResult;
+  config?: ResultRendererConfig;
   modeChangeDisabled?: boolean;
-  onConfigChange?: (config: ParagraphConfigResult) => void;
+  onConfigChange?: (config: ResultRendererConfig) => void;
 }
 
-export const TableVisualization = ({ result, config, modeChangeDisabled = false, onConfigChange }: TableVisualizationProps) => {
-  const [currentMode, setCurrentMode] = useState<VisualizationMode>(config?.graph.mode || 'table');
+export const TableVisualization = ({
+  result,
+  config,
+  modeChangeDisabled = false,
+  onConfigChange
+}: TableVisualizationProps) => {
+  const [currentMode, setCurrentMode] = useState<ResultRendererMode>(config?.graph.mode || 'table');
   const chartRef = useRef<HTMLDivElement>(null);
   const themeMode = useHostThemeMode();
 
@@ -38,12 +43,12 @@ export const TableVisualization = ({ result, config, modeChangeDisabled = false,
     }
   };
 
-  const changeMode = (mode: VisualizationMode): void => {
+  const changeMode = (mode: ResultRendererMode): void => {
     if (modeChangeDisabled) {
       return;
     }
     setCurrentMode(mode);
-    onConfigChange?.({ graph: { ...(config?.graph as object), mode } });
+    onConfigChange?.({ graph: { ...config?.graph, mode } });
   };
 
   const renderVisualization = () => {

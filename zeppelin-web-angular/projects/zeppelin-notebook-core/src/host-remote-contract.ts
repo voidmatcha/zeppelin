@@ -12,12 +12,27 @@
 
 export type NotebookParagraphStatus = 'UNKNOWN' | 'READY' | 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'ABORT';
 
+export type NotebookParagraphResultType = 'TEXT' | 'HTML' | 'TABLE' | 'IMG' | 'ANGULAR' | string;
+
+export type NotebookVisualizationMode =
+  | 'table'
+  | 'multiBarChart'
+  | 'pieChart'
+  | 'lineChart'
+  | 'stackedAreaChart'
+  | 'scatterChart'
+  | string;
+
 export type NotebookParagraphResult = Readonly<{
-  type: string;
+  type: NotebookParagraphResultType;
   data: string;
 }>;
 
-export type NotebookParagraphResultConfigs = Readonly<Record<string, Readonly<{ graph: unknown }>>>;
+export type NotebookParagraphResultConfig = Readonly<{
+  graph: Readonly<{ mode?: NotebookVisualizationMode; [key: string]: unknown }>;
+}>;
+
+export type NotebookParagraphResultConfigs = Readonly<Record<string, NotebookParagraphResultConfig>>;
 
 export type NotebookFormValue = string | readonly string[];
 
