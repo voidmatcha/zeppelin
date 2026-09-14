@@ -28,16 +28,7 @@ interface TableVisualizationProps {
 type GraphColumn = Readonly<{ name?: unknown; index?: unknown }>;
 type GraphConfigRecord = Record<string, unknown>;
 
-const CHART_COLORS = [
-  '#1890ff',
-  '#2fc25b',
-  '#facc14',
-  '#223273',
-  '#8543e0',
-  '#13c2c2',
-  '#3436c7',
-  '#f04864'
-];
+const CHART_COLORS = ['#1890ff', '#2fc25b', '#facc14', '#223273', '#8543e0', '#13c2c2', '#3436c7', '#f04864'];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -202,14 +193,7 @@ export const createChartConfiguration = (
   const stacked = getNestedRecord(graph, 'setting', 'multiBarChart').stacked === true;
 
   return {
-    type:
-      mode === 'multiBarChart'
-        ? 'bar'
-        : mode === 'pieChart'
-          ? 'pie'
-          : mode === 'scatterChart'
-            ? 'scatter'
-            : 'line',
+    type: mode === 'multiBarChart' ? 'bar' : mode === 'pieChart' ? 'pie' : mode === 'scatterChart' ? 'scatter' : 'line',
     data: mode === 'scatterChart' ? { datasets } : { labels, datasets },
     options: {
       responsive: true,

@@ -19,12 +19,7 @@ describe('VisualizationControls', () => {
     const onModeChange = vi.fn();
     const onExport = vi.fn();
     render(
-      <VisualizationControls
-        currentMode="table"
-        modeChangeDisabled
-        onModeChange={onModeChange}
-        onExport={onExport}
-      />
+      <VisualizationControls currentMode="table" modeChangeDisabled onModeChange={onModeChange} onExport={onExport} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Bar Chart/ }));
