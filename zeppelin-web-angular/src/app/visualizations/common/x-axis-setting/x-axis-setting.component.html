@@ -14,7 +14,12 @@
   <nz-form-item>
     <nz-form-label>xAxis</nz-form-label>
     <nz-form-control>
-      <nz-radio-group [(ngModel)]="xLabelStatus" (ngModelChange)="onStatusChange()" [nzButtonStyle]="'solid'">
+      <nz-radio-group
+        data-testid="x-axis-label-mode"
+        [(ngModel)]="xLabelStatus"
+        (ngModelChange)="onStatusChange()"
+        [nzButtonStyle]="'solid'"
+      >
         <label nz-radio-button nzValue="default">Default</label>
         <label nz-radio-button nzValue="rotate">Rotate</label>
         <label nz-radio-button nzValue="hide">Hide</label>

@@ -11,7 +11,13 @@
 -->
 
 <nz-card id="fields-drop-group" nzTitle="Available Fields" nzSize="small" cdkDropListGroup>
-  <div cdkDropList id="columns-list" [cdkDropListData]="columns" [cdkDropListEnterPredicate]="noReturnPredicate">
+  <div
+    cdkDropList
+    id="columns-list"
+    data-testid="scatter-available-fields"
+    [cdkDropListData]="columns"
+    [cdkDropListEnterPredicate]="noReturnPredicate"
+  >
     @for (item of columns; track item) {
       <span class="drag-tag field-item" cdkDrag cdkDragBoundary="#fields-drop-group">
         {{ item.name }}
@@ -21,7 +27,13 @@
   <div class="field-setting-wrap" nz-row [nzGutter]="8">
     <div nz-col [nzSpan]="6">
       <nz-card nzTitle="XAxis" nzSize="small">
-        <div class="drag-wrap" cdkDropList (cdkDropListDropped)="drop($event)" [cdkDropListData]="field.xAxis">
+        <div
+          class="drag-wrap"
+          cdkDropList
+          data-testid="scatter-x-axis"
+          (cdkDropListDropped)="drop($event)"
+          [cdkDropListData]="field.xAxis"
+        >
           @for (item of field.xAxis; track item; let i = $index) {
             <span class="drag-tag field-item" [cdkDragDisabled]="true" cdkDrag cdkDragBoundary="#fields-drop-group">
               {{ item.name }}
@@ -33,7 +45,13 @@
     </div>
     <div nz-col [nzSpan]="6">
       <nz-card nzTitle="YAxis" nzSize="small">
-        <div class="drag-wrap" cdkDropList (cdkDropListDropped)="drop($event)" [cdkDropListData]="field.yAxis">
+        <div
+          class="drag-wrap"
+          cdkDropList
+          data-testid="scatter-y-axis"
+          (cdkDropListDropped)="drop($event)"
+          [cdkDropListData]="field.yAxis"
+        >
           @for (item of field.yAxis; track item; let i = $index) {
             <span class="drag-tag field-item" [cdkDragDisabled]="true" cdkDrag cdkDragBoundary="#fields-drop-group">
               {{ item.name }}
@@ -45,7 +63,13 @@
     </div>
     <div nz-col [nzSpan]="6">
       <nz-card nzTitle="Group" nzSize="small">
-        <div class="drag-wrap" cdkDropList (cdkDropListDropped)="drop($event)" [cdkDropListData]="field.group">
+        <div
+          class="drag-wrap"
+          cdkDropList
+          data-testid="scatter-group"
+          (cdkDropListDropped)="drop($event)"
+          [cdkDropListData]="field.group"
+        >
           @for (item of field.group; track item; let i = $index) {
             <span class="drag-tag field-item" [cdkDragDisabled]="true" cdkDrag cdkDragBoundary="#fields-drop-group">
               {{ item.name }}
@@ -57,7 +81,13 @@
     </div>
     <div nz-col [nzSpan]="6">
       <nz-card nzTitle="Size" nzSize="small">
-        <div class="drag-wrap" cdkDropList (cdkDropListDropped)="drop($event)" [cdkDropListData]="field.size">
+        <div
+          class="drag-wrap"
+          cdkDropList
+          data-testid="scatter-size"
+          (cdkDropListDropped)="drop($event)"
+          [cdkDropListData]="field.size"
+        >
           @for (item of field.size; track item; let i = $index) {
             <span class="drag-tag field-item" [cdkDragDisabled]="true" cdkDrag cdkDragBoundary="#fields-drop-group">
               {{ item.name }}

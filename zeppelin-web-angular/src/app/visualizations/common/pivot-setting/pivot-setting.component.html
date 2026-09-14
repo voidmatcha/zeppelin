@@ -14,6 +14,7 @@
   <div
     cdkDropList
     id="columns-list"
+    data-testid="pivot-available-fields"
     [cdkDropListData]="columns"
     [cdkDropListEnterPredicate]="noReturnPredicate"
     (cdkDropListDropped)="drop($event)"
@@ -27,7 +28,13 @@
   <div class="field-setting-wrap" nz-row [nzGutter]="8">
     <div nz-col [nzSpan]="8">
       <nz-card nzTitle="Keys" nzSize="small">
-        <div class="drag-wrap" cdkDropList [cdkDropListData]="config.keys" (cdkDropListDropped)="drop($event)">
+        <div
+          class="drag-wrap"
+          cdkDropList
+          data-testid="pivot-keys"
+          [cdkDropListData]="config.keys"
+          (cdkDropListDropped)="drop($event)"
+        >
           @for (item of config.keys; track item; let i = $index) {
             <span class="drag-tag field-item" cdkDrag cdkDragBoundary="#fields-drop-group">
               {{ item.name }}
@@ -39,7 +46,13 @@
     </div>
     <div nz-col [nzSpan]="8">
       <nz-card nzTitle="Groups" nzSize="small">
-        <div class="drag-wrap" cdkDropList [cdkDropListData]="config.groups" (cdkDropListDropped)="drop($event)">
+        <div
+          class="drag-wrap"
+          cdkDropList
+          data-testid="pivot-groups"
+          [cdkDropListData]="config.groups"
+          (cdkDropListDropped)="drop($event)"
+        >
           @for (item of config.groups; track item; let i = $index) {
             <span class="drag-tag field-item" cdkDrag cdkDragBoundary="#fields-drop-group">
               {{ item.name }}
@@ -55,6 +68,7 @@
           class="drag-wrap"
           cdkDropList
           id="value-list"
+          data-testid="pivot-values"
           [cdkDropListData]="config.values"
           (cdkDropListDropped)="drop($event)"
         >

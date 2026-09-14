@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-import { expect, Locator, test } from '@playwright/test';
+import { expect, Locator, Page, test } from '@playwright/test';
 import { NotebookParagraphPage } from 'e2e/models/notebook-paragraph-page';
 import { NotebookVisualizationPage } from 'e2e/models/notebook-visualization-page';
 import {
@@ -30,11 +30,47 @@ printf '%%table city\\tsales\\tcost\\nSeoul\\t30\\t12\\nBusan\\t20\\t8\\nIncheon
 const TABLE_HEADERS = ['city', 'sales', 'cost'];
 const TABLE_CELLS = ['Seoul', '30', '12', 'Busan', '20', '8', 'Incheon', '10', '5'];
 
+interface SavedGraphConfig {
+  keys?: Array<{ name?: string }>;
+  values?: Array<{ name?: string }>;
+  setting?: {
+    multiBarChart?: { rotate?: { degree?: string }; xLabelStatus?: string };
+    scatterChart?: { xAxis?: { name?: string }; yAxis?: { name?: string } };
+  };
+}
+
+const waitForSavedGraph = async (
+  page: Page,
+  noteId: string,
+  paragraphId: string,
+  matches: (graph: SavedGraphConfig) => boolean
+): Promise<void> => {
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+        if (!response.ok()) {
+          return false;
+        }
+        const json = (await response.json()) as {
+          body?: { paragraphs?: Array<{ id?: string; config?: { results?: Array<{ graph?: SavedGraphConfig }> } }> };
+        };
+        const paragraph = json.body?.paragraphs?.find(item => item.id === paragraphId);
+        const graph = paragraph?.config?.results?.[0]?.graph;
+        return graph ? matches(graph) : false;
+      },
+      { message: 'visualization settings should be persisted by the server' }
+    )
+    .toBe(true);
+};
+
 test.describe('Notebook Visualization Rendering', () => {
   addPageAnnotationBeforeEach(PAGES.VISUALIZATIONS.TABLE);
 
   let paragraphPage: NotebookParagraphPage;
   let visualizationPage: NotebookVisualizationPage;
+  let noteId: string;
+  let paragraphId: string;
 
   test.beforeEach(async ({ page }) => {
     await test.step('Given a notebook paragraph with deterministic table output', async () => {
@@ -42,7 +78,9 @@ test.describe('Notebook Visualization Rendering', () => {
       await waitForZeppelinReady(page);
       await performLoginIfRequired(page);
 
-      const { noteId, paragraphId } = await createTestNotebook(page);
+      const notebook = await createTestNotebook(page);
+      noteId = notebook.noteId;
+      paragraphId = notebook.paragraphId;
       await setParagraphText(page, noteId, paragraphId, TABLE_PARAGRAPH);
 
       paragraphPage = new NotebookParagraphPage(page);
@@ -126,6 +164,71 @@ test.describe('Notebook Visualization Rendering', () => {
     await test.step('Then the original table data remains intact', async () => {
       await expect(visualizationPage.dataTable).toBeVisible();
       await expect(visualizationPage.tableCells).toHaveText(TABLE_CELLS);
+    });
+  });
+
+  test('updates pivot and x-axis settings', async ({ page }, testInfo) => {
+    addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.PIVOT_SETTING, testInfo);
+    addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.X_AXIS_SETTING, testInfo);
+
+    await test.step('Given the bar chart settings are open', async () => {
+      await visualizationPage.barChartMode.click();
+      await visualizationPage.settingTrigger.click();
+      await expect(visualizationPage.pivotSetting).toBeVisible();
+      await expect(visualizationPage.xAxisSetting).toBeVisible();
+    });
+
+    await test.step('When assigning fields to the pivot configuration', async () => {
+      await visualizationPage.availablePivotField('city').dragTo(visualizationPage.pivotKeys);
+      await visualizationPage.availablePivotField('sales').dragTo(visualizationPage.pivotValues);
+    });
+
+    await test.step('Then the selected pivot fields are displayed', async () => {
+      await expect(visualizationPage.pivotKeys.getByText('city', { exact: true })).toBeVisible();
+      await expect(visualizationPage.pivotValues.getByText('sales', { exact: true })).toBeVisible();
+    });
+
+    await test.step('When rotating the x-axis labels', async () => {
+      await visualizationPage.xAxisRotate.click();
+      await visualizationPage.xAxisDegree.fill('30');
+      await visualizationPage.xAxisDegree.press('Enter');
+    });
+
+    await test.step('Then the x-axis setting retains the entered degree', async () => {
+      await expect(visualizationPage.xAxisRotate.locator('input[type="radio"]')).toBeChecked();
+      await expect(visualizationPage.xAxisDegree).toHaveValue('30');
+      await waitForSavedGraph(page, noteId, paragraphId, graph => {
+        return (
+          graph.keys?.[0]?.name === 'city' &&
+          graph.values?.[0]?.name === 'sales' &&
+          graph.setting?.multiBarChart?.xLabelStatus === 'rotate' &&
+          graph.setting.multiBarChart.rotate?.degree === '30'
+        );
+      });
+    });
+  });
+
+  test('updates scatter axis settings', async ({ page }, testInfo) => {
+    addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.SCATTER_SETTING, testInfo);
+
+    await test.step('Given the scatter chart settings are open', async () => {
+      await visualizationPage.scatterChartMode.click();
+      await visualizationPage.settingTrigger.click();
+      await expect(visualizationPage.scatterSetting).toBeVisible();
+    });
+
+    await test.step('When assigning cost to the x-axis', async () => {
+      await visualizationPage.availableScatterField('cost').dragTo(visualizationPage.scatterXAxis);
+    });
+
+    await test.step('Then the scatter axes show the selected fields', async () => {
+      await expect(visualizationPage.scatterXAxis.getByText('cost', { exact: true })).toBeVisible();
+      await expect(visualizationPage.scatterYAxis.getByText('sales', { exact: true })).toBeVisible();
+      await waitForSavedGraph(page, noteId, paragraphId, graph => {
+        return (
+          graph.setting?.scatterChart?.xAxis?.name === 'cost' && graph.setting.scatterChart.yAxis?.name === 'sales'
+        );
+      });
     });
   });
 });

@@ -30,6 +30,18 @@ export class NotebookVisualizationPage extends BasePage {
   readonly lineChartCanvas: Locator;
   readonly areaChartCanvas: Locator;
   readonly scatterChartCanvas: Locator;
+  readonly settingTrigger: Locator;
+  readonly pivotSetting: Locator;
+  readonly pivotAvailableFields: Locator;
+  readonly pivotKeys: Locator;
+  readonly pivotValues: Locator;
+  readonly scatterSetting: Locator;
+  readonly scatterAvailableFields: Locator;
+  readonly scatterXAxis: Locator;
+  readonly scatterYAxis: Locator;
+  readonly xAxisSetting: Locator;
+  readonly xAxisRotate: Locator;
+  readonly xAxisDegree: Locator;
   private readonly resultDisplay: Locator;
 
   constructor(page: Page) {
@@ -49,6 +61,26 @@ export class NotebookVisualizationPage extends BasePage {
     this.lineChartCanvas = this.resultDisplay.locator('zeppelin-line-chart-visualization canvas');
     this.areaChartCanvas = this.resultDisplay.locator('zeppelin-area-chart-visualization canvas');
     this.scatterChartCanvas = this.resultDisplay.locator('zeppelin-scatter-chart-visualization canvas');
+    this.settingTrigger = this.resultDisplay.getByText('Setting', { exact: true });
+    this.pivotSetting = this.resultDisplay.locator('zeppelin-visualization-pivot-setting');
+    this.pivotAvailableFields = this.pivotSetting.getByTestId('pivot-available-fields');
+    this.pivotKeys = this.pivotSetting.getByTestId('pivot-keys');
+    this.pivotValues = this.pivotSetting.getByTestId('pivot-values');
+    this.scatterSetting = this.resultDisplay.locator('zeppelin-visualization-scatter-setting');
+    this.scatterAvailableFields = this.scatterSetting.getByTestId('scatter-available-fields');
+    this.scatterXAxis = this.scatterSetting.getByTestId('scatter-x-axis');
+    this.scatterYAxis = this.scatterSetting.getByTestId('scatter-y-axis');
+    this.xAxisSetting = this.resultDisplay.locator('zeppelin-visualization-x-axis-setting');
+    this.xAxisRotate = this.xAxisSetting.getByTestId('x-axis-label-mode').getByText('Rotate', { exact: true });
+    this.xAxisDegree = this.xAxisSetting.getByPlaceholder('degree');
+  }
+
+  availablePivotField(name: string): Locator {
+    return this.pivotAvailableFields.getByText(name, { exact: true });
+  }
+
+  availableScatterField(name: string): Locator {
+    return this.scatterAvailableFields.getByText(name, { exact: true });
   }
 
   async renderedPixelCount(canvas: Locator): Promise<number> {
