@@ -111,8 +111,6 @@ export interface MessageReceiveDataTypeMap {
   [OP.IMPORT_NOTE]: ImportNoteReceived;
   [OP.SAVE_NOTE_FORMS]: SaveNoteFormsSend;
   [OP.PARAGRAPH]: UpdateParagraph;
-  [OP.PARAGRAPH_APPEND_OUTPUT]: ParagraphAppendOutput;
-  [OP.PARAGRAPH_UPDATE_OUTPUT]: ParagraphUpdateOutput;
   [OP.PATCH_PARAGRAPH]: PatchParagraphSend;
   [OP.PARAGRAPH_REMOVED]: ParagraphRemoved;
   [OP.EDITOR_SETTING]: EditorSettingReceived;

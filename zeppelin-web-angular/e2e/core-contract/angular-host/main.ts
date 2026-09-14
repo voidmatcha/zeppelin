@@ -15,21 +15,54 @@ import { Component, Injectable, NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule, RouterStateSnapshot } from '@angular/router';
+import type { IconDefinition } from '@ant-design/icons-angular';
+import {
+  ClockCircleOutline,
+  CloseOutline,
+  CopyOutline,
+  DeleteOutline,
+  DownOutline,
+  DownloadOutline,
+  EyeOutline,
+  FireOutline,
+  FolderOutline,
+  FullscreenExitOutline,
+  InfoCircleOutline,
+  LeftOutline,
+  LockFill,
+  LockOutline,
+  PauseCircleOutline,
+  PlayCircleOutline,
+  ReloadOutline,
+  ReadOutline,
+  RightOutline,
+  RollbackOutline,
+  SearchOutline,
+  SettingFill,
+  SettingOutline,
+  SwapOutline,
+  TeamOutline,
+  ToTopOutline,
+  UnorderedListOutline,
+  UserOutline
+} from '@ant-design/icons-angular/icons';
 import { TRASH_FOLDER_ID_TOKEN } from '@zeppelin/interfaces';
 import type { NotebookCorePort, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import { OP } from '@zeppelin/sdk';
 import { NotebookComponent } from '@zeppelin/pages/workspace/notebook/notebook.component';
 import {
   NOTEBOOK_CHILD_ROUTE_PATHS,
   NOTEBOOK_ROUTE_PATH
 } from '@zeppelin/pages/workspace/notebook/notebook-route-boundary';
 import { WorkspaceGuard } from '@zeppelin/pages/workspace/workspace.guard';
-import { MessageService, ReactFeatureService } from '@zeppelin/services';
+import { MessageService, ReactFeatureService, SecurityService } from '@zeppelin/services';
 import { HeliumService } from '@zeppelin/services/helium.service';
 import { ThemeService } from '@zeppelin/services/theme.service';
 import { TicketService } from '@zeppelin/services/ticket.service';
 import { ShareModule } from '@zeppelin/share';
 import { NzMessageService } from 'ng-zorro-antd/message';
-import { BehaviorSubject, NEVER, filter } from 'rxjs';
+import { NZ_ICONS } from 'ng-zorro-antd/icon';
+import { BehaviorSubject, NEVER, Subject, filter, of } from 'rxjs';
 
 declare global {
   interface Window {
@@ -62,6 +95,37 @@ const createSnapshot = (noteId: string, revisionId: string | null): NotebookCore
   paragraphs: [],
   error: null
 });
+
+const proofIcons: IconDefinition[] = [
+  ClockCircleOutline,
+  CloseOutline,
+  CopyOutline,
+  DeleteOutline,
+  DownOutline,
+  DownloadOutline,
+  EyeOutline,
+  FireOutline,
+  FolderOutline,
+  FullscreenExitOutline,
+  InfoCircleOutline,
+  LeftOutline,
+  LockFill,
+  LockOutline,
+  PauseCircleOutline,
+  PlayCircleOutline,
+  ReloadOutline,
+  ReadOutline,
+  RightOutline,
+  RollbackOutline,
+  SearchOutline,
+  SettingFill,
+  SettingOutline,
+  SwapOutline,
+  TeamOutline,
+  ToTopOutline,
+  UnorderedListOutline,
+  UserOutline
+];
 
 @Component({
   selector: 'zeppelin-notebook-core-port-proof-app',
@@ -219,7 +283,20 @@ export class NotebookRouteBoundaryPortHost {
 class ProofMessageService {
   readonly connectedStatus = true;
   readonly connectedStatus$ = new BehaviorSubject(true);
-  receive() {
+  private readonly received = new Map<OP, Subject<unknown>>();
+
+  receive(op: OP) {
+    let subject = this.received.get(op);
+    if (!subject) {
+      subject = new Subject();
+      this.received.set(op, subject);
+    }
+    return subject;
+  }
+  receiveMessage() {
+    return NEVER;
+  }
+  sent() {
     return NEVER;
   }
   bootstrap() {}
@@ -227,12 +304,38 @@ class ProofMessageService {
   connect() {}
   getNote(noteId: string) {
     window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'getNote', noteId });
+    queueMicrotask(() => this.publishNote(OP.NOTE, noteId, null));
   }
   noteRevision(noteId: string, revisionId: string) {
     window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'noteRevision', noteId, revisionId });
+    queueMicrotask(() => this.publishNote(OP.NOTE_REVISION, noteId, revisionId));
   }
   listRevisionHistory(noteId: string) {
     window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'listRevisionHistory', noteId });
+  }
+  getInterpreterBindings() {}
+
+  private publishNote(op: OP.NOTE | OP.NOTE_REVISION, noteId: string, revisionId: string | null): void {
+    this.received.get(op)?.next({
+      note: {
+        paragraphs: [],
+        name: `Proof ${noteId}`,
+        id: noteId,
+        path: `/${noteId}`,
+        defaultInterpreterGroup: '',
+        noteParams: {},
+        noteForms: {},
+        angularObjects: {},
+        config: {
+          releaseresource: false,
+          isZeppelinNotebookCronEnable: false,
+          looknfeel: 'default',
+          personalizedMode: 'false'
+        },
+        info: {}
+      },
+      ...(revisionId === null ? {} : { revisionId })
+    });
   }
 }
 
@@ -266,10 +369,26 @@ class ProofWorkspaceGuard {
   providers: [
     { provide: WorkspaceGuard, useClass: ProofWorkspaceGuard },
     { provide: MessageService, useClass: ProofMessageService },
+    {
+      provide: SecurityService,
+      useValue: {
+        getPermissions: () => of({ owners: [], readers: [], runners: [], writers: [] })
+      }
+    },
     { provide: HeliumService, useValue: { initPackages: () => undefined } },
+    { provide: NZ_ICONS, useValue: proofIcons },
     { provide: NzMessageService, useValue: { loading: () => ({ messageId: 'proof' }), remove: () => undefined } },
-    { provide: ReactFeatureService, useValue: { isEnabled: () => false } },
-    { provide: ThemeService, useValue: { updateMonacoTheme: () => undefined } },
+    ReactFeatureService,
+    {
+      provide: ThemeService,
+      useValue: {
+        effectiveTheme$: of('light'),
+        getCurrentTheme: () => 'light',
+        theme$: of('light'),
+        toggleTheme: () => undefined,
+        updateMonacoTheme: () => undefined
+      }
+    },
     {
       provide: TicketService,
       useValue: {

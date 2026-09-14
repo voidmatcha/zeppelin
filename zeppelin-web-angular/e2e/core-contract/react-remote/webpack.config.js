@@ -17,6 +17,7 @@ const reactRemoteRoot = path.resolve(webRoot, 'projects/zeppelin-react');
 const ModuleFederationPlugin = require(
   path.join(reactRemoteRoot, 'node_modules/webpack/lib/container/ModuleFederationPlugin')
 );
+const MonacoWebpackPlugin = require(path.join(webRoot, 'node_modules/monaco-editor-webpack-plugin'));
 
 class RejectNotebookCoreRuntimePlugin {
   apply(compiler) {
@@ -50,7 +51,9 @@ module.exports = {
     extensions: ['.tsx', '.ts', '.js', '.jsx'],
     modules: [path.resolve(reactRemoteRoot, 'node_modules'), path.resolve(webRoot, 'node_modules'), 'node_modules'],
     alias: {
-      '@zeppelin/notebook-core': path.resolve(webRoot, 'projects/zeppelin-notebook-core/src/public-api.ts')
+      '@': path.resolve(reactRemoteRoot, 'src'),
+      '@zeppelin/notebook-core$': path.resolve(webRoot, 'projects/zeppelin-notebook-core/src/public-api.ts'),
+      '@zeppelin/sdk': path.resolve(webRoot, 'projects/zeppelin-sdk/src')
     }
   },
   resolveLoader: {
@@ -68,6 +71,10 @@ module.exports = {
           }
         },
         exclude: /node_modules/
+      },
+      {
+        test: /\.css$/,
+        use: ['style-loader', 'css-loader']
       }
     ]
   },
@@ -80,8 +87,10 @@ module.exports = {
   },
   plugins: [
     new RejectNotebookCoreRuntimePlugin(),
+    new MonacoWebpackPlugin({ languages: ['markdown', 'python', 'scala', 'shell', 'sql'] }),
     new ModuleFederationPlugin({
       exposes: {
+        './NotebookCoreAdapter': '../../../projects/zeppelin-react/src/components/notebook/NotebookCoreAdapter',
         './NotebookCorePortProbe': './NotebookCorePortProbe',
         './NotebookRouteBoundaryProbe': './NotebookCorePortProbe'
       },

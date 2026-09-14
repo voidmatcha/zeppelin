@@ -72,6 +72,14 @@ export async function startNotebookCoreProofHarness() {
 
   const server = createServer((request, response) => {
     const requestPath = request.url?.split('?')[0] ?? '/';
+    if (requestPath === '/api/notebook/capabilities') {
+      response.writeHead(200, {
+        'cache-control': 'no-store',
+        'content-type': 'application/json; charset=utf-8'
+      });
+      response.end(JSON.stringify({ isRevisionSupported: true }));
+      return;
+    }
     const staticFilePath = resolveStaticFile(requestPath);
 
     if (staticFilePath) {
