@@ -382,11 +382,12 @@ export const navigateToNotebookWithFallback = async (
   noteId: string,
   notebookName?: string
 ): Promise<void> => {
+  const angularNotebookUrl = `/#/notebook/${noteId}?reactNotebook=false`;
   let navigationSuccessful = false;
 
   try {
     // Strategy 1: Direct navigation
-    await page.goto(`/#/notebook/${noteId}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(angularNotebookUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('zeppelin-notebook-paragraph').first().waitFor({ state: 'visible', timeout: 30000 });
     navigationSuccessful = true;
   } catch {
@@ -416,6 +417,7 @@ export const navigateToNotebookWithFallback = async (
       await notebookLink.click({ timeout: 10000 });
 
       await page.waitForURL(NOTEBOOK_PATTERNS.URL_REGEX, { timeout: 20000 });
+      await page.goto(angularNotebookUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       navigationSuccessful = true;
     }
   }

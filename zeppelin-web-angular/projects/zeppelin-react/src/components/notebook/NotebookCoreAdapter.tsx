@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 
 import { ReactErrorBoundary } from '../paragraph/ReactErrorBoundary';
+import { ParagraphFooter } from '../paragraph/ParagraphFooter';
 import { SingleResultRenderer } from '../../templates/SingleResultRenderer';
 import { useHostThemeMode, ZeppelinThemeProvider } from '../../theme/ZeppelinThemeProvider';
 import { NotebookMonacoEditor } from './NotebookMonacoEditor';
@@ -27,6 +28,102 @@ import { ParagraphDynamicForms } from './ParagraphDynamicForms';
 
 const EMPTY_INTERPRETER_BINDINGS = Object.freeze([]);
 const HEAD_REVISION = Object.freeze([{ id: 'Head', message: 'Head' }]);
+const SCHEDULE_PRESETS = Object.freeze([
+  { label: 'None', cron: '' },
+  { label: '1m', cron: '0 0/1 * * * ?' },
+  { label: '5m', cron: '0 0/5 * * * ?' },
+  { label: '1h', cron: '0 0 0/1 * * ?' },
+  { label: '3h', cron: '0 0 0/3 * * ?' },
+  { label: '6h', cron: '0 0 0/6 * * ?' },
+  { label: '12h', cron: '0 0 0/12 * * ?' },
+  { label: '1d', cron: '0 0 0 * * ?' }
+]);
+
+type RevisionDiffLine = Readonly<{ kind: 'equal' | 'insert' | 'delete'; text: string }>;
+type RevisionParagraphDiff = Readonly<{
+  id: string;
+  title?: string;
+  status: 'added' | 'deleted' | 'changed' | 'identical';
+  lines: readonly RevisionDiffLine[];
+}>;
+
+const lineDiff = (firstText: string, secondText: string): readonly RevisionDiffLine[] => {
+  const first = firstText.split('\n');
+  const second = secondText.split('\n');
+  if (first.length * second.length > 250_000) {
+    return [
+      ...first.map(text => ({ kind: 'delete' as const, text })),
+      ...second.map(text => ({ kind: 'insert' as const, text }))
+    ];
+  }
+  const lengths = Array.from({ length: first.length + 1 }, () => new Uint32Array(second.length + 1));
+  for (let firstIndex = first.length - 1; firstIndex >= 0; firstIndex -= 1) {
+    for (let secondIndex = second.length - 1; secondIndex >= 0; secondIndex -= 1) {
+      lengths[firstIndex][secondIndex] =
+        first[firstIndex] === second[secondIndex]
+          ? lengths[firstIndex + 1][secondIndex + 1] + 1
+          : Math.max(lengths[firstIndex + 1][secondIndex], lengths[firstIndex][secondIndex + 1]);
+    }
+  }
+  const result: RevisionDiffLine[] = [];
+  let firstIndex = 0;
+  let secondIndex = 0;
+  while (firstIndex < first.length || secondIndex < second.length) {
+    if (firstIndex < first.length && secondIndex < second.length && first[firstIndex] === second[secondIndex]) {
+      result.push({ kind: 'equal', text: first[firstIndex] });
+      firstIndex += 1;
+      secondIndex += 1;
+    } else if (
+      secondIndex < second.length &&
+      (firstIndex === first.length || lengths[firstIndex][secondIndex + 1] >= lengths[firstIndex + 1][secondIndex])
+    ) {
+      result.push({ kind: 'insert', text: second[secondIndex] });
+      secondIndex += 1;
+    } else {
+      result.push({ kind: 'delete', text: first[firstIndex] });
+      firstIndex += 1;
+    }
+  }
+  return result;
+};
+
+const revisionParagraphDiffs = (
+  comparison: NonNullable<Awaited<ReturnType<NonNullable<NotebookCoreRemoteProps['onRevisionCompare']>>>>
+): readonly RevisionParagraphDiff[] => {
+  const firstById = new Map(comparison.firstParagraphs.map(paragraph => [paragraph.id, paragraph]));
+  const secondById = new Map(comparison.secondParagraphs.map(paragraph => [paragraph.id, paragraph]));
+  const paragraphIds = [
+    ...comparison.firstParagraphs.map(paragraph => paragraph.id),
+    ...comparison.secondParagraphs.filter(paragraph => !firstById.has(paragraph.id)).map(paragraph => paragraph.id)
+  ];
+  return paragraphIds.map(id => {
+    const first = firstById.get(id);
+    const second = secondById.get(id);
+    if (!first) {
+      return {
+        id,
+        title: second?.title,
+        status: 'added',
+        lines: (second?.text ?? '').split('\n').map(text => ({ kind: 'insert' as const, text }))
+      };
+    }
+    if (!second) {
+      return {
+        id,
+        title: first.title,
+        status: 'deleted',
+        lines: first.text.split('\n').map(text => ({ kind: 'delete' as const, text }))
+      };
+    }
+    const identical = first.text === second.text && first.title === second.title;
+    return {
+      id,
+      title: second.title ?? first.title,
+      status: identical ? 'identical' : 'changed',
+      lines: lineDiff(first.text, second.text)
+    };
+  });
+};
 
 export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
   Readonly<{
@@ -82,6 +179,8 @@ export const NotebookCoreAdapter = ({
   onPermissionsChange,
   onExtensionChange,
   onNoteFormsChange,
+  onNoteFormTitleChange,
+  onNoteFormRemove,
   readOnly = false,
   canEdit: hostCanEdit = true,
   canRun: hostCanRun = true
@@ -97,12 +196,15 @@ export const NotebookCoreAdapter = ({
   const hostTheme = useHostThemeMode();
   const [commandAccepted, setCommandAccepted] = useState<boolean | null>(null);
   const [titleDraft, setTitleDraft] = useState(snapshot.title ?? '');
+  const [noteFormTitleDraft, setNoteFormTitleDraft] = useState(snapshot.noteFormTitle ?? '');
   const [searchTerm, setSearchTerm] = useState('');
   const [checkpointMessage, setCheckpointMessage] = useState('');
   const [cronDraft, setCronDraft] = useState(coreScheduler?.cron ?? '');
   const [releaseResourceDraft, setReleaseResourceDraft] = useState(coreScheduler?.releaseResource ?? false);
   const [codeHidden, setCodeHidden] = useState(false);
   const [outputHidden, setOutputHidden] = useState(false);
+  const [actionBarRevealed, setActionBarRevealed] = useState(false);
+  const [revealedParagraphId, setRevealedParagraphId] = useState<string | null>(null);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [interpreterBindingsOpen, setInterpreterBindingsOpen] = useState(false);
@@ -134,6 +236,9 @@ export const NotebookCoreAdapter = ({
   useEffect(() => {
     setTitleDraft(snapshot.title ?? '');
   }, [snapshot.noteId, snapshot.title]);
+  useEffect(() => {
+    setNoteFormTitleDraft(snapshot.noteFormTitle ?? '');
+  }, [snapshot.noteFormTitle, snapshot.noteId]);
   useEffect(() => {
     setParagraphDrafts(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.text])));
     setParagraphParams(Object.fromEntries(snapshot.paragraphs.map(paragraph => [paragraph.id, paragraph.params])));
@@ -280,7 +385,21 @@ export const NotebookCoreAdapter = ({
       data-paragraph-statuses={JSON.stringify(snapshot.paragraphs.map(paragraph => paragraph.status))}
       data-command-accepted={commandAccepted === null ? 'not-dispatched' : String(commandAccepted)}
     >
-      <header>
+      <header
+        aria-label="Notebook action bar"
+        onMouseEnter={() => setActionBarRevealed(true)}
+        onMouseLeave={event => {
+          if (!event.currentTarget.contains(document.activeElement)) {
+            setActionBarRevealed(false);
+          }
+        }}
+        onFocus={() => setActionBarRevealed(true)}
+        onBlur={event => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setActionBarRevealed(false);
+          }
+        }}
+      >
         <input
           aria-label="Notebook title"
           disabled={!canEdit}
@@ -288,189 +407,231 @@ export const NotebookCoreAdapter = ({
           onChange={event => setTitleDraft(event.target.value)}
           onBlur={() => onNotebookTitleChange?.(titleDraft)}
         />
-        <span>{snapshot.paragraphs.length} paragraphs</span>
-        <input aria-label="Search notebook" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} />
-        <button
-          type="button"
-          disabled={
-            !hostCanRun ||
-            readOnly ||
-            snapshot.revisionId !== null ||
-            snapshot.phase !== 'ready' ||
-            hasRunningParagraph ||
-            hasParagraphConflict
-          }
-          onClick={() => dispatchNotebook('run-all-paragraphs')}
-        >
-          Run all
-        </button>
-        <button
-          type="button"
-          disabled={!hostCanRun || readOnly || snapshot.revisionId !== null || !hasRunningParagraph}
-          onClick={() => dispatchNotebook('cancel-all-paragraphs')}
-        >
-          Cancel all
-        </button>
-        <button type="button" disabled={!canEdit} onClick={() => dispatchNotebook('clear-all-paragraph-output')}>
-          Clear all output
-        </button>
-        <button type="button" onClick={() => setCodeHidden(hidden => !hidden)}>
-          {codeHidden ? 'Show code' : 'Hide code'}
-        </button>
-        <button type="button" onClick={() => setOutputHidden(hidden => !hidden)}>
-          {outputHidden ? 'Show output' : 'Hide output'}
-        </button>
-        <button type="button" onClick={onReloadNotebook}>
-          Reload notebook
-        </button>
-        <button type="button" disabled={!canEdit} onClick={onCloneNotebook}>
-          Clone notebook
-        </button>
-        <button type="button" onClick={onExportNotebook}>
-          Export notebook
-        </button>
-        {canTogglePersonalizedMode ? (
-          <button type="button" onClick={onTogglePersonalizedMode}>
-            {corePersonalizedMode ? 'Switch to collaboration mode' : 'Switch to personal mode'}
-          </button>
-        ) : null}
-        {canDeleteNotebook ? (
-          <button type="button" disabled={hasRunningParagraph} onClick={onDeleteNotebook}>
-            {isTrashedNotebook ? 'Delete notebook permanently' : 'Move notebook to trash'}
-          </button>
-        ) : null}
-        <button type="button" disabled={!canEdit} onClick={onShowShortcut}>
-          Keyboard shortcuts
-        </button>
-        <label>
-          Look and feel
-          <select
-            aria-label="Notebook look and feel"
-            disabled={!canEdit}
-            value={coreLookAndFeel}
-            onChange={event => onLookAndFeelChange?.(event.target.value as typeof coreLookAndFeel)}
+        <div aria-label="Notebook action controls" hidden={coreLookAndFeel !== 'default' && !actionBarRevealed}>
+          <span>{snapshot.paragraphs.length} paragraphs</span>
+          <input
+            aria-label="Search notebook"
+            value={searchTerm}
+            onChange={event => setSearchTerm(event.target.value)}
+          />
+          <button
+            type="button"
+            disabled={
+              !hostCanRun ||
+              readOnly ||
+              snapshot.revisionId !== null ||
+              snapshot.phase !== 'ready' ||
+              hasRunningParagraph ||
+              hasParagraphConflict
+            }
+            onClick={() => dispatchNotebook('run-all-paragraphs')}
           >
-            <option value="default">default</option>
-            <option value="simple">simple</option>
-            <option value="report">report</option>
-          </select>
-        </label>
-        {revisionSupported ? (
-          <>
-            <label>
-              Revision
-              <select
-                aria-label="Notebook revision"
-                value={coreCurrentRevision}
-                onChange={event => onRevisionSelect?.(event.target.value)}
-              >
-                {coreRevisions.map(revision => (
-                  <option key={revision.id ?? revision.message} value={revision.id ?? ''}>
-                    {revision.message}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!readOnly && !coreRevisionView ? (
-              <label>
-                Checkpoint message
-                <input
-                  aria-label="Checkpoint message"
-                  value={checkpointMessage}
-                  onChange={event => setCheckpointMessage(event.target.value)}
-                />
-                <button
-                  type="button"
-                  disabled={!canEdit || !checkpointMessage.trim()}
-                  onClick={() => onCheckpointNotebook?.(checkpointMessage.trim())}
-                >
-                  Checkpoint
-                </button>
-              </label>
-            ) : null}
-            {!readOnly && coreRevisionView ? (
-              <button type="button" onClick={onSetNotebookRevision}>
-                Set revision as head
-              </button>
-            ) : null}
-          </>
-        ) : null}
-        {coreScheduler || canSchedule ? (
-          <label>
-            Scheduler
-            <input
-              aria-label="Cron expression"
-              disabled={!canEdit}
-              placeholder="Cron expression"
-              value={cronDraft}
-              onChange={event => setCronDraft(event.target.value)}
-            />
-            <input
-              aria-label="Release interpreter after schedule"
-              checked={releaseResourceDraft}
-              disabled={!canEdit}
-              type="checkbox"
-              onChange={event => setReleaseResourceDraft(event.target.checked)}
-            />
-            Release interpreter after schedule
-            <button
-              type="button"
-              disabled={!canEdit}
-              onClick={() =>
-                onScheduleChange?.({
-                  cron: cronDraft.trim() || undefined,
-                  releaseResource: releaseResourceDraft
-                })
-              }
-            >
-              Save schedule
+            Run all
+          </button>
+          <button
+            type="button"
+            disabled={!hostCanRun || readOnly || snapshot.revisionId !== null || !hasRunningParagraph}
+            onClick={() => dispatchNotebook('cancel-all-paragraphs')}
+          >
+            Cancel all
+          </button>
+          <button type="button" disabled={!canEdit} onClick={() => dispatchNotebook('clear-all-paragraph-output')}>
+            Clear all output
+          </button>
+          <button type="button" onClick={() => setCodeHidden(hidden => !hidden)}>
+            {codeHidden ? 'Show code' : 'Hide code'}
+          </button>
+          <button type="button" onClick={() => setOutputHidden(hidden => !hidden)}>
+            {outputHidden ? 'Show output' : 'Hide output'}
+          </button>
+          <button type="button" onClick={onReloadNotebook}>
+            Reload notebook
+          </button>
+          <button type="button" disabled={!canEdit} onClick={onCloneNotebook}>
+            Clone notebook
+          </button>
+          <button type="button" onClick={onExportNotebook}>
+            Export notebook
+          </button>
+          {canTogglePersonalizedMode ? (
+            <button type="button" onClick={onTogglePersonalizedMode}>
+              {corePersonalizedMode ? 'Switch to collaboration mode' : 'Switch to personal mode'}
             </button>
+          ) : null}
+          {canDeleteNotebook ? (
+            <button type="button" disabled={hasRunningParagraph} onClick={onDeleteNotebook}>
+              {isTrashedNotebook ? 'Delete notebook permanently' : 'Move notebook to trash'}
+            </button>
+          ) : null}
+          <button type="button" disabled={!canEdit} onClick={onShowShortcut}>
+            Keyboard shortcuts
+          </button>
+          <label>
+            Look and feel
+            <select
+              aria-label="Notebook look and feel"
+              disabled={!canEdit}
+              value={coreLookAndFeel}
+              onChange={event => onLookAndFeelChange?.(event.target.value as typeof coreLookAndFeel)}
+            >
+              <option value="default">default</option>
+              <option value="simple">simple</option>
+              <option value="report">report</option>
+            </select>
           </label>
-        ) : null}
-        {snapshot.collaborativeUsers !== undefined || collaborativeUsers !== undefined ? (
-          <span aria-label="Collaborators">
-            Collaborators: {(snapshot.collaborativeUsers ?? collaborativeUsers ?? []).length}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => {
-            setPermissionsOpen(false);
-            setRevisionsOpen(false);
-            setInterpreterBindingsOpen(open => !open);
-            onExtensionChange?.('interpreter');
-          }}
-        >
-          Interpreter settings
-        </button>
-        <button
-          type="button"
-          aria-expanded={permissionsOpen}
-          disabled={!snapshot.permissions || !canManagePermissions}
-          onClick={() => {
-            setPermissionsOpen(open => !open);
-            setInterpreterBindingsOpen(false);
-            setPermissionSaveError(null);
-            onExtensionChange?.('permissions');
-          }}
-        >
-          Permissions
-        </button>
-        {revisionSupported ? (
+          {revisionSupported ? (
+            <>
+              <label>
+                Revision
+                <select
+                  aria-label="Notebook revision"
+                  value={coreCurrentRevision}
+                  onChange={event => onRevisionSelect?.(event.target.value)}
+                >
+                  {coreRevisions.map(revision => (
+                    <option key={revision.id ?? revision.message} value={revision.id ?? ''}>
+                      {revision.message}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!readOnly && !coreRevisionView ? (
+                <label>
+                  Checkpoint message
+                  <input
+                    aria-label="Checkpoint message"
+                    value={checkpointMessage}
+                    onChange={event => setCheckpointMessage(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    disabled={!canEdit || !checkpointMessage.trim()}
+                    onClick={() => onCheckpointNotebook?.(checkpointMessage.trim())}
+                  >
+                    Checkpoint
+                  </button>
+                </label>
+              ) : null}
+              {!readOnly && coreRevisionView ? (
+                <button type="button" onClick={onSetNotebookRevision}>
+                  Set revision as head
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {coreScheduler || canSchedule ? (
+            <fieldset aria-label="Scheduler">
+              <legend>Scheduler</legend>
+              <p>
+                Run this notebook with a Quartz cron expression.{' '}
+                <a
+                  href="https://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Cron expression help
+                </a>
+              </p>
+              <label>
+                Preset
+                <select
+                  aria-label="Schedule preset"
+                  disabled={!canEdit}
+                  value={SCHEDULE_PRESETS.some(preset => preset.cron === cronDraft) ? cronDraft : 'custom'}
+                  onChange={event => {
+                    if (event.target.value !== 'custom') {
+                      setCronDraft(event.target.value);
+                    }
+                  }}
+                >
+                  {SCHEDULE_PRESETS.map(preset => (
+                    <option key={preset.label} value={preset.cron}>
+                      {preset.label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+              <label>
+                Cron expression
+                <input
+                  aria-label="Cron expression"
+                  disabled={!canEdit}
+                  placeholder="Cron expression"
+                  value={cronDraft}
+                  onChange={event => setCronDraft(event.target.value)}
+                />
+              </label>
+              <label>
+                <input
+                  aria-label="Release interpreter after schedule"
+                  checked={releaseResourceDraft}
+                  disabled={!canEdit}
+                  type="checkbox"
+                  onChange={event => setReleaseResourceDraft(event.target.checked)}
+                />
+                Release interpreter after schedule
+              </label>
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() =>
+                  onScheduleChange?.({
+                    cron: cronDraft.trim() || undefined,
+                    releaseResource: releaseResourceDraft
+                  })
+                }
+              >
+                Save schedule
+              </button>
+              {coreScheduler?.status ? <p role="status">{coreScheduler.status}</p> : null}
+            </fieldset>
+          ) : null}
+          {snapshot.collaborativeUsers !== undefined || collaborativeUsers !== undefined ? (
+            <span aria-label="Collaborators">
+              Collaborators: {(snapshot.collaborativeUsers ?? collaborativeUsers ?? []).length}
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={() => {
               setPermissionsOpen(false);
-              setInterpreterBindingsOpen(false);
-              setRevisionsOpen(open => !open);
-              setRevisionComparison(null);
-              setRevisionComparisonError(null);
-              onExtensionChange?.('revisions');
+              setRevisionsOpen(false);
+              setInterpreterBindingsOpen(open => !open);
+              onExtensionChange?.('interpreter');
             }}
           >
-            Revisions
+            Interpreter settings
           </button>
-        ) : null}
+          <button
+            type="button"
+            aria-expanded={permissionsOpen}
+            disabled={!snapshot.permissions || !canManagePermissions}
+            onClick={() => {
+              setPermissionsOpen(open => !open);
+              setInterpreterBindingsOpen(false);
+              setPermissionSaveError(null);
+              onExtensionChange?.('permissions');
+            }}
+          >
+            Permissions
+          </button>
+          {revisionSupported ? (
+            <button
+              type="button"
+              onClick={() => {
+                setPermissionsOpen(false);
+                setInterpreterBindingsOpen(false);
+                setRevisionsOpen(open => !open);
+                setRevisionComparison(null);
+                setRevisionComparisonError(null);
+                onExtensionChange?.('revisions');
+              }}
+            >
+              Revisions
+            </button>
+          ) : null}
+        </div>
       </header>
       {permissionsOpen && permissionDraft ? (
         <section aria-label="Notebook permissions">
@@ -595,18 +756,21 @@ export const NotebookCoreAdapter = ({
           {revisionComparisonError ? <p role="alert">{revisionComparisonError}</p> : null}
           {revisionComparison ? (
             <section aria-label="Revision comparison results">
-              {revisionComparison.secondParagraphs.map(paragraph => {
-                const firstParagraph = revisionComparison.firstParagraphs.find(
-                  candidate => candidate.id === paragraph.id
-                );
-                return (
-                  <article key={paragraph.id} aria-label={`Revision paragraph ${paragraph.id}`}>
-                    <h3>{paragraph.title ?? paragraph.id}</h3>
-                    <pre>{firstParagraph?.text ?? ''}</pre>
-                    <pre>{paragraph.text}</pre>
-                  </article>
-                );
-              })}
+              {revisionParagraphDiffs(revisionComparison).map(paragraph => (
+                <article key={paragraph.id} aria-label={`Revision paragraph ${paragraph.id}`}>
+                  <h3>{paragraph.title ?? paragraph.id}</h3>
+                  <p>{paragraph.status}</p>
+                  <pre aria-label={`${paragraph.id} line diff`}>
+                    {paragraph.lines.map((line, lineIndex) => (
+                      <span key={`${lineIndex}-${line.kind}`} data-diff-kind={line.kind}>
+                        {line.kind === 'insert' ? '+ ' : line.kind === 'delete' ? '- ' : '  '}
+                        {line.text}
+                        {lineIndex < paragraph.lines.length - 1 ? '\n' : ''}
+                      </span>
+                    ))}
+                  </pre>
+                </article>
+              ))}
             </section>
           ) : null}
         </section>
@@ -632,7 +796,19 @@ export const NotebookCoreAdapter = ({
       </nav>
       {Object.values(snapshot.noteForms).some(form => !form.hidden) ? (
         <fieldset aria-label="Notebook forms">
-          <legend>Notebook forms</legend>
+          <legend>
+            <label>
+              Form title
+              <input
+                aria-label="Notebook form title"
+                disabled={!canEdit}
+                placeholder="Untitled Form"
+                value={noteFormTitleDraft}
+                onChange={event => setNoteFormTitleDraft(event.target.value)}
+                onBlur={() => onNoteFormTitleChange?.(noteFormTitleDraft)}
+              />
+            </label>
+          </legend>
           {Object.entries(snapshot.noteForms).map(([name, form]) => {
             if (form.hidden) {
               return null;
@@ -655,6 +831,9 @@ export const NotebookCoreAdapter = ({
                       </option>
                     ))}
                   </select>
+                  <button type="button" disabled={!canEdit} onClick={() => onNoteFormRemove?.(name)}>
+                    Remove {label}
+                  </button>
                 </label>
               );
             }
@@ -681,6 +860,9 @@ export const NotebookCoreAdapter = ({
                       {option.displayName ?? String(option.value ?? '')}
                     </label>
                   ))}
+                  <button type="button" disabled={!canEdit} onClick={() => onNoteFormRemove?.(name)}>
+                    Remove {label}
+                  </button>
                 </fieldset>
               );
             }
@@ -694,6 +876,9 @@ export const NotebookCoreAdapter = ({
                   value={Array.isArray(value) ? value.map(String).join(',') : String(value ?? '')}
                   onChange={event => updateNoteForm(name, event.target.value)}
                 />
+                <button type="button" disabled={!canEdit} onClick={() => onNoteFormRemove?.(name)}>
+                  Remove {label}
+                </button>
               </label>
             );
           })}
@@ -712,15 +897,51 @@ export const NotebookCoreAdapter = ({
             <article
               id={`react-notebook-paragraph-${paragraph.id}`}
               aria-label={`Paragraph ${index + 1}`}
+              data-look-and-feel={coreLookAndFeel}
+              onMouseEnter={() => {
+                if (coreLookAndFeel === 'simple') {
+                  setRevealedParagraphId(paragraph.id);
+                }
+              }}
+              onMouseLeave={event => {
+                if (!event.currentTarget.contains(document.activeElement)) {
+                  setRevealedParagraphId(current => (current === paragraph.id ? null : current));
+                }
+              }}
+              onFocus={() => {
+                if (coreLookAndFeel === 'simple') {
+                  setRevealedParagraphId(paragraph.id);
+                }
+              }}
+              onBlur={event => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setRevealedParagraphId(current => (current === paragraph.id ? null : current));
+                }
+              }}
               onDoubleClick={() => {
                 if (canEdit && !paragraph.hasConflict && paragraph.config.editOnDblClick) {
                   onParagraphConfigChange?.(paragraph.id, { editorHide: false, tableHide: true });
                 }
               }}
             >
-              <header>
+              <header
+                hidden={
+                  coreLookAndFeel === 'report' || (coreLookAndFeel === 'simple' && revealedParagraphId !== paragraph.id)
+                }
+              >
                 <strong>Paragraph {index + 1}</strong>
                 <span>{paragraph.status}</span>
+                {paragraph.runtimeLinks?.map(link => (
+                  <a
+                    key={`${link.label}-${link.url}`}
+                    href={link.url}
+                    rel="noreferrer"
+                    target="_blank"
+                    title={link.tooltip}
+                  >
+                    {link.label}
+                  </a>
+                ))}
               </header>
               {paragraph.config.title ? (
                 <input
@@ -800,7 +1021,12 @@ export const NotebookCoreAdapter = ({
                   }}
                 />
               ) : null}
-              <div>
+              <div
+                aria-label={`Paragraph ${index + 1} controls`}
+                hidden={
+                  coreLookAndFeel === 'report' || (coreLookAndFeel === 'simple' && revealedParagraphId !== paragraph.id)
+                }
+              >
                 <button type="button" disabled={!canEdit} onClick={() => onParagraphInsert?.(index)}>
                   Add above
                 </button>
@@ -960,6 +1186,17 @@ export const NotebookCoreAdapter = ({
                   ))}
                 </div>
               ) : null}
+              <div
+                hidden={
+                  coreLookAndFeel === 'report' || (coreLookAndFeel === 'simple' && revealedParagraphId !== paragraph.id)
+                }
+              >
+                <ParagraphFooter
+                  {...paragraph.execution}
+                  showExecutionTime={!paragraph.config.tableHide && !readOnly}
+                  showElapsedTime={paragraph.status === 'RUNNING'}
+                />
+              </div>
             </article>
           </li>
         ))}

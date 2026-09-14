@@ -14,6 +14,12 @@ import { expect, Locator, Page, test } from '@playwright/test';
 
 import { LoginPage } from '../../../models/login-page';
 import { NotebookKeyboardPage } from '../../../models/notebook-keyboard-page';
+import {
+  CommitParagraphSocketProbe,
+  installBrowserParagraphReceiptProbe,
+  installCommitParagraphProbe,
+  waitForBrowserObservedParagraphResponseAfterFrame
+} from '../../../models/notebook-save-timing.util';
 import { addPageAnnotationBeforeEach, performLoginIfRequired, PAGES, waitForZeppelinReady } from '../../../utils';
 
 const createNote = async (page: Page, notePath: string): Promise<string> => {
@@ -54,9 +60,16 @@ const getParagraphHostIds = async (page: Page): Promise<string[]> =>
 
 type PersistedParagraph = Readonly<{
   id: string;
+  title?: string;
   text: string;
   status: string;
-  config?: { results?: Record<string, { graph?: { mode?: string } }> };
+  config?: {
+    colWidth?: number;
+    fontSize?: number;
+    title?: boolean;
+    results?: Record<string, { graph?: { mode?: string } }>;
+  };
+  results?: Array<{ data?: string; type?: string }>;
   settings?: { params?: Record<string, unknown> };
 }>;
 
@@ -142,8 +155,25 @@ const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
   return operations;
 };
 
+const findRevisionId = (operations: readonly ReceivedOperation[], message: string): string | undefined => {
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const operation = operations[index];
+    if (operation.op !== 'LIST_REVISION_HISTORY' || typeof operation.data !== 'object' || operation.data === null) {
+      continue;
+    }
+    const revision = (
+      operation.data as { revisionList?: Array<{ id?: unknown; message?: unknown }> }
+    ).revisionList?.find(candidate => candidate.message === message);
+    if (typeof revision?.id === 'string') {
+      return revision.id;
+    }
+  }
+  return undefined;
+};
+
 const notebookWriteOperations = new Set(['PATCH_PARAGRAPH', 'COMMIT_PARAGRAPH', 'RUN_PARAGRAPH']);
 const coldInterpreterExecutionTimeout = 90000;
+const persistenceTimeout = 30000;
 
 test.describe('Notebook Core production route feasibility proof', () => {
   // JUSTIFIED: the production-route cases share the server's default interpreter process;
@@ -470,6 +500,59 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('autosaves the latest React edit while an earlier save response is still pending', async ({ page }) => {
+    await installBrowserParagraphReceiptProbe(page);
+    const commitProbe: CommitParagraphSocketProbe = await installCommitParagraphProbe(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const firstText = `%md\nReact autosave ${stamp}`;
+    const latestText = `${firstText}\nLatest edit wins`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactAutosave_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      commitProbe.holdFirstCommitParagraphResponse();
+      await editor.fill(firstText);
+      const [firstCommit] = await commitProbe.waitForCommitCount(1);
+      expect(firstCommit.data.paragraph).toBe(firstText);
+      await commitProbe.waitForHeldResponse(firstCommit.msgId);
+
+      await editor.fill(latestText);
+      await expect(editor).toHaveValue(latestText);
+      expect(commitProbe.forwardedResponseCount(firstCommit.msgId)).toBe(0);
+
+      commitProbe.releaseHeldResponse(firstCommit.msgId);
+      await waitForBrowserObservedParagraphResponseAfterFrame(page, firstCommit.msgId);
+      await expect(editor).toHaveValue(latestText);
+
+      const [, latestCommit] = await commitProbe.waitForCommitCount(2);
+      expect(latestCommit.data.paragraph).toBe(latestText);
+      await commitProbe.waitForForwardedResponse(latestCommit.msgId);
+      await expect
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text, { timeout: persistenceTimeout })
+        .toBe(latestText);
+
+      await page.reload();
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true })).toHaveValue(
+        latestText
+      );
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('retains an unsaved React draft when switching to the Angular notebook', async ({ page }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
@@ -646,6 +729,128 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
+  test('persists React notebook and paragraph operations through reload', async ({ page }) => {
+    const sentOperations = observeSentOperations(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    const noteTitle = `ReactPersistence_${stamp}`;
+    const paragraphTitle = `Paragraph title ${stamp}`;
+    const code = `%sh\necho "react_persistence_${stamp}"`;
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactPersistenceSource_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      const notebookTitle = reactNotebook.getByRole('textbox', { name: 'Notebook title', exact: true });
+      await notebookTitle.fill(noteTitle);
+      await notebookTitle.press('Tab');
+      await expect.poll(() => sentOperations.filter(operation => operation === 'NOTE_RENAME').length).toBe(1);
+      await expect(reactNotebook).toHaveAttribute('data-title', noteTitle, { timeout: persistenceTimeout });
+
+      const firstParagraph = reactNotebook.getByRole('article', { name: 'Paragraph 1', exact: true });
+      const firstEditor = firstParagraph.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
+      await firstEditor.fill(code);
+      await firstParagraph.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text, { timeout: persistenceTimeout })
+        .toBe(code);
+
+      await firstParagraph.getByText('Paragraph settings', { exact: true }).click();
+      await firstParagraph.getByRole('checkbox', { name: 'Show title', exact: true }).check();
+      const paragraphTitleInput = firstParagraph.getByRole('textbox', { name: 'Paragraph 1 title', exact: true });
+      await paragraphTitleInput.fill(paragraphTitle);
+      await paragraphTitleInput.press('Tab');
+      await firstParagraph.getByRole('combobox', { name: 'Paragraph 1 font size', exact: true }).selectOption('14');
+      await firstParagraph.getByRole('combobox', { name: 'Paragraph 1 width', exact: true }).selectOption('7');
+
+      await expect
+        .poll(async () => await getPersistedParagraph(page, noteId!, 0), { timeout: persistenceTimeout })
+        .toMatchObject({
+          title: paragraphTitle,
+          text: code,
+          config: { colWidth: 7, fontSize: 14, title: true }
+        });
+
+      await firstParagraph.getByRole('button', { name: 'Clone', exact: true }).click();
+      await expect.poll(() => sentOperations.filter(operation => operation === 'COPY_PARAGRAPH').length).toBe(1);
+      await expect(reactNotebook.getByRole('article')).toHaveCount(2);
+      await expect
+        .poll(async () => await getPersistedParagraph(page, noteId!, 1), { timeout: persistenceTimeout })
+        .toMatchObject({
+          title: paragraphTitle,
+          text: code,
+          config: { colWidth: 7, fontSize: 14, title: true }
+        });
+
+      await firstParagraph.getByRole('button', { name: 'Run current and below', exact: true }).click();
+      const rangeConfirmation = page.getByRole('dialog');
+      await expect(rangeConfirmation).toContainText('Run current and all below?');
+      await rangeConfirmation.getByRole('button', { name: 'OK', exact: true }).click();
+      await expect.poll(() => sentOperations.filter(operation => operation === 'RUN_ALL_PARAGRAPHS').length).toBe(1);
+      await expect(reactNotebook.getByRole('article', { name: 'Paragraph 1', exact: true })).toContainText('FINISHED', {
+        timeout: coldInterpreterExecutionTimeout
+      });
+      await expect(reactNotebook.getByRole('article', { name: 'Paragraph 2', exact: true })).toContainText('FINISHED', {
+        timeout: coldInterpreterExecutionTimeout
+      });
+      await expect
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).results?.length ?? 0, {
+          timeout: persistenceTimeout
+        })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 1)).results?.length ?? 0, {
+          timeout: persistenceTimeout
+        })
+        .toBeGreaterThan(0);
+
+      await firstParagraph.getByRole('button', { name: 'Clear output', exact: true }).click();
+      await expect
+        .poll(() => sentOperations.filter(operation => operation === 'PARAGRAPH_CLEAR_OUTPUT').length)
+        .toBe(1);
+      await expect
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).results?.length ?? 0, {
+          timeout: persistenceTimeout
+        })
+        .toBe(0);
+      expect((await getPersistedParagraph(page, noteId, 1)).results?.length ?? 0).toBeGreaterThan(0);
+
+      await page.reload();
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(reactNotebook).toHaveAttribute('data-title', noteTitle);
+      await expect(reactNotebook.getByRole('article')).toHaveCount(2);
+      const reloadedFirstParagraph = reactNotebook.getByRole('article', { name: 'Paragraph 1', exact: true });
+      await expect(reloadedFirstParagraph.getByRole('textbox', { name: 'Paragraph 1 title', exact: true })).toHaveValue(
+        paragraphTitle
+      );
+      await reloadedFirstParagraph.getByText('Paragraph settings', { exact: true }).click();
+      await expect(reloadedFirstParagraph.getByRole('checkbox', { name: 'Show title', exact: true })).toBeChecked();
+      await expect(
+        reloadedFirstParagraph.getByRole('combobox', { name: 'Paragraph 1 font size', exact: true })
+      ).toHaveValue('14');
+      await expect(
+        reloadedFirstParagraph.getByRole('combobox', { name: 'Paragraph 1 width', exact: true })
+      ).toHaveValue('7');
+      await expect(reloadedFirstParagraph.getByTestId('react-notebook-core-results')).toHaveCount(0);
+      await expect(
+        reactNotebook
+          .getByRole('article', { name: 'Paragraph 2', exact: true })
+          .getByTestId('react-notebook-core-results')
+      ).toBeVisible();
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
+
   test('runs all paragraphs from the React notebook through the existing socket operation', async ({ page }) => {
     const sentOperations = observeSentOperations(page);
     await page.goto('/#/');
@@ -733,7 +938,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('creates a notebook checkpoint from React with Git storage', async ({ page }) => {
+  test('opens historical revisions and compares checkpoints from React with Git storage', async ({ page }) => {
     test.skip(process.env.ZEPPELIN_E2E_REQUIRE_REVISION !== 'true', 'Requires GitNotebookRepo revision support.');
     const sentMessages = observeSentMessages(page);
     const receivedOperations = observeReceivedOperations(page);
@@ -742,6 +947,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     await performLoginIfRequired(page);
 
     const stamp = Date.now();
+    const firstText = `%md\nFirst revision ${stamp}`;
+    const secondText = `%md\nSecond revision ${stamp}`;
     let noteId: string | undefined;
 
     try {
@@ -749,10 +956,16 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
 
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
+      const revisionSelect = reactNotebook.getByRole('combobox', { name: 'Notebook revision', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' })).toHaveValue('Head');
+      await expect(revisionSelect).toHaveValue('Head');
 
-      await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React route checkpoint');
+      await editor.fill(firstText);
+      await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(firstText);
+
+      await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React first checkpoint');
       await reactNotebook.getByRole('button', { name: 'Checkpoint' }).click();
 
       await expect.poll(() => sentMessages.filter(message => message.op === 'CHECKPOINT_NOTE').length).toBe(1);
@@ -763,12 +976,41 @@ test.describe('Notebook Core production route feasibility proof', () => {
           timeout: 60000
         })
         .toContainEqual(expect.objectContaining({ msgId: checkpointRequest?.msgId }));
-      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' }).locator('option')).toHaveCount(
-        2,
-        {
-          timeout: 15000
-        }
+      await expect(revisionSelect.locator('option')).toHaveCount(2, { timeout: 15000 });
+      await expect.poll(() => findRevisionId(receivedOperations, 'React first checkpoint')).toBeTruthy();
+      const firstRevisionId = findRevisionId(receivedOperations, 'React first checkpoint')!;
+
+      await editor.fill(secondText);
+      await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(secondText);
+      await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React second checkpoint');
+      await reactNotebook.getByRole('button', { name: 'Checkpoint' }).click();
+      await expect.poll(() => sentMessages.filter(message => message.op === 'CHECKPOINT_NOTE').length).toBe(2);
+      await expect(revisionSelect.locator('option')).toHaveCount(3, { timeout: 15000 });
+      await expect.poll(() => findRevisionId(receivedOperations, 'React second checkpoint')).toBeTruthy();
+      const secondRevisionId = findRevisionId(receivedOperations, 'React second checkpoint')!;
+
+      await reactNotebook.getByRole('button', { name: 'Revisions', exact: true }).click();
+      const comparison = reactNotebook.getByRole('region', { name: 'Notebook revision comparison', exact: true });
+      await expect(comparison).toBeVisible();
+      await comparison.getByRole('combobox', { name: 'First revision', exact: true }).selectOption(firstRevisionId);
+      await comparison.getByRole('combobox', { name: 'Second revision', exact: true }).selectOption(secondRevisionId);
+      await comparison.getByRole('button', { name: 'Compare revisions', exact: true }).click();
+      const comparisonResults = comparison.getByRole('region', { name: 'Revision comparison results', exact: true });
+      await expect(comparisonResults).toContainText(firstText, { timeout: 30000 });
+      await expect(comparisonResults).toContainText(secondText);
+      await expect
+        .poll(() => sentMessages.filter(message => message.op === 'NOTE_REVISION_FOR_COMPARE').length)
+        .toBe(2);
+
+      await revisionSelect.selectOption(firstRevisionId);
+      await expect(page).toHaveURL(new RegExp(`/notebook/${noteId}/revision/${firstRevisionId}`), { timeout: 30000 });
+      const historicalNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(historicalNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(historicalNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true })).toHaveValue(
+        firstText
       );
+      await expect(historicalNotebook.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);

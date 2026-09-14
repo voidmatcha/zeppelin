@@ -21,12 +21,14 @@ const query = (entries: Record<string, string>): { get(name: string): string | n
 describe('ReactFeatureService', () => {
   const service = new ReactFeatureService();
 
-  it('uses React for the notebook when the flag is absent', () => {
-    expect(service.isEnabled('notebook', query({}))).toBe(true);
+  it('keeps the notebook and interpreter Angular surfaces as the default', () => {
+    expect(service.isEnabled('notebook', query({}))).toBe(false);
+    expect(service.isEnabled('interpreter', query({}))).toBe(false);
   });
 
-  it('keeps an explicit Angular notebook rollback path', () => {
-    expect(service.isEnabled('notebook', query({ reactNotebook: 'false' }))).toBe(false);
+  it('enables the notebook and interpreter React surfaces explicitly', () => {
+    expect(service.isEnabled('notebook', query({ reactNotebook: 'true' }))).toBe(true);
+    expect(service.isEnabled('interpreter', query({ reactInterpreter: 'true' }))).toBe(true);
   });
 
   it('does not change the defaults of the other React surfaces', () => {

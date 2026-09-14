@@ -39,7 +39,7 @@ is kebab-case (`zeppelin-react-mount`) per project ESLint convention.
 |-------|-------|--------|
 | 1 | Webpack 5 + Module Federation setup | Done |
 | 1.5 | Published paragraph (pilot) | Done |
-| 2 | Notebook and interpreter modules | Planned |
+| 2 | Notebook and interpreter modules | In progress (opt-in) |
 
 The published paragraph was picked as pilot because it's read-only and has almost no coupling to other modules.
 
@@ -55,6 +55,7 @@ Angular host (port 4200)              React remote (port 3001)
 └───────────────────────────────┘     │    ./PublishedParagraph │
                                       │    ./ParagraphFooter    │
                                       │    ./ConfigurationTable │
+                                      │    ./InterpreterPage    │
                                       └─────────────────────────┘
 ```
 
@@ -77,7 +78,7 @@ Each React surface has a URL query flag resolved by `ReactFeatureService`:
 | `?react=false` | disabled |
 | flag absent | uses the surface default |
 
-The notebook route uses React by default. Append `?reactNotebook=false` to use the Angular notebook during the compatibility period. Published paragraphs, paragraph footers, and the configuration table remain opt-in through `?react=true`, `?reactFooter=true`, and `?reactConfiguration=true`. The React notebook uses the host-owned Shared Notebook Core and delegates table visualizations and legacy `ANGULAR` results to the Angular renderer so existing display plugins and configuration continue to work.
+All migrated routes remain opt-in while their parity work continues. Use `?reactNotebook=true` for the React notebook and `?reactInterpreter=true` for the React interpreter-management page. Published paragraphs, paragraph footers, and the configuration table use `?react=true`, `?reactFooter=true`, and `?reactConfiguration=true`. Without those flags, or when a remote reports an error, the Angular surface remains active. The React notebook uses the host-owned Shared Notebook Core and delegates table visualizations and legacy `ANGULAR` results to the Angular renderer so existing display plugins and configuration continue to work.
 
 ## Setup
 
@@ -104,7 +105,8 @@ src/
 │   └── visualizations/  # TableVisualization, VisualizationControls
 ├── pages/
 │   ├── PublishedParagraph.tsx   # entry component + mount()
-│   └── ConfigurationTable.tsx   # /configuration table + mount()
+│   ├── ConfigurationTable.tsx   # /configuration table + mount()
+│   └── InterpreterPage.tsx      # /interpreter management + mount()
 ├── templates/
 │   └── SingleResultRenderer.tsx # routes result types to renderers
 ├── theme/               # host theme detection, antd + chart.js theming

@@ -37,7 +37,7 @@ test.describe('Notebook Paragraph Functionality', () => {
     testNotebook = await createTestNotebook(page);
     paragraphPage = new NotebookParagraphPage(page);
 
-    await page.goto(`/#/notebook/${testNotebook.noteId}`);
+    await page.goto(`/#/notebook/${testNotebook.noteId}?reactNotebook=false`);
     // Paragraphs arrive over the WebSocket, so 'networkidle' can resolve before they render.
     // Wait for the paragraph to mount so tests do not act on a bare page.
     await expect(paragraphPage.paragraphContainer).toBeVisible({ timeout: 30000 });

@@ -385,8 +385,16 @@ describe('NotebookCoreAdapter', () => {
     const onRevisionCompare = vi.fn(async () => ({
       firstRevisionId: 'revision-1',
       secondRevisionId: 'revision-2',
-      firstParagraphs: [{ id: 'paragraph-1', text: 'before' }],
-      secondParagraphs: [{ id: 'paragraph-1', text: 'after' }]
+      firstParagraphs: [
+        { id: 'changed', text: 'keep\nbefore\nend' },
+        { id: 'deleted', text: 'removed' },
+        { id: 'identical', text: 'same' }
+      ],
+      secondParagraphs: [
+        { id: 'changed', text: 'keep\nafter\nend' },
+        { id: 'identical', text: 'same' },
+        { id: 'added', text: 'new' }
+      ]
     }));
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
@@ -413,8 +421,14 @@ describe('NotebookCoreAdapter', () => {
 
     await act(async () => undefined);
     expect(onRevisionCompare).toHaveBeenCalledWith('revision-1', 'revision-2');
-    expect(screen.getByRole('region', { name: 'Revision comparison results' }).textContent).toContain('before');
-    expect(screen.getByRole('region', { name: 'Revision comparison results' }).textContent).toContain('after');
+    expect(screen.getByRole('article', { name: 'Revision paragraph changed' }).textContent).toContain('changed');
+    expect(screen.getByRole('article', { name: 'Revision paragraph deleted' }).textContent).toContain('deleted');
+    expect(screen.getByRole('article', { name: 'Revision paragraph identical' }).textContent).toContain('identical');
+    expect(screen.getByRole('article', { name: 'Revision paragraph added' }).textContent).toContain('added');
+    const changedDiff = screen.getByLabelText('changed line diff');
+    expect(changedDiff.querySelector('[data-diff-kind="equal"]')?.textContent).toContain('keep');
+    expect(changedDiff.querySelector('[data-diff-kind="delete"]')?.textContent).toContain('- before');
+    expect(changedDiff.querySelector('[data-diff-kind="insert"]')?.textContent).toContain('+ after');
   });
 
   it('exposes the personalized-mode switch only when the host grants that capability', () => {
@@ -585,7 +599,7 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Notebook',
-      scheduler: { cron: '0 0/5 * * * ?', releaseResource: false },
+      scheduler: { cron: '0 0/5 * * * ?', releaseResource: false, status: 'Last run failed' },
       paragraphs: []
     });
     runtime.apply({ type: 'collaboration-updated', users: [] });
@@ -593,6 +607,13 @@ describe('NotebookCoreAdapter', () => {
     render(<NotebookCoreAdapter core={runtime.port} onScheduleChange={onScheduleChange} />);
 
     expect(screen.getByLabelText('Collaborators').textContent).toBe('Collaborators: 0');
+    expect(screen.getByRole('status').textContent).toBe('Last run failed');
+    expect((screen.getByRole('combobox', { name: 'Schedule preset' }) as HTMLSelectElement).value).toBe(
+      '0 0/5 * * * ?'
+    );
+    expect(screen.getByRole('link', { name: 'Cron expression help' }).getAttribute('href')).toContain(
+      'quartz-scheduler.org'
+    );
     fireEvent.change(screen.getByRole('textbox', { name: 'Cron expression' }), {
       target: { value: '0 0 0/1 * * ?' }
     });
@@ -724,6 +745,8 @@ describe('NotebookCoreAdapter', () => {
 
   it('renders note forms and sends changed values through the host callback', () => {
     const onNoteFormsChange = vi.fn();
+    const onNoteFormTitleChange = vi.fn();
+    const onNoteFormRemove = vi.fn();
     const runtime = createNotebookCore({ noteId: 'note-1' });
     runtime.apply({ type: 'load-started' });
     runtime.apply({
@@ -731,6 +754,7 @@ describe('NotebookCoreAdapter', () => {
       noteId: 'note-1',
       revisionId: null,
       title: 'Shared notebook',
+      noteFormTitle: 'Filters',
       noteForms: {
         region: {
           name: 'region',
@@ -745,11 +769,25 @@ describe('NotebookCoreAdapter', () => {
       paragraphs: []
     });
 
-    render(<NotebookCoreAdapter core={runtime.port} onNoteFormsChange={onNoteFormsChange} />);
+    render(
+      <NotebookCoreAdapter
+        core={runtime.port}
+        onNoteFormsChange={onNoteFormsChange}
+        onNoteFormTitleChange={onNoteFormTitleChange}
+        onNoteFormRemove={onNoteFormRemove}
+      />
+    );
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Region' }), { target: { value: 'ap-northeast-2' } });
 
     expect(onNoteFormsChange).toHaveBeenCalledWith({ region: 'ap-northeast-2' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Notebook form title' }), {
+      target: { value: 'Deployment filters' }
+    });
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Notebook form title' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Region' }));
+    expect(onNoteFormTitleChange).toHaveBeenCalledWith('Deployment filters');
+    expect(onNoteFormRemove).toHaveBeenCalledWith('region');
   });
 
   it('uses the React result renderer for Core-owned output', () => {
@@ -1060,5 +1098,72 @@ describe('NotebookCoreAdapter', () => {
     expect((screen.getByRole('combobox', { name: 'Country' }) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Clone' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('Line numbers') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('reveals paragraph controls on hover in simple mode and keeps them hidden in report mode', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      lookAndFeel: 'simple',
+      paragraphs: [{ id: 'paragraph-1', text: '%python', status: 'READY' }]
+    });
+
+    const view = render(<NotebookCoreAdapter core={runtime.port} />);
+    const actionBar = screen.getByRole('banner', { name: 'Notebook action bar' });
+    const actionControls = screen.getByLabelText('Notebook action controls', { selector: 'div' });
+    const paragraph = screen.getByRole('article', { name: 'Paragraph 1' });
+    const controls = screen.getByLabelText('Paragraph 1 controls');
+    expect(actionControls.hidden).toBe(true);
+    expect(controls.hidden).toBe(true);
+
+    fireEvent.mouseEnter(actionBar);
+    expect(actionControls.hidden).toBe(false);
+    fireEvent.mouseEnter(paragraph);
+    expect(controls.hidden).toBe(false);
+
+    act(() => {
+      runtime.apply({ type: 'look-and-feel-updated', lookAndFeel: 'report' });
+    });
+    expect(controls.hidden).toBe(true);
+    expect(view.queryByRole('button', { name: 'Add above' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Paragraph 1 editor' })).not.toBeNull();
+  });
+
+  it('renders execution metadata and runtime links from the shared paragraph snapshot', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-1',
+      revisionId: null,
+      title: 'Notebook',
+      paragraphs: [
+        {
+          id: 'paragraph-1',
+          text: '%spark',
+          status: 'FINISHED',
+          execution: {
+            dateStarted: '2026-09-15T00:00:00.000Z',
+            dateFinished: '2026-09-15T00:01:00.000Z',
+            dateUpdated: '2026-09-15T00:00:00.000Z',
+            user: 'alice'
+          },
+          runtimeLinks: [{ label: 'Spark job', tooltip: 'Open Spark UI', url: 'https://example.test/jobs/1' }]
+        }
+      ]
+    });
+
+    render(<NotebookCoreAdapter core={runtime.port} />);
+
+    const runtimeLink = screen.getByRole('link', { name: 'Spark job' });
+    expect(runtimeLink.getAttribute('href')).toBe('https://example.test/jobs/1');
+    expect(runtimeLink.getAttribute('title')).toBe('Open Spark UI');
+    expect(screen.getByTestId('react-paragraph-footer-content').textContent).toContain(
+      'Took 1 minute. Last updated by alice'
+    );
   });
 });

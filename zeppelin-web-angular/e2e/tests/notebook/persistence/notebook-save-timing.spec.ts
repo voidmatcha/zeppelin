@@ -40,7 +40,7 @@ test.describe('Notebook editor save timing', () => {
       await page.goto('/#/');
       await waitForZeppelinReady(page);
       ({ noteId } = await createTestNotebook(page));
-      await page.goto(`/#/notebook/${noteId}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
       await expect(notebookPage.firstParagraph).toBeVisible({ timeout: 30000 });
       await notebookPage.waitForEditorRendered(0);
     });

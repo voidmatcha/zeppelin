@@ -28,8 +28,8 @@ const openInlineCompletionEditor = async (page: Page) => {
   const noteResponse = await page.request.get(`/api/notebook/${noteId}`);
   expect(noteResponse.ok()).toBeTruthy();
 
-  await page.goto(`/#/notebook/${noteId}?aiInlineComplete=true`);
-  await expect(page).toHaveURL(/#\/notebook\/[^?]+\?aiInlineComplete=true/);
+  await page.goto(`/#/notebook/${noteId}?aiInlineComplete=true&reactNotebook=false`);
+  await expect(page).toHaveURL(/#\/notebook\/[^?]+\?aiInlineComplete=true&reactNotebook=false/);
 
   const keyboardPage = new NotebookKeyboardPage(page);
   await expect(keyboardPage.paragraphContainer.first()).toBeVisible({ timeout: 30000 });

@@ -19,8 +19,10 @@ import type {
   NotebookFormParams,
   NotebookLookAndFeel,
   NotebookParagraphInput,
+  NotebookParagraphExecution,
   NotebookParagraphResult,
   NotebookParagraphResultConfigs,
+  NotebookParagraphRuntimeLink,
   NotebookParagraphSnapshot,
   NotebookPermissions,
   NotebookRevision,
@@ -35,6 +37,7 @@ export type NotebookCoreEvent =
       noteId: string;
       revisionId: string | null;
       title: string;
+      noteFormTitle?: string;
       noteForms?: NotebookDynamicForms;
       noteParams?: NotebookFormParams;
       scheduler?: NotebookSchedule;
@@ -54,6 +57,8 @@ export type NotebookCoreEvent =
       language?: string;
       results?: readonly NotebookParagraphResult[];
       resultConfigs?: NotebookParagraphResultConfigs;
+      execution?: NotebookParagraphExecution;
+      runtimeLinks?: readonly NotebookParagraphRuntimeLink[];
       forms?: NotebookDynamicForms;
       params?: NotebookFormParams;
       config?: Partial<NotebookParagraphSnapshot['config']>;
@@ -90,6 +95,7 @@ export type NotebookCoreEvent =
   | Readonly<{ type: 'paragraph-run-requested'; paragraphId: string }>
   | Readonly<{ type: 'paragraph-run-rejected'; paragraphId: string }>
   | Readonly<{ type: 'note-updated'; title: string }>
+  | Readonly<{ type: 'note-form-title-updated'; title: string }>
   | Readonly<{ type: 'note-forms-updated'; noteForms: NotebookDynamicForms; noteParams: NotebookFormParams }>
   | Readonly<{ type: 'permissions-updated'; permissions: NotebookPermissions }>
   | Readonly<{ type: 'collaboration-updated'; users: readonly string[] | null }>
@@ -132,6 +138,7 @@ type NotebookCoreState = Readonly<{
   revisionId: string | null;
   phase: NotebookCoreSnapshot['phase'];
   title: string | null;
+  noteFormTitle: string | null;
   noteForms: NotebookDynamicForms;
   noteParams: NotebookFormParams;
   permissions: NotebookPermissions | null;
@@ -197,8 +204,16 @@ const freezePermissions = (permissions: NotebookPermissions): NotebookPermission
 const freezeSchedule = (scheduler: NotebookSchedule): NotebookSchedule =>
   Object.freeze({
     ...(scheduler.cron ? { cron: scheduler.cron } : {}),
-    releaseResource: scheduler.releaseResource
+    releaseResource: scheduler.releaseResource,
+    ...(scheduler.status ? { status: scheduler.status } : {})
   });
+
+const freezeExecution = (execution: NotebookParagraphExecution): NotebookParagraphExecution =>
+  Object.freeze({ ...execution });
+
+const freezeRuntimeLinks = (
+  runtimeLinks: readonly NotebookParagraphRuntimeLink[]
+): readonly NotebookParagraphRuntimeLink[] => Object.freeze(runtimeLinks.map(link => Object.freeze({ ...link })));
 
 const freezeRevisions = (revisions: readonly NotebookRevision[]): readonly NotebookRevision[] =>
   Object.freeze(revisions.map(revision => Object.freeze({ ...revision })));
@@ -260,7 +275,9 @@ const freezeParagraphSnapshot = (
     ...(paragraph.results
       ? { results: Object.freeze(paragraph.results.map(result => Object.freeze({ ...result }))) }
       : {}),
-    ...(paragraph.resultConfigs ? { resultConfigs: freezeResultConfigs(paragraph.resultConfigs) } : {})
+    ...(paragraph.resultConfigs ? { resultConfigs: freezeResultConfigs(paragraph.resultConfigs) } : {}),
+    ...(paragraph.execution ? { execution: freezeExecution(paragraph.execution) } : {}),
+    ...(paragraph.runtimeLinks ? { runtimeLinks: freezeRuntimeLinks(paragraph.runtimeLinks) } : {})
   });
 
 const freezeState = (state: NotebookCoreState): NotebookCoreState =>
@@ -278,6 +295,7 @@ const toSnapshot = (state: NotebookCoreState): NotebookCoreSnapshot =>
     revisionId: state.revisionId,
     phase: state.phase,
     title: state.title,
+    ...(state.noteFormTitle !== null ? { noteFormTitle: state.noteFormTitle } : {}),
     noteForms: state.noteForms,
     noteParams: state.noteParams,
     ...(state.permissions ? { permissions: state.permissions } : {}),
@@ -339,6 +357,7 @@ const initialState = (route: NotebookCoreInitialRoute): NotebookCoreState =>
     revisionId: route.revisionId ?? null,
     phase: 'idle',
     title: null,
+    noteFormTitle: null,
     noteForms: freezeNoteForms(),
     noteParams: freezeNoteParams(),
     permissions: null,
@@ -382,7 +401,8 @@ const isLiveMutation = (event: NotebookCoreEvent): boolean =>
   event.type === 'paragraph-output-updated' ||
   event.type === 'paragraph-output-appended' ||
   event.type === 'paragraph-output-snapshotted' ||
-  event.type === 'note-updated';
+  event.type === 'note-updated' ||
+  event.type === 'note-form-title-updated';
 
 const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): NotebookCoreState => {
   const version = state.version + 1;
@@ -405,6 +425,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         revisionId: event.revisionId,
         phase: 'idle',
         title: null,
+        noteFormTitle: null,
         noteForms: freezeNoteForms(),
         noteParams: freezeNoteParams(),
         permissions: null,
@@ -437,6 +458,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         version,
         phase: 'ready',
         title: event.title,
+        noteFormTitle: event.noteFormTitle ?? null,
         noteForms: freezeNoteForms(event.noteForms),
         noteParams: freezeNoteParams(event.noteParams),
         scheduler: event.scheduler ? freezeSchedule(event.scheduler) : null,
@@ -542,6 +564,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
             progress: currentSnapshot.progress,
             results: hasResultsUpdate ? event.results : currentSnapshot.results,
             resultConfigs: event.resultConfigs ?? currentSnapshot.resultConfigs,
+            execution: event.execution ?? currentSnapshot.execution,
+            runtimeLinks: event.runtimeLinks ?? currentSnapshot.runtimeLinks,
             forms: event.forms ?? currentSnapshot.forms,
             params: event.params ?? currentSnapshot.params,
             config: event.config ? { ...currentSnapshot.config, ...event.config } : currentSnapshot.config
@@ -566,6 +590,8 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         event.language === undefined &&
         !hasResultsUpdate &&
         event.resultConfigs === undefined &&
+        event.execution === undefined &&
+        event.runtimeLinks === undefined &&
         event.title === undefined &&
         event.forms === undefined &&
         event.params === undefined &&
@@ -846,6 +872,11 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       return freezeState({ ...state, version, title: event.title });
+    case 'note-form-title-updated':
+      if (state.phase !== 'ready' || state.noteFormTitle === event.title) {
+        return state;
+      }
+      return freezeState({ ...state, version, noteFormTitle: event.title });
     case 'note-forms-updated':
       if (state.phase !== 'ready') {
         return state;

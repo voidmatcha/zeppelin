@@ -276,6 +276,7 @@ describe('notebook core runtime spike', () => {
       noteId: 'note-a',
       revisionId: null,
       title: 'Form note',
+      noteFormTitle: 'Filters',
       noteForms: {
         region: {
           name: 'region',
@@ -291,6 +292,7 @@ describe('notebook core runtime spike', () => {
     });
 
     expect(runtime.port.getSnapshot().noteParams).toEqual({ region: 'us-east-1' });
+    expect(runtime.port.getSnapshot().noteFormTitle).toBe('Filters');
     expect(Object.isFrozen(runtime.port.getSnapshot().noteForms.region.options)).toBe(true);
     expect(
       runtime.apply({
@@ -301,6 +303,8 @@ describe('notebook core runtime spike', () => {
     ).toBe(true);
     expect(runtime.port.getSnapshot().noteParams).toEqual({ region: 'ap-northeast-2' });
     expect(Object.isFrozen(runtime.port.getSnapshot().noteParams)).toBe(true);
+    expect(runtime.apply({ type: 'note-form-title-updated', title: 'Deployment filters' })).toBe(true);
+    expect(runtime.port.getSnapshot().noteFormTitle).toBe('Deployment filters');
   });
 
   it('reports whether an event was accepted without publishing ignored events', () => {
@@ -1426,12 +1430,16 @@ describe('notebook core runtime spike', () => {
       noteId: 'note-a',
       revisionId: null,
       title: 'Note A',
-      scheduler: { cron: '0 0/5 * * * ?', releaseResource: false },
+      scheduler: { cron: '0 0/5 * * * ?', releaseResource: false, status: 'Last run succeeded' },
       paragraphs: []
     });
 
     const scheduler = runtime.port.getSnapshot().scheduler;
-    expect(scheduler).toEqual({ cron: '0 0/5 * * * ?', releaseResource: false });
+    expect(scheduler).toEqual({
+      cron: '0 0/5 * * * ?',
+      releaseResource: false,
+      status: 'Last run succeeded'
+    });
     expect(Object.isFrozen(scheduler)).toBe(true);
 
     runtime.apply({ type: 'schedule-updated', scheduler: { releaseResource: true } });

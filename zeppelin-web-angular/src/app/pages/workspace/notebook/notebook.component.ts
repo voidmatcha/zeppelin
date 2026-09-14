@@ -301,6 +301,16 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.notebookCoreRouteAdapter.acceptParagraphUpdated(data.paragraph);
   }
 
+  @MessageListener(OP.PARAS_INFO)
+  updateCoreParagraphRuntimeInfo(data: MessageReceiveDataTypeMap[OP.PARAS_INFO]) {
+    const paragraph = this.note?.paragraphs.find(candidate => candidate.id === data.id);
+    if (!paragraph) {
+      return;
+    }
+    paragraph.runtimeInfos = data.infos;
+    this.notebookCoreRouteAdapter.acceptParagraphUpdated(paragraph);
+  }
+
   @MessageListener(OP.EDITOR_SETTING)
   updateCoreEditorSetting(data: MessageReceiveDataTypeMap[OP.EDITOR_SETTING]) {
     if (this.useReactNotebook) {
@@ -675,7 +685,19 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.note.info = data.info;
     this.notebookCoreRouteAdapter.acceptNoteUpdated(data.name);
     this.initializeLookAndFeel(this.note);
+    this.notebookCoreRouteAdapter.acceptNoteFormTitle(this.note.config.noteFormTitle ?? '');
+    this.notebookCoreRouteAdapter.acceptLookAndFeel(this.note.config.looknfeel);
+    this.notebookCoreRouteAdapter.acceptSchedule(
+      this.note.config.isZeppelinNotebookCronEnable
+        ? {
+            cron: this.note.config.cron,
+            releaseResource: Boolean(this.note.config.releaseresource),
+            ...(typeof this.note.info?.cron === 'string' && this.note.info.cron ? { status: this.note.info.cron } : {})
+          }
+        : null
+    );
     this.notebookCoreRouteAdapter.acceptPersonalizedMode(this.note.config.personalizedMode === 'true');
+    this.refreshCoreProofReactProps();
     this.cdr.markForCheck();
   }
 
@@ -833,10 +855,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (!this.note) {
       throw new Error(`"note" is not defined. Please check if note data is loaded before calling this method.`);
     }
-    this.messageService.updateNote(this.note.id, this.note.name, {
-      ...this.note.config,
-      noteFormTitle
-    });
+    this.note.config.noteFormTitle = noteFormTitle;
+    this.notebookCoreRouteAdapter.acceptNoteFormTitle(noteFormTitle);
+    this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
   }
 
   setNoteFormsStatus() {
@@ -958,7 +979,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       scheduler: this.note?.config.isZeppelinNotebookCronEnable
         ? {
             cron: this.note.config.cron,
-            releaseResource: Boolean(this.note.config.releaseresource)
+            releaseResource: Boolean(this.note.config.releaseresource),
+            ...(typeof this.note.info?.cron === 'string' && this.note.info.cron ? { status: this.note.info.cron } : {})
           }
         : undefined,
       canSchedule: Boolean(this.note?.config.isZeppelinNotebookCronEnable) && !this.viewOnly && !this.revisionView,
@@ -971,6 +993,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
             return params;
           }, {})
         ),
+      onNoteFormTitleChange: title => this.onNoteTitleChange(title),
+      onNoteFormRemove: name => this.onFormNameRemove(name),
       onParagraphResultConfigChange: (paragraphId, resultIndex, config) =>
         this.notebookCoreRouteAdapter.updateParagraphResultConfig(
           paragraphId,
@@ -1204,7 +1228,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
     this.note.config.cron = schedule.cron;
     this.note.config.releaseresource = schedule.releaseResource;
-    this.notebookCoreRouteAdapter.acceptSchedule(schedule.cron ? schedule : null);
+    this.notebookCoreRouteAdapter.acceptSchedule(
+      schedule.cron
+        ? {
+            ...schedule,
+            ...(typeof this.note.info?.cron === 'string' && this.note.info.cron ? { status: this.note.info.cron } : {})
+          }
+        : null
+    );
     this.messageService.updateNote(this.note.id, this.note.name, this.note.config);
     this.refreshCoreProofReactProps();
   }

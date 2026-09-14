@@ -46,6 +46,7 @@ export type NotebookRevision = Readonly<{
 export type NotebookSchedule = Readonly<{
   cron?: string;
   releaseResource: boolean;
+  status?: string;
 }>;
 
 export type NotebookLookAndFeel = 'report' | 'default' | 'simple';
@@ -88,9 +89,24 @@ export type NotebookParagraphSnapshot = Readonly<{
   hasConflict: boolean;
   results?: readonly NotebookParagraphResult[];
   resultConfigs?: NotebookParagraphResultConfigs;
+  execution?: NotebookParagraphExecution;
+  runtimeLinks?: readonly NotebookParagraphRuntimeLink[];
   forms: NotebookDynamicForms;
   params: NotebookFormParams;
   config: NotebookParagraphConfig;
+}>;
+
+export type NotebookParagraphExecution = Readonly<{
+  dateStarted?: string;
+  dateFinished?: string;
+  dateUpdated?: string;
+  user?: string;
+}>;
+
+export type NotebookParagraphRuntimeLink = Readonly<{
+  label: string;
+  tooltip?: string;
+  url: string;
 }>;
 
 export type NotebookParagraphConfig = Readonly<{
@@ -131,6 +147,7 @@ export type NotebookCoreSnapshot = Readonly<{
   revisionId: string | null;
   phase: NotebookCorePhase;
   title: string | null;
+  noteFormTitle?: string;
   noteForms: NotebookDynamicForms;
   noteParams: NotebookFormParams;
   permissions?: NotebookPermissions;
@@ -229,6 +246,8 @@ export type NotebookCoreRemoteProps = Readonly<{
   onPermissionsChange?: (permissions: NotebookPermissions) => Promise<void> | void;
   onExtensionChange?: (extension: 'interpreter' | 'permissions' | 'revisions' | 'hide') => void;
   onNoteFormsChange?: (params: NotebookFormParams) => void;
+  onNoteFormTitleChange?: (title: string) => void;
+  onNoteFormRemove?: (name: string) => void;
   onParagraphResultConfigChange?: (
     paragraphId: string,
     resultIndex: number,

@@ -56,7 +56,7 @@ describe('SingleResultRenderer', () => {
     expect(screen.queryByText('alice')).toBeNull();
   });
 
-  it('delegates TABLE output to the notebook host when it is available', () => {
+  it('keeps TABLE output in React when the notebook host callback is available', () => {
     const mount = vi.fn(() => () => undefined);
     render(
       <SingleResultRenderer
@@ -67,13 +67,9 @@ describe('SingleResultRenderer', () => {
       />
     );
 
-    expect(mount).toHaveBeenCalledWith(
-      expect.any(HTMLElement),
-      'paragraph-1',
-      0,
-      result(DatasetType.TABLE, 'name\tvalue\nfirst\t1'),
-      undefined
-    );
+    expect(screen.getByText('first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Bar Chart/ })).toBeTruthy();
+    expect(mount).not.toHaveBeenCalled();
   });
 
   it('renders IMG as a base64 png', () => {
@@ -119,7 +115,7 @@ describe('SingleResultRenderer', () => {
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, TABLE_DATA)}
+        result={result(DatasetType.ANGULAR, '<div>{{value}}</div>')}
         config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
         onHostResultMount={mount}
       />
@@ -129,7 +125,7 @@ describe('SingleResultRenderer', () => {
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, TABLE_DATA)}
+        result={result(DatasetType.ANGULAR, '<div>{{value}}</div>')}
         config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
         onHostResultMount={replacementMount}
       />
@@ -149,7 +145,7 @@ describe('SingleResultRenderer', () => {
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, TABLE_DATA)}
+        result={result(DatasetType.ANGULAR, '<div>{{value}}</div>')}
         config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
         onHostResultMount={mount}
       />
@@ -159,7 +155,7 @@ describe('SingleResultRenderer', () => {
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, `${TABLE_DATA}\nbob\t40`)}
+        result={result(DatasetType.ANGULAR, '<div>{{nextValue}}</div>')}
         config={{ 0: { graph: { mode: 'table' } } } as NotebookParagraphResultConfigs}
         onHostResultMount={mount}
       />
@@ -171,7 +167,7 @@ describe('SingleResultRenderer', () => {
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, `${TABLE_DATA}\nbob\t40`)}
+        result={result(DatasetType.ANGULAR, '<div>{{nextValue}}</div>')}
         config={{ 0: { graph: { mode: 'multiBarChart' } } } as NotebookParagraphResultConfigs}
         onHostResultMount={mount}
       />
@@ -181,12 +177,12 @@ describe('SingleResultRenderer', () => {
   });
 
   it('gives every host mount a fresh element without losing the React-owned container', () => {
-    const mount = vi.fn(() => () => undefined);
+    const mount = vi.fn((_host: unknown) => () => undefined);
     const { rerender } = render(
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, TABLE_DATA)}
+        result={result(DatasetType.ANGULAR, '<div>{{value}}</div>')}
         onHostResultMount={mount}
       />
     );
@@ -197,7 +193,7 @@ describe('SingleResultRenderer', () => {
       <SingleResultRenderer
         index={0}
         paragraphId="paragraph-1"
-        result={result(DatasetType.TABLE, `${TABLE_DATA}\nbob\t40`)}
+        result={result(DatasetType.ANGULAR, '<div>{{nextValue}}</div>')}
         onHostResultMount={mount}
       />
     );

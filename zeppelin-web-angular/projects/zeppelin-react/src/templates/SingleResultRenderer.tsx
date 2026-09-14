@@ -113,15 +113,7 @@ export const SingleResultRenderer = ({
 
   switch (result.type) {
     case 'TABLE':
-      return paragraphId && onHostResultMount ? (
-        <HostResult
-          paragraphId={paragraphId}
-          index={index}
-          result={result}
-          config={resultConfig}
-          mount={onHostResultMount}
-        />
-      ) : (
+      return (
         <TableVisualization
           result={result}
           config={resultConfig}

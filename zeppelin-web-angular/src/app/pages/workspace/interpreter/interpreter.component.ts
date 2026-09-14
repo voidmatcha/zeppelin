@@ -10,22 +10,39 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
-import { Subject } from 'rxjs';
-import { debounceTime } from 'rxjs/operators';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { firstValueFrom, Subject } from 'rxjs';
+import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
 
 import {
   Interpreter,
+  CreateInterpreterRepositoryForm,
   InterpreterPropertyTypes,
   InterpreterRepository,
   InterpreterSettingRequest
 } from '@zeppelin/interfaces';
-import { InterpreterService } from '@zeppelin/services';
+import { InterpreterService, ReactFeatureService } from '@zeppelin/services';
 
 import { InterpreterCreateRepositoryModalComponent } from './create-repository-modal/create-repository-modal.component';
+
+interface ReactInterpreterPageProps {
+  [key: string]: unknown;
+  settings: Interpreter[];
+  repositories: InterpreterRepository[];
+  availableInterpreters: Interpreter[];
+  propertyTypes: InterpreterPropertyTypes[];
+  onCreateRepository: (repository: CreateInterpreterRepositoryForm) => Promise<void>;
+  onRemoveRepository: (id: string) => Promise<void>;
+  onCreateSetting: (setting: InterpreterSettingRequest) => Promise<void>;
+  onUpdateSetting: (setting: InterpreterSettingRequest) => Promise<void>;
+  onRemoveSetting: (id: string) => Promise<void>;
+  onRestartSetting: (id: string) => Promise<void>;
+  onError: (error: unknown) => void;
+}
 
 @Component({
   selector: 'zeppelin-interpreter',
@@ -44,6 +61,102 @@ export class InterpreterComponent implements OnInit, OnDestroy {
   repositories: InterpreterRepository[] = [];
   availableInterpreters: Interpreter[] = [];
   filteredInterpreterSettings: Interpreter[] = [];
+  useReactInterpreter = false;
+  reactInterpreterFailed = false;
+
+  private readonly destroy$ = new Subject<void>();
+  private lastReactInterpreterProps: ReactInterpreterPageProps | null = null;
+
+  constructor(
+    private interpreterService: InterpreterService,
+    private activatedRoute: ActivatedRoute,
+    private reactFeature: ReactFeatureService,
+    private ngZone: NgZone,
+    private cdr: ChangeDetectorRef,
+    private nzModalService: NzModalService,
+    private nzMessageService: NzMessageService
+  ) {}
+
+  get shouldUseReactInterpreter(): boolean {
+    return this.useReactInterpreter && !this.reactInterpreterFailed;
+  }
+
+  get reactInterpreterProps(): ReactInterpreterPageProps {
+    if (
+      this.lastReactInterpreterProps?.settings !== this.interpreterSettings ||
+      this.lastReactInterpreterProps?.repositories !== this.repositories ||
+      this.lastReactInterpreterProps?.availableInterpreters !== this.availableInterpreters ||
+      this.lastReactInterpreterProps?.propertyTypes !== this.propertyTypes
+    ) {
+      this.lastReactInterpreterProps = {
+        settings: this.interpreterSettings,
+        repositories: this.repositories,
+        availableInterpreters: this.availableInterpreters,
+        propertyTypes: this.propertyTypes,
+        onCreateRepository: this.onReactCreateRepository,
+        onRemoveRepository: this.onReactRemoveRepository,
+        onCreateSetting: this.onReactCreateSetting,
+        onUpdateSetting: this.onReactUpdateSetting,
+        onRemoveSetting: this.onReactRemoveSetting,
+        onRestartSetting: this.onReactRestartSetting,
+        onError: this.onReactInterpreterError
+      };
+    }
+    return this.lastReactInterpreterProps;
+  }
+
+  readonly onReactInterpreterError = (error: unknown): void => {
+    console.error('React interpreter page error', error);
+    this.reactInterpreterFailed = true;
+    this.cdr.markForCheck();
+  };
+
+  readonly onReactCreateRepository = async (repository: CreateInterpreterRepositoryForm): Promise<void> => {
+    await firstValueFrom(this.interpreterService.addRepository(repository));
+    const repositories = await firstValueFrom(this.interpreterService.getRepositories());
+    this.ngZone.run(() => {
+      this.repositories = repositories;
+      this.cdr.markForCheck();
+    });
+  };
+
+  readonly onReactRemoveRepository = async (id: string): Promise<void> => {
+    await firstValueFrom(this.interpreterService.removeRepository(id));
+    this.ngZone.run(() => {
+      this.repositories = this.repositories.filter(repository => repository.id !== id);
+      this.cdr.markForCheck();
+    });
+  };
+
+  readonly onReactCreateSetting = async (setting: InterpreterSettingRequest): Promise<void> => {
+    const created = await firstValueFrom(this.interpreterService.addInterpreterSetting(setting));
+    this.ngZone.run(() => {
+      this.interpreterSettings = [...this.interpreterSettings, created];
+      this.filterInterpreters(this.searchInterpreter);
+    });
+  };
+
+  readonly onReactUpdateSetting = async (setting: InterpreterSettingRequest): Promise<void> => {
+    const updated = await firstValueFrom(this.interpreterService.updateInterpreter(setting));
+    this.ngZone.run(() => {
+      this.interpreterSettings = this.interpreterSettings.map(current =>
+        current.name === updated.name ? updated : current
+      );
+      this.filterInterpreters(this.searchInterpreter);
+    });
+  };
+
+  readonly onReactRemoveSetting = async (id: string): Promise<void> => {
+    await firstValueFrom(this.interpreterService.removeInterpreterSetting(id));
+    this.ngZone.run(() => {
+      this.interpreterSettings = this.interpreterSettings.filter(setting => setting.name !== id);
+      this.filterInterpreters(this.searchInterpreter);
+    });
+  };
+
+  readonly onReactRestartSetting = async (id: string): Promise<void> => {
+    await firstValueFrom(this.interpreterService.restartInterpreterSetting(id));
+  };
 
   onSearchChange(value: string) {
     if (!this.search$) {
@@ -176,14 +289,11 @@ export class InterpreterComponent implements OnInit, OnDestroy {
     });
   }
 
-  constructor(
-    private interpreterService: InterpreterService,
-    private cdr: ChangeDetectorRef,
-    private nzModalService: NzModalService,
-    private nzMessageService: NzMessageService
-  ) {}
-
   ngOnInit() {
+    this.activatedRoute.queryParamMap.pipe(takeUntil(this.destroy$)).subscribe(params => {
+      this.useReactInterpreter = this.reactFeature.isEnabled('interpreter', params);
+      this.cdr.markForCheck();
+    });
     this.getPropertyTypes();
     this.getInterpreterSettings();
     this.getAvailableInterpreters();
@@ -193,6 +303,8 @@ export class InterpreterComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
     this.search$?.complete();
     this.search$ = null;
   }

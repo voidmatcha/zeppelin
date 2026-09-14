@@ -297,6 +297,11 @@ class ProofMessageService {
     }
     return subject;
   }
+
+  closed() {
+    return NEVER;
+  }
+
   receiveMessage() {
     return NEVER;
   }

@@ -19,6 +19,7 @@ import TableOutlined from '@ant-design/icons/TableOutlined';
 import AreaChartOutlined from '@ant-design/icons/AreaChartOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import FileExcelOutlined from '@ant-design/icons/FileExcelOutlined';
+import type { ReactNode } from 'react';
 export type VisualizationMode =
   | 'table'
   | 'multiBarChart'
@@ -34,32 +35,36 @@ interface VisualizationControlsProps {
   onExport: (type: 'csv' | 'xlsx') => void;
 }
 
+const VISUALIZATIONS: ReadonlyArray<{
+  id: VisualizationMode;
+  name: string;
+  icon: ReactNode;
+}> = [
+  { id: 'table', name: 'Table', icon: <TableOutlined /> },
+  { id: 'multiBarChart', name: 'Bar Chart', icon: <BarChartOutlined /> },
+  { id: 'pieChart', name: 'Pie Chart', icon: <PieChartOutlined /> },
+  { id: 'lineChart', name: 'Line Chart', icon: <LineChartOutlined /> },
+  { id: 'stackedAreaChart', name: 'Area Chart', icon: <AreaChartOutlined /> },
+  { id: 'scatterChart', name: 'Scatter Chart', icon: <DotChartOutlined /> }
+];
+
 export const VisualizationControls = ({
   currentMode,
   modeChangeDisabled = false,
   onModeChange,
   onExport
 }: VisualizationControlsProps) => {
-  const visualizations = [
-    { id: 'table', name: 'Table', icon: <TableOutlined /> },
-    { id: 'multiBarChart', name: 'Bar Chart', icon: <BarChartOutlined /> },
-    { id: 'pieChart', name: 'Pie Chart', icon: <PieChartOutlined /> },
-    { id: 'lineChart', name: 'Line Chart', icon: <LineChartOutlined /> },
-    { id: 'stackedAreaChart', name: 'Area Chart', icon: <AreaChartOutlined /> },
-    { id: 'scatterChart', name: 'Scatter Chart', icon: <DotChartOutlined /> }
-  ] as const;
-
   return (
     <div>
       <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
         <Space.Compact>
-          {visualizations.map(viz => (
+          {VISUALIZATIONS.map(viz => (
             <Button
               key={viz.id}
               type={currentMode === viz.id ? 'primary' : 'default'}
               icon={viz.icon}
               disabled={modeChangeDisabled}
-              onClick={() => onModeChange(viz.id as VisualizationMode)}
+              onClick={() => onModeChange(viz.id)}
               size="small"
             >
               {viz.name}

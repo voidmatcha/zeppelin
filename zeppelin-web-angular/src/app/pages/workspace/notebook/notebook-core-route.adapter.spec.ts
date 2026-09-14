@@ -53,6 +53,20 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
       },
       params: { country: 'kr' }
     };
+    note.paragraphs[0].dateStarted = '2026-09-15T00:00:00.000Z';
+    note.paragraphs[0].dateFinished = '2026-09-15T00:01:00.000Z';
+    note.paragraphs[0].dateUpdated = '2026-09-15T00:01:00.000Z';
+    note.paragraphs[0].user = 'alice';
+    note.paragraphs[0].runtimeInfos = {
+      jobUrl: {
+        propertyName: 'jobUrl',
+        label: 'Spark job',
+        tooltip: 'Open Spark UI',
+        group: 'spark',
+        interpreterSettingId: 'spark',
+        values: [{ jobUrl: 'https://example.test/jobs/1', applicationId: 'app-1' }]
+      }
+    };
 
     adapter.enterRoute(note.id, null);
     adapter.acceptNote(note, null);
@@ -61,6 +75,13 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
       title: 'Proof paragraph',
       forms: { country: { name: 'country' } },
       params: { country: 'kr' },
+      execution: {
+        dateStarted: '2026-09-15T00:00:00.000Z',
+        dateFinished: '2026-09-15T00:01:00.000Z',
+        dateUpdated: '2026-09-15T00:01:00.000Z',
+        user: 'alice'
+      },
+      runtimeLinks: [{ label: 'Spark job', tooltip: 'Open Spark UI', url: 'https://example.test/jobs/1' }],
       config: { title: true, lineNumbers: true, runOnSelectionChange: true, completionSupport: true }
     });
   });
@@ -311,11 +332,25 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
   it('maps the existing scheduler configuration into the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
-    note.config = { isZeppelinNotebookCronEnable: true, cron: '0 0/5 * * * ?', releaseresource: true };
+    note.config = {
+      isZeppelinNotebookCronEnable: true,
+      cron: '0 0/5 * * * ?',
+      releaseresource: true,
+      noteFormTitle: 'Filters'
+    };
+    note.info = { cron: 'Last run failed' };
 
     adapter.enterRoute(note.id, null);
     adapter.acceptNote(note, null);
-    expect(adapter.port.getSnapshot().scheduler).toEqual({ cron: '0 0/5 * * * ?', releaseResource: true });
+    expect(adapter.port.getSnapshot().scheduler).toEqual({
+      cron: '0 0/5 * * * ?',
+      releaseResource: true,
+      status: 'Last run failed'
+    });
+    expect(adapter.port.getSnapshot().noteFormTitle).toBe('Filters');
+
+    adapter.acceptNoteFormTitle('Deployment filters');
+    expect(adapter.port.getSnapshot().noteFormTitle).toBe('Deployment filters');
 
     adapter.acceptSchedule(null);
     expect(adapter.port.getSnapshot().scheduler).toBeUndefined();

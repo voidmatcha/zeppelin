@@ -15,60 +15,74 @@
     Manage interpreters settings. You can create / edit / remove settings. Note can bind / unbind these interpreter
     settings.
   </ng-template>
-  <nz-input-group [nzPrefix]="prefixSearch">
-    <input
-      [(ngModel)]="searchInterpreter"
-      (ngModelChange)="onSearchChange($event)"
-      class="search-input"
-      nz-input
-      placeholder="Search interpreters..."
-    />
-  </nz-input-group>
+  @if (!shouldUseReactInterpreter) {
+    <nz-input-group [nzPrefix]="prefixSearch">
+      <input
+        [(ngModel)]="searchInterpreter"
+        (ngModelChange)="onSearchChange($event)"
+        class="search-input"
+        nz-input
+        placeholder="Search interpreters..."
+      />
+    </nz-input-group>
+  }
   <ng-template #prefixSearch><i nz-icon nzType="search" nzTheme="outline"></i></ng-template>
   <ng-template #headerExtra>
-    <button
-      class="repository-trigger"
-      nz-button
-      [nzType]="showRepository ? 'primary' : 'default'"
-      (click)="triggerRepository()"
-    >
-      <i nz-icon nzType="database" nzTheme="outline"></i>
-      Repository
-    </button>
+    @if (!shouldUseReactInterpreter) {
+      <button
+        class="repository-trigger"
+        nz-button
+        [nzType]="showRepository ? 'primary' : 'default'"
+        (click)="triggerRepository()"
+      >
+        <i nz-icon nzType="database" nzTheme="outline"></i>
+        Repository
+      </button>
+    }
   </ng-template>
-  <div animation-collapse [open]="showRepository">
-    <div class="collapse-content">
-      <nz-divider nzType="horizontal"></nz-divider>
-      <h2>Repositories</h2>
-      <p>Available repository lists. These repositories are used to resolve external dependencies of interpreter.</p>
-      @for (repo of repositories; track repo) {
-        <nz-tag
-          class="repo-item"
-          [nz-tooltip]="repo.url"
-          nzTooltipPlacement="topLeft"
-          [nzMode]="['central', 'local'].indexOf(repo.id) === -1 ? 'closeable' : 'default'"
-          (nzOnClose)="$event.preventDefault(); removeRepository(repo)"
-        >
-          {{ repo.id }}
+  @if (!shouldUseReactInterpreter) {
+    <div animation-collapse [open]="showRepository">
+      <div class="collapse-content">
+        <nz-divider nzType="horizontal"></nz-divider>
+        <h2>Repositories</h2>
+        <p>Available repository lists. These repositories are used to resolve external dependencies of interpreter.</p>
+        @for (repo of repositories; track repo) {
+          <nz-tag
+            class="repo-item"
+            [nz-tooltip]="repo.url"
+            nzTooltipPlacement="topLeft"
+            [nzMode]="['central', 'local'].indexOf(repo.id) === -1 ? 'closeable' : 'default'"
+            (nzOnClose)="$event.preventDefault(); removeRepository(repo)"
+          >
+            {{ repo.id }}
+          </nz-tag>
+        }
+        <nz-tag class="editable-tag" (click)="createRepository()">
+          <i nz-icon nzType="plus"></i>
         </nz-tag>
-      }
-      <nz-tag class="editable-tag" (click)="createRepository()">
-        <i nz-icon nzType="plus"></i>
-      </nz-tag>
+      </div>
     </div>
-  </div>
+  }
 </zeppelin-page-header>
 <div class="content">
-  @if (!showCreateSetting) {
-    <nz-card (click)="showCreateSetting = true" class="create-interpreter" nzHoverable>
-      <i nz-icon nzType="plus"></i>
-      Create
-    </nz-card>
-  }
-  @if (showCreateSetting) {
-    <zeppelin-interpreter-item mode="create"></zeppelin-interpreter-item>
-  }
-  @for (item of filteredInterpreterSettings; track item) {
-    <zeppelin-interpreter-item mode="view" [interpreter]="item"></zeppelin-interpreter-item>
+  @if (shouldUseReactInterpreter) {
+    <div
+      data-testid="react-interpreter-page"
+      zeppelin-react-mount="./InterpreterPage"
+      [reactProps]="reactInterpreterProps"
+    ></div>
+  } @else {
+    @if (!showCreateSetting) {
+      <nz-card (click)="showCreateSetting = true" class="create-interpreter" nzHoverable>
+        <i nz-icon nzType="plus"></i>
+        Create
+      </nz-card>
+    }
+    @if (showCreateSetting) {
+      <zeppelin-interpreter-item mode="create"></zeppelin-interpreter-item>
+    }
+    @for (item of filteredInterpreterSettings; track item) {
+      <zeppelin-interpreter-item mode="view" [interpreter]="item"></zeppelin-interpreter-item>
+    }
   }
 </div>

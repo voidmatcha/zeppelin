@@ -77,7 +77,8 @@ module.exports = (_env, argv) => {
           './PublishedParagraph': './src/pages/PublishedParagraph',
           './ParagraphFooter': './src/components/paragraph/ParagraphFooter',
           './NotebookCoreAdapter': './src/components/notebook/NotebookCoreAdapter',
-          './ConfigurationTable': './src/pages/ConfigurationTable'
+          './ConfigurationTable': './src/pages/ConfigurationTable',
+          './InterpreterPage': './src/pages/InterpreterPage'
         }
       }),
       new HtmlWebpackPlugin({

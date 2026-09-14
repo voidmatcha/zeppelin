@@ -58,6 +58,27 @@ const editorLanguage = (paragraph: LoadedParagraph): string | undefined => {
   return directive === 'md' ? 'markdown' : directive;
 };
 
+const paragraphRuntimeLinks = (paragraph: LoadedParagraph) => {
+  const links: Array<{ label: string; tooltip?: string; url: string }> = [];
+  Object.values(paragraph.runtimeInfos ?? {}).forEach(info => {
+    if (!info) {
+      return;
+    }
+    info.values.forEach(value => {
+      Object.entries(value).forEach(([name, url]) => {
+        if (/url$/i.test(name) && url) {
+          links.push({
+            label: info.label || name,
+            ...(info.tooltip ? { tooltip: info.tooltip } : {}),
+            url
+          });
+        }
+      });
+    });
+  });
+  return links;
+};
+
 const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   id: paragraph.id,
   title: paragraph.title,
@@ -67,6 +88,13 @@ const toParagraphSnapshot = (paragraph: LoadedParagraph) => ({
   progress: 0,
   results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
   resultConfigs: paragraph.config?.results,
+  execution: {
+    dateStarted: paragraph.dateStarted,
+    dateFinished: paragraph.dateFinished,
+    dateUpdated: paragraph.dateUpdated,
+    user: paragraph.user
+  },
+  runtimeLinks: paragraphRuntimeLinks(paragraph),
   forms: paragraph.settings.forms as NotebookDynamicForms,
   params: paragraph.settings.params as NotebookFormParams,
   config: {
@@ -89,7 +117,8 @@ const toNotebookSchedule = (note: LoadedNote): NotebookSchedule | undefined =>
   note.config?.isZeppelinNotebookCronEnable
     ? {
         cron: note.config?.cron,
-        releaseResource: Boolean(note.config?.releaseresource)
+        releaseResource: Boolean(note.config?.releaseresource),
+        ...(typeof note.info?.cron === 'string' && note.info.cron ? { status: note.info.cron } : {})
       }
     : undefined;
 
@@ -142,6 +171,7 @@ export class NotebookCoreRouteAdapter {
       noteId: note.id,
       revisionId,
       title: note.name,
+      noteFormTitle: note.config?.noteFormTitle,
       noteForms: note.noteForms as NotebookDynamicForms | undefined,
       noteParams: note.noteParams as NotebookFormParams | undefined,
       scheduler: toNotebookSchedule(note),
@@ -213,6 +243,7 @@ export class NotebookCoreRouteAdapter {
       return;
     }
     this.paragraphViewsById.set(paragraph.id, paragraph);
+    const next = toParagraphSnapshot(paragraph);
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
@@ -222,9 +253,11 @@ export class NotebookCoreRouteAdapter {
       language: editorLanguage(paragraph),
       results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
       resultConfigs: paragraph.config?.results,
+      execution: next.execution,
+      runtimeLinks: next.runtimeLinks,
       forms: paragraph.settings.forms as NotebookDynamicForms,
       params: paragraph.settings.params as NotebookFormParams,
-      config: toParagraphSnapshot(paragraph).config,
+      config: next.config,
       source: 'server'
     });
   }
@@ -245,6 +278,8 @@ export class NotebookCoreRouteAdapter {
       paragraphId: paragraph.id,
       title: next.title,
       language: next.language,
+      execution: next.execution,
+      runtimeLinks: next.runtimeLinks,
       forms: next.forms,
       params: next.params,
       config: next.config,
@@ -411,6 +446,10 @@ export class NotebookCoreRouteAdapter {
 
   acceptNoteUpdated(title: string): void {
     this.runtime.apply({ type: 'note-updated', title });
+  }
+
+  acceptNoteFormTitle(title: string): void {
+    this.runtime.apply({ type: 'note-form-title-updated', title });
   }
 
   acceptNoteForms(noteForms: NotebookDynamicForms, noteParams: NotebookFormParams): void {

@@ -11,3 +11,5 @@
  */
 
 export * from './PublishedParagraph';
+export { InterpreterPage } from './InterpreterPage';
+export type { InterpreterPageProps } from './InterpreterPage';
