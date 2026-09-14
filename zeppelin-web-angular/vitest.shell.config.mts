@@ -48,6 +48,22 @@ export default defineConfig({
         find: /^@zeppelin\/environment$/,
         replacement: fileURLToPath(new URL('./src/environments/environment.ts', import.meta.url))
       },
+      {
+        find: /^@zeppelin\/notebook-core$/,
+        replacement: fileURLToPath(new URL('./projects/zeppelin-notebook-core/src/public-api.ts', import.meta.url))
+      },
+      {
+        find: /^@zeppelin\/interfaces$/,
+        replacement: fileURLToPath(new URL('./src/app/interfaces/public-api.ts', import.meta.url))
+      },
+      {
+        find: /^@zeppelin\/services\/ng-z\.service$/,
+        replacement: fileURLToPath(new URL('./src/app/services/ng-z.service.ts', import.meta.url))
+      },
+      {
+        find: /^@zeppelin\/services\/message\.service$/,
+        replacement: fileURLToPath(new URL('./src/app/services/message.service.ts', import.meta.url))
+      },
       { find: /^@zeppelin\/(.*)$/, replacement: `${fileURLToPath(new URL('./src/app', import.meta.url))}/$1` }
     ]
   },

@@ -35,6 +35,8 @@ assertType<(props: NotebookCoreRemoteProps) => void>(props => {
   props.core.getSnapshot = () => snapshot;
   // @ts-expect-error The core subscription method is readonly.
   props.core.subscribe = () => () => undefined;
+  // @ts-expect-error The core command dispatcher is readonly.
+  props.core.dispatch = () => false;
 });
 
 const fakeCorePort = (initialSnapshot: NotebookCoreSnapshot) => {
@@ -45,7 +47,8 @@ const fakeCorePort = (initialSnapshot: NotebookCoreSnapshot) => {
     subscribe: listener => {
       listeners.add(listener);
       return () => listeners.delete(listener);
-    }
+    },
+    dispatch: () => false
   };
 
   return {
@@ -60,19 +63,71 @@ const fakeCorePort = (initialSnapshot: NotebookCoreSnapshot) => {
 };
 
 describe('notebook core host and remote contract', () => {
-  it('demonstrates snapshot subscription and cleanup with a fake host-owned port', () => {
-    const host = fakeCorePort({ noteId: '2A94M5J1Z', revisionId: null });
+  it('lets host and remote share one read-only snapshot source through getSnapshot and subscribe', () => {
+    const host = fakeCorePort({
+      version: 0,
+      noteId: '2A94M5J1Z',
+      revisionId: null,
+      phase: 'idle',
+      title: null,
+      noteForms: {},
+      noteParams: {},
+      paragraphs: [],
+      error: null
+    });
     const remoteProps: NotebookCoreRemoteProps = { core: host.core };
     const snapshots: unknown[] = [];
 
     expect(remoteProps.core).toBe(host.core);
 
     const unsubscribe = remoteProps.core.subscribe(() => snapshots.push(remoteProps.core.getSnapshot()));
-    host.publish({ noteId: '2A94M5J1Z', revisionId: 'rev-1' });
+    host.publish({
+      version: 1,
+      noteId: '2A94M5J1Z',
+      revisionId: 'rev-1',
+      phase: 'loading',
+      title: null,
+      noteForms: {},
+      noteParams: {},
+      paragraphs: [],
+      error: null
+    });
     unsubscribe();
-    host.publish({ noteId: '2A94M5J1Z', revisionId: 'rev-2' });
+    host.publish({
+      version: 2,
+      noteId: '2A94M5J1Z',
+      revisionId: 'rev-2',
+      phase: 'ready',
+      title: 'Notebook',
+      noteForms: {},
+      noteParams: {},
+      paragraphs: [],
+      error: null
+    });
 
-    expect(snapshots).toEqual([{ noteId: '2A94M5J1Z', revisionId: 'rev-1' }]);
-    expect(remoteProps.core.getSnapshot()).toEqual({ noteId: '2A94M5J1Z', revisionId: 'rev-2' });
+    expect(snapshots).toEqual([
+      {
+        version: 1,
+        noteId: '2A94M5J1Z',
+        revisionId: 'rev-1',
+        phase: 'loading',
+        title: null,
+        noteForms: {},
+        noteParams: {},
+        paragraphs: [],
+        error: null
+      }
+    ]);
+    expect(remoteProps.core.getSnapshot()).toEqual({
+      version: 2,
+      noteId: '2A94M5J1Z',
+      revisionId: 'rev-2',
+      phase: 'ready',
+      title: 'Notebook',
+      noteForms: {},
+      noteParams: {},
+      paragraphs: [],
+      error: null
+    });
   });
 });

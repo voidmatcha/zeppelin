@@ -143,7 +143,11 @@ export class NotebookParagraphComponent
 
   @Output() readonly saveNoteTimer = new EventEmitter();
   @Output() readonly triggerSaveParagraph = new EventEmitter<string>();
+  @Output() readonly runParagraphRequested = new EventEmitter<string>();
+  @Output() readonly cancelParagraphRequested = new EventEmitter<string>();
+  @Output() readonly patchParagraphRequested = new EventEmitter<{ paragraphId: string; patch: string }>();
   @Output() readonly selected = new EventEmitter<string>();
+  @Output() readonly paragraphTextChanged = new EventEmitter<{ paragraphId: string; text: string }>();
   @Output() readonly selectAtIndex = new EventEmitter<number>();
   @Output() readonly openSearchMenu = new EventEmitter();
 
@@ -192,6 +196,7 @@ export class NotebookParagraphComponent
   textChanged(text: string) {
     this.dirtyText = text;
     this.paragraph.text = text;
+    this.paragraphTextChanged.emit({ paragraphId: this.paragraph.id, text });
     if (this.dirtyText !== this.originalText) {
       if (this.collaborativeMode) {
         this.sendPatch();
@@ -204,7 +209,7 @@ export class NotebookParagraphComponent
   sendPatch() {
     const { patch, originalText } = makeParagraphPatch(this.diffMatchPatch, this.originalText, this.dirtyText);
     this.originalText = originalText;
-    this.messageService.patchParagraph(this.paragraph.id, this.note.id, patch);
+    this.patchParagraphRequested.emit({ paragraphId: this.paragraph.id, patch });
   }
 
   startSaveTimer() {
@@ -250,7 +255,7 @@ export class NotebookParagraphComponent
     if (dirtyText === undefined || dirtyText === this.originalText) {
       return;
     }
-    this.commitParagraph();
+    this.triggerSaveParagraph.emit(this.paragraph.id);
     this.originalText = dirtyText;
     this.dirtyText = undefined;
     this.cdr.markForCheck();
@@ -409,7 +414,7 @@ export class NotebookParagraphComponent
         this.runParagraphUsingSpell(text, magic, propagated);
         this.runParagraphAfter(text);
       } else {
-        this.runParagraphUsingBackendInterpreter(text);
+        this.runParagraphRequested.emit(this.paragraph.id);
         this.runParagraphAfter(text);
       }
     }
@@ -683,6 +688,10 @@ export class NotebookParagraphComponent
 
   handleCancel() {
     this.cancelParagraph();
+  }
+
+  override cancelParagraph() {
+    this.cancelParagraphRequested.emit(this.paragraph.id);
   }
 
   handleDelete() {

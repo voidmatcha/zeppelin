@@ -398,6 +398,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
         case GET_NOTE:
           getNote(conn, context, receivedMessage);
           break;
+        case GET_PARAGRAPH_OUTPUT:
+          getParagraphOutput(conn, context, receivedMessage);
+          break;
         case RELOAD_NOTE:
           reloadNote(conn, context, receivedMessage);
           break;
@@ -696,7 +699,10 @@ public class NotebookServer implements AngularObjectRegistryListener,
                 setting.getInterpreterInfos(), true));
           }
         }
-        conn.send(serializeMessage(new Message(OP.INTERPRETER_BINDINGS).put("interpreterBindings", settingList)));
+        conn.send(serializeMessage(
+            new Message(OP.INTERPRETER_BINDINGS)
+                .withMsgId(fromMessage.msgId)
+                .put("interpreterBindings", settingList)));
         return null;
       });
   }
@@ -734,7 +740,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
       });
     if (permitted) {
       conn.send(serializeMessage(
-          new Message(OP.INTERPRETER_BINDINGS).put("interpreterBindings", settingList)));
+          new Message(OP.INTERPRETER_BINDINGS)
+              .withMsgId(fromMessage.msgId)
+              .put("interpreterBindings", settingList)));
     }
   }
 
@@ -867,6 +875,29 @@ public class NotebookServer implements AngularObjectRegistryListener,
             updateAngularObjectRegistry(conn, note);
             sendAllAngularObjects(note, context.getAutheInfo().getUser(),
                 conn);
+          }
+        }, null);
+  }
+
+  private void getParagraphOutput(NotebookSocket conn, ServiceContext context, Message fromMessage) throws IOException {
+    String noteId = (String) fromMessage.get("noteId");
+    String paragraphId = (String) fromMessage.get("paragraphId");
+    if (noteId == null || paragraphId == null) {
+      return;
+    }
+    getNotebookService().getNote(noteId, context,
+        new WebSocketServiceCallback<Note>(conn) {
+          @Override
+          public void onSuccess(Note note, ServiceContext context) throws IOException {
+            Paragraph paragraph = note.getParagraph(paragraphId);
+            if (paragraph == null) {
+              return;
+            }
+            conn.send(serializeMessage(new Message(OP.PARAGRAPH_OUTPUT_SNAPSHOT)
+                .put("noteId", noteId)
+                .put("paragraphId", paragraphId)
+                .put("outputSequence", paragraph.getOutputSequence())
+                .put("results", paragraph.getOutputSnapshot())));
           }
         }, null);
   }
@@ -1669,7 +1700,10 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
               List<Revision> revisions = getNotebook().processNote(noteId,
                 note -> getNotebook().listRevisionHistory(noteId, note.getPath(), context.getAutheInfo()));
-              conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY).put("revisionList", revisions)));
+              conn.send(serializeMessage(
+                  new Message(OP.LIST_REVISION_HISTORY)
+                      .withMsgId(fromMessage.msgId)
+                      .put("revisionList", revisions)));
             } else {
               conn.send(serializeMessage(
                   new Message(OP.ERROR_INFO).put("info",
@@ -1689,7 +1723,10 @@ public class NotebookServer implements AngularObjectRegistryListener,
           @Override
           public void onSuccess(List<Revision> revisions, ServiceContext context) throws IOException {
             super.onSuccess(revisions, context);
-            conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY).put("revisionList", revisions)));
+            conn.send(serializeMessage(
+                new Message(OP.LIST_REVISION_HISTORY)
+                    .withMsgId(fromMessage.msgId)
+                    .put("revisionList", revisions)));
           }
         });
   }
@@ -1705,7 +1742,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
             Note reloadedNote = getNotebook().loadNoteFromRepo(noteId, context.getAutheInfo());
-            conn.send(serializeMessage(new Message(OP.SET_NOTE_REVISION).put("status", true)));
+            conn.send(serializeMessage(
+                new Message(OP.SET_NOTE_REVISION).withMsgId(fromMessage.msgId).put("status", true)));
             broadcastNote(reloadedNote);
           }
         });
@@ -1762,21 +1800,35 @@ public class NotebookServer implements AngularObjectRegistryListener,
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
-    Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
-        .put("noteId", noteId)
-        .put("paragraphId", paragraphId)
-        .put("index", index)
-        .put("data", output);
     try {
-      getNotebook().processNote(noteId, note -> {
-        if (note == null) {
-          LOGGER.warn("Note {} not found", noteId);
-        } else if (!note.isPersonalizedMode()) {
-          // Streaming events do not identify the user that owns the execution.
+      getNotebook().processNote(noteId,
+        note -> {
+          if (note == null) {
+            LOGGER.warn("Note {} not found", noteId);
+            return null;
+          }
+          Paragraph paragraph = note.getParagraph(paragraphId);
+          if (paragraph == null) {
+            LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
+            return null;
+          }
+          if (note.isPersonalizedMode()) {
+            // Streaming events carry no owner. The shared outputBuffer is what checkpointOutput
+            // saves as the shared result and what other users' paragraphs are cloned from, so
+            // one user's output must not be written there. Personalized clients get their
+            // user-specific terminal snapshot instead.
+            return null;
+          }
+          paragraph.appendOutputBuffer(index, output);
+          Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
+              .put("noteId", noteId)
+              .put("paragraphId", paragraphId)
+              .put("index", index)
+              .put("data", output)
+              .put("outputSequence", paragraph.nextOutputSequence());
           connectionManager.broadcast(noteId, msg);
-        }
-        return null;
-      });
+          return null;
+        });
     } catch (IOException e) {
       LOGGER.warn("Fail to call onOutputAppend", e);
     }
@@ -1793,17 +1845,16 @@ public class NotebookServer implements AngularObjectRegistryListener,
     if (!sendParagraphStatusToFrontend()) {
       return;
     }
-    Message msg = new Message(OP.PARAGRAPH_UPDATE_OUTPUT)
-        .put("noteId", noteId)
-        .put("paragraphId", paragraphId)
-        .put("index", index)
-        .put("type", type)
-        .put("data", output);
     try {
       getNotebook().processNote(noteId,
         note -> {
           if (note == null) {
             LOGGER.warn("Note {} not found", noteId);
+            return null;
+          }
+          Paragraph paragraph = note.getParagraph(paragraphId);
+          if (paragraph == null) {
+            LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
             return null;
           }
           if (note.isPersonalizedMode()) {
@@ -1813,7 +1864,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
             // user-specific terminal snapshot instead.
             return null;
           }
-          note.getParagraph(paragraphId).updateOutputBuffer(index, type, output);
+          paragraph.updateOutputBuffer(index, type, output);
+          Message msg = new Message(OP.PARAGRAPH_UPDATE_OUTPUT)
+              .put("noteId", noteId)
+              .put("paragraphId", paragraphId)
+              .put("index", index)
+              .put("type", type)
+              .put("data", output)
+              .put("outputSequence", paragraph.nextOutputSequence());
           connectionManager.broadcast(noteId, msg);
           return null;
         });

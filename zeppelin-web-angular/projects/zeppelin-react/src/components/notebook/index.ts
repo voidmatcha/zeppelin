@@ -10,5 +10,5 @@
  * limitations under the License.
  */
 
-export * from './host-remote-contract';
-export * from './notebook-core';
+export { NotebookCoreAdapter, mount as mountNotebookCoreAdapter } from './NotebookCoreAdapter';
+export type { NotebookCoreAdapterMountHandle, NotebookCoreAdapterProps } from './NotebookCoreAdapter';

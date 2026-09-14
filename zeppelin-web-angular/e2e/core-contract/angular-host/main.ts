@@ -51,6 +51,18 @@ declare global {
   }
 }
 
+const createSnapshot = (noteId: string, revisionId: string | null): NotebookCoreSnapshot => ({
+  version: 0,
+  noteId,
+  revisionId,
+  phase: 'idle',
+  title: null,
+  noteForms: {},
+  noteParams: {},
+  paragraphs: [],
+  error: null
+});
+
 @Component({
   selector: 'zeppelin-notebook-core-port-proof-app',
   standalone: false,
@@ -136,7 +148,8 @@ export class NotebookCorePortProofComponent {
     subscribe: listener => {
       this.listeners.add(listener);
       return () => this.listeners.delete(listener);
-    }
+    },
+    dispatch: () => false
   });
   readonly reactProps = {
     core: this.core,
@@ -150,7 +163,7 @@ export class NotebookCorePortProofComponent {
       window.__zeppelinNotebookCorePortProof.receivedCore = receivedCore;
     }
   };
-  private snapshot: NotebookCoreSnapshot = { noteId: 'note-host-owned', revisionId: null };
+  private snapshot = createSnapshot('note-host-owned', null);
   private readonly listeners = new Set<() => void>();
 
   constructor() {
@@ -158,7 +171,7 @@ export class NotebookCorePortProofComponent {
   }
 
   publishRevision(): void {
-    this.snapshot = { noteId: 'note-host-owned', revisionId: 'revision-from-angular-host' };
+    this.snapshot = { ...this.snapshot, version: this.snapshot.version + 1, revisionId: 'revision-from-angular-host' };
     for (const listener of this.listeners) {
       listener();
     }
@@ -172,9 +185,10 @@ export class NotebookRouteBoundaryPortHost {
     subscribe: listener => {
       this.listeners.add(listener);
       return () => this.listeners.delete(listener);
-    }
+    },
+    dispatch: () => false
   });
-  private snapshot: NotebookCoreSnapshot = { noteId: '', revisionId: null };
+  private snapshot = createSnapshot('', null);
   private readonly listeners = new Set<() => void>();
 
   constructor() {
@@ -189,8 +203,13 @@ export class NotebookRouteBoundaryPortHost {
     };
   }
 
-  publish(snapshot: NotebookCoreSnapshot): void {
-    this.snapshot = snapshot;
+  publish(route: Pick<NotebookCoreSnapshot, 'noteId' | 'revisionId'>): void {
+    this.snapshot = {
+      ...this.snapshot,
+      version: this.snapshot.version + 1,
+      noteId: route.noteId,
+      revisionId: route.revisionId
+    };
     for (const listener of this.listeners) {
       listener();
     }

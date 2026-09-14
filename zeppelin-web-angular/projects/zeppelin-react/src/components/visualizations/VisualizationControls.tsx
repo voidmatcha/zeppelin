@@ -19,15 +19,27 @@ import TableOutlined from '@ant-design/icons/TableOutlined';
 import AreaChartOutlined from '@ant-design/icons/AreaChartOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import FileExcelOutlined from '@ant-design/icons/FileExcelOutlined';
-import type { VisualizationMode } from '@zeppelin/sdk';
+export type VisualizationMode =
+  | 'table'
+  | 'multiBarChart'
+  | 'pieChart'
+  | 'lineChart'
+  | 'stackedAreaChart'
+  | 'scatterChart';
 
 interface VisualizationControlsProps {
   currentMode: VisualizationMode;
+  modeChangeDisabled?: boolean;
   onModeChange: (mode: VisualizationMode) => void;
   onExport: (type: 'csv' | 'xlsx') => void;
 }
 
-export const VisualizationControls = ({ currentMode, onModeChange, onExport }: VisualizationControlsProps) => {
+export const VisualizationControls = ({
+  currentMode,
+  modeChangeDisabled = false,
+  onModeChange,
+  onExport
+}: VisualizationControlsProps) => {
   const visualizations = [
     { id: 'table', name: 'Table', icon: <TableOutlined /> },
     { id: 'multiBarChart', name: 'Bar Chart', icon: <BarChartOutlined /> },
@@ -46,6 +58,7 @@ export const VisualizationControls = ({ currentMode, onModeChange, onExport }: V
               key={viz.id}
               type={currentMode === viz.id ? 'primary' : 'default'}
               icon={viz.icon}
+              disabled={modeChangeDisabled}
               onClick={() => onModeChange(viz.id as VisualizationMode)}
               size="small"
             >

@@ -11,29 +11,50 @@
  */
 
 import { Alert } from 'antd';
-import { HTMLRenderer, TextRenderer, ImageRenderer, TableVisualization } from '@/components';
+import { HTMLRenderer } from '@/components/renderers/HTMLRenderer';
+import { ImageRenderer } from '@/components/renderers/ImageRenderer';
+import { TextRenderer } from '@/components/renderers/TextRenderer';
+import { TableVisualization } from '@/components/visualizations/TableVisualization';
 import { checkAndReplaceCarriageReturn } from '@/utils';
-import { DatasetType, ParagraphConfigResult, ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+
+type NotebookParagraphResult = Readonly<{ type: string; data: string }>;
+type NotebookResultConfig = Readonly<{ graph: unknown }>;
+type NotebookParagraphResultConfigs = Readonly<Record<string, NotebookResultConfig>>;
 
 interface SingleResultRendererProps {
-  result: ParagraphIResultsMsgItem;
+  result: NotebookParagraphResult;
   index: number;
-  config?: ParagraphConfigResults;
+  config?: NotebookParagraphResultConfigs;
+  modeChangeDisabled?: boolean;
+  onConfigChange?: (config: NotebookResultConfig) => void;
 }
 
-export const SingleResultRenderer = ({ result, index, config }: SingleResultRendererProps) => {
-  const resultConfig: ParagraphConfigResult | undefined = config?.[index];
+export const SingleResultRenderer = ({
+  result,
+  index,
+  config,
+  modeChangeDisabled,
+  onConfigChange
+}: SingleResultRendererProps) => {
+  const resultConfig = config?.[index];
 
   switch (result.type) {
-    case DatasetType.TABLE:
-      return <TableVisualization result={result} config={resultConfig} />;
-    case DatasetType.HTML:
+    case 'TABLE':
+      return (
+        <TableVisualization
+          result={result}
+          config={resultConfig}
+          modeChangeDisabled={modeChangeDisabled}
+          onConfigChange={onConfigChange}
+        />
+      );
+    case 'HTML':
       return <HTMLRenderer html={result.data} />;
-    case DatasetType.TEXT:
+    case 'TEXT':
       return <TextRenderer text={checkAndReplaceCarriageReturn(result.data)} />;
-    case DatasetType.IMG:
+    case 'IMG':
       return <ImageRenderer imageData={result.data} />;
-    case DatasetType.ANGULAR:
+    case 'ANGULAR':
       return (
         <Alert
           message="Angular Component"

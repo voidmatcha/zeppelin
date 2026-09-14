@@ -11,126 +11,136 @@
 -->
 
 <div class="bar" [class.simple]="looknfeel !== 'default'">
-  <div class="title" role="heading" aria-level="1" data-testid="notebook-title">
-    <zeppelin-elastic-input
-      nz-tooltip
-      [nzTooltipTitle]="note.path"
-      [readonly]="revisionView"
-      [value]="note.name"
-      (valueUpdate)="updateNoteName($event)"
-    ></zeppelin-elastic-input>
-  </div>
+  @if (!reactNotebook) {
+    <div class="title" role="heading" aria-level="1" data-testid="notebook-title">
+      <zeppelin-elastic-input
+        nz-tooltip
+        [nzTooltipTitle]="note.path"
+        [readonly]="revisionView"
+        [value]="note.name"
+        (valueUpdate)="updateNoteName($event)"
+      ></zeppelin-elastic-input>
+    </div>
+  }
   <div class="control">
-    <nz-space-compact nzSize="small">
-      <button
-        nz-button
-        nz-popconfirm
-        nzPopconfirmTitle="Run all paragraphs?"
-        nz-tooltip
-        nzTooltipTitle="Run all paragraphs"
-        (nzOnConfirm)="runAllParagraphs()"
-        [disabled]="revisionView || isNoteParagraphRunning"
-      >
-        <i nz-icon nzType="play-circle" nzTheme="outline"></i>
-      </button>
-      <button
-        nz-button
-        nz-popconfirm
-        nzPopconfirmTitle="Cancel all paragraphs?"
-        nz-tooltip
-        nzTooltipTitle="Cancel all paragraphs"
-        (nzOnConfirm)="cancelAllParagraphs()"
-        [disabled]="revisionView || !isNoteParagraphRunning"
-      >
-        <i nz-icon nzType="pause-circle" nzTheme="outline"></i>
-      </button>
-      @if (!viewOnly) {
-        <button
-          nz-button
-          nz-tooltip
-          nzTooltipTitle="Show/hide the code"
-          (click)="toggleAllEditor()"
-          [disabled]="revisionView"
-        >
-          <i nz-icon [nzType]="editorHide ? 'fullscreen' : 'fullscreen-exit'" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
-        <button
-          nz-button
-          nz-tooltip
-          nzTooltipTitle="Show/hide the output"
-          (click)="toggleAllTable()"
-          [disabled]="revisionView"
-        >
-          <i nz-icon [nzType]="tableHide ? 'book' : 'read'" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
+    @if (!reactNotebook) {
+      <nz-space-compact nzSize="small">
         <button
           nz-button
           nz-popconfirm
-          nzPopconfirmTitle="Do you want to clear all output?"
+          nzPopconfirmTitle="Run all paragraphs?"
           nz-tooltip
-          nzTooltipTitle="Clear all output"
-          [disabled]="revisionView"
-          (nzOnConfirm)="clearAllParagraphOutput()"
+          nzTooltipTitle="Run all paragraphs"
+          (nzOnConfirm)="runAllParagraphs()"
+          [disabled]="revisionView || isNoteParagraphRunning"
         >
-          <i nz-icon nzType="fire" nzTheme="outline"></i>
+          <i nz-icon nzType="play-circle" nzTheme="outline"></i>
         </button>
-      }
-      @if (!viewOnly) {
-        <button nz-button nz-tooltip nzTooltipTitle="Clone this note" (click)="cloneNote()" [disabled]="revisionView">
-          <i nz-icon nzType="copy" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
-        <button nz-button nz-tooltip nzTooltipTitle="Export this note" (click)="exportNote()" [disabled]="revisionView">
-          <i nz-icon nzType="download" nzTheme="outline"></i>
-        </button>
-      }
-      @if (!viewOnly) {
         <button
           nz-button
+          nz-popconfirm
+          nzPopconfirmTitle="Cancel all paragraphs?"
           nz-tooltip
-          nzTooltipTitle="Reload from note file"
-          (click)="reloadNote()"
-          [disabled]="revisionView"
+          nzTooltipTitle="Cancel all paragraphs"
+          (nzOnConfirm)="cancelAllParagraphs()"
+          [disabled]="revisionView || !isNoteParagraphRunning"
         >
-          <i nz-icon nzType="reload" nzTheme="outline"></i>
+          <i nz-icon nzType="pause-circle" nzTheme="outline"></i>
         </button>
-      }
-      @if (principal && principal !== 'anonymous' && !viewOnly) {
-        @switch (note.config.personalizedMode) {
-          @case ('true') {
-            <button
-              nz-tooltip
-              nzTooltipTitle="Switch to collaboration mode"
-              aria-label="Switch to collaboration mode"
-              [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
-              nz-button
-              nzType="primary"
-              (click)="toggleNotePersonalizedMode()"
-            >
-              <i nz-icon nzType="user" nzTheme="outline"></i>
-            </button>
-          }
-          @default {
-            <button
-              nz-tooltip
-              nzTooltipTitle="Switch to personal mode"
-              aria-label="Switch to personal mode"
-              nz-button
-              [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
-              (click)="toggleNotePersonalizedMode()"
-            >
-              <i nz-icon nzType="team" nzTheme="outline"></i>
-            </button>
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Show/hide the code"
+            (click)="toggleAllEditor()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon [nzType]="editorHide ? 'fullscreen' : 'fullscreen-exit'" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Show/hide the output"
+            (click)="toggleAllTable()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon [nzType]="tableHide ? 'book' : 'read'" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-popconfirm
+            nzPopconfirmTitle="Do you want to clear all output?"
+            nz-tooltip
+            nzTooltipTitle="Clear all output"
+            [disabled]="revisionView"
+            (nzOnConfirm)="clearAllParagraphOutput()"
+          >
+            <i nz-icon nzType="fire" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button nz-button nz-tooltip nzTooltipTitle="Clone this note" (click)="cloneNote()" [disabled]="revisionView">
+            <i nz-icon nzType="copy" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Export this note"
+            (click)="exportNote()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon nzType="download" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!viewOnly) {
+          <button
+            nz-button
+            nz-tooltip
+            nzTooltipTitle="Reload from note file"
+            (click)="reloadNote()"
+            [disabled]="revisionView"
+          >
+            <i nz-icon nzType="reload" nzTheme="outline"></i>
+          </button>
+        }
+        @if (principal && principal !== 'anonymous' && !viewOnly) {
+          @switch (note.config.personalizedMode) {
+            @case ('true') {
+              <button
+                nz-tooltip
+                nzTooltipTitle="Switch to collaboration mode"
+                aria-label="Switch to collaboration mode"
+                [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
+                nz-button
+                nzType="primary"
+                (click)="toggleNotePersonalizedMode()"
+              >
+                <i nz-icon nzType="user" nzTheme="outline"></i>
+              </button>
+            }
+            @default {
+              <button
+                nz-tooltip
+                nzTooltipTitle="Switch to personal mode"
+                aria-label="Switch to personal mode"
+                nz-button
+                [disabled]="revisionView || !isOwner || isNoteParagraphRunning"
+                (click)="toggleNotePersonalizedMode()"
+              >
+                <i nz-icon nzType="team" nzTheme="outline"></i>
+              </button>
+            }
           }
         }
-      }
-    </nz-space-compact>
-    @if (isRevisionSupported) {
+      </nz-space-compact>
+    }
+    @if (isRevisionSupported && !reactNotebook) {
       <nz-space-compact nzSize="small">
         @if (!viewOnly) {
           <button
@@ -193,45 +203,47 @@
         </nz-dropdown-menu>
       </nz-space-compact>
     }
-    <nz-space-compact nzSize="small">
-      <button
-        nz-button
-        nz-dropdown
-        [(nzVisible)]="isSearchMenuVisible"
-        [nzDropdownMenu]="searchMenu"
-        nzTrigger="click"
-        nz-tooltip
-        nzTooltipTitle="Search code"
-        nzTooltipTrigger="hover"
-        (nzVisibleChange)="onSearchMenuOpenChange($event)"
-      >
-        <i nz-icon nzType="search" nzTheme="outline"></i>
-      </button>
-      <!-- Search Code Dropdown UI -->
-      <nz-dropdown-menu #searchMenu="nzDropdownMenu">
-        <div class="dropdown-menu search-code">
-          <div class="search-code-row">
-            <nz-input-group nzAddOnBefore="Find">
-              <input type="text" nz-input #searchInput [(ngModel)]="searchText" (ngModelChange)="searchCode()" />
-            </nz-input-group>
-            <nz-space-compact class="search-row-btn-group">
-              <button nz-button (click)="onFindPrevClick(searchText)"><i nz-icon nzType="left"></i></button>
-              <button nz-button (click)="onFindNextClick(searchText)"><i nz-icon nzType="right"></i></button>
-            </nz-space-compact>
+    @if (!reactNotebook) {
+      <nz-space-compact nzSize="small">
+        <button
+          nz-button
+          nz-dropdown
+          [(nzVisible)]="isSearchMenuVisible"
+          [nzDropdownMenu]="searchMenu"
+          nzTrigger="click"
+          nz-tooltip
+          nzTooltipTitle="Search code"
+          nzTooltipTrigger="hover"
+          (nzVisibleChange)="onSearchMenuOpenChange($event)"
+        >
+          <i nz-icon nzType="search" nzTheme="outline"></i>
+        </button>
+        <!-- Search Code Dropdown UI -->
+        <nz-dropdown-menu #searchMenu="nzDropdownMenu">
+          <div class="dropdown-menu search-code">
+            <div class="search-code-row">
+              <nz-input-group nzAddOnBefore="Find">
+                <input type="text" nz-input #searchInput [(ngModel)]="searchText" (ngModelChange)="searchCode()" />
+              </nz-input-group>
+              <nz-space-compact class="search-row-btn-group">
+                <button nz-button (click)="onFindPrevClick(searchText)"><i nz-icon nzType="left"></i></button>
+                <button nz-button (click)="onFindNextClick(searchText)"><i nz-icon nzType="right"></i></button>
+              </nz-space-compact>
+            </div>
+            <div class="search-code-row">
+              <nz-input-group nzAddOnBefore="Replace">
+                <input type="text" nz-input [(ngModel)]="replaceText" />
+              </nz-input-group>
+              <nz-space-compact class="search-row-btn-group">
+                <button nz-button (click)="onReplaceClick(searchText, replaceText)">Replace</button>
+                <button nz-button (click)="onReplaceAllClick(searchText, replaceText)">All</button>
+              </nz-space-compact>
+            </div>
           </div>
-          <div class="search-code-row">
-            <nz-input-group nzAddOnBefore="Replace">
-              <input type="text" nz-input [(ngModel)]="replaceText" />
-            </nz-input-group>
-            <nz-space-compact class="search-row-btn-group">
-              <button nz-button (click)="onReplaceClick(searchText, replaceText)">Replace</button>
-              <button nz-button (click)="onReplaceAllClick(searchText, replaceText)">All</button>
-            </nz-space-compact>
-          </div>
-        </div>
-      </nz-dropdown-menu>
-    </nz-space-compact>
-    @if (!viewOnly) {
+        </nz-dropdown-menu>
+      </nz-space-compact>
+    }
+    @if (!reactNotebook && !viewOnly) {
       <nz-space-compact nzSize="small">
         @if (isTrash) {
           <button
@@ -257,7 +269,7 @@
         }
       </nz-space-compact>
     }
-    @if (collaborativeMode) {
+    @if (collaborativeMode && !reactNotebook) {
       <nz-space-compact nzSize="small">
         <button
           nz-button
@@ -270,7 +282,7 @@
         </button>
       </nz-space-compact>
     }
-    @if (note.config.isZeppelinNotebookCronEnable && !viewOnly) {
+    @if (note.config.isZeppelinNotebookCronEnable && !viewOnly && !reactNotebook) {
       <nz-space-compact nzSize="small">
         <button
           nz-button
@@ -328,32 +340,34 @@
       </nz-space-compact>
     }
   </div>
-  <div class="setting">
-    <nz-space-compact nzSize="small">
-      @if (!revisionView) {
-        <button nz-button nzNoAnimation (click)="showShortCut()">
-          <i nz-icon nzType="info-circle" nzTheme="outline"></i>
+  @if (!reactNotebook) {
+    <div class="setting">
+      <nz-space-compact nzSize="small">
+        @if (!revisionView) {
+          <button nz-button nzNoAnimation (click)="showShortCut()">
+            <i nz-icon nzType="info-circle" nzTheme="outline"></i>
+          </button>
+        }
+        @if (!revisionView) {
+          <button nz-button nzNoAnimation (click)="toggleExtension('interpreter')">
+            <i nz-icon nzType="setting" [nzTheme]="activatedExtension === 'interpreter' ? 'fill' : 'outline'"></i>
+          </button>
+        }
+        <button nz-button nzNoAnimation (click)="togglePermissions()">
+          <i nz-icon nzType="lock" [nzTheme]="activatedExtension === 'permissions' ? 'fill' : 'outline'"></i>
         </button>
-      }
-      @if (!revisionView) {
-        <button nz-button nzNoAnimation (click)="toggleExtension('interpreter')">
-          <i nz-icon nzType="setting" [nzTheme]="activatedExtension === 'interpreter' ? 'fill' : 'outline'"></i>
+        <button [nzDropdownMenu]="menu" nz-button nzNoAnimation nzSize="small" nz-dropdown nzTrigger="click">
+          {{ note.config.looknfeel }}
+          <i nz-icon nzType="down"></i>
         </button>
-      }
-      <button nz-button nzNoAnimation (click)="togglePermissions()">
-        <i nz-icon nzType="lock" [nzTheme]="activatedExtension === 'permissions' ? 'fill' : 'outline'"></i>
-      </button>
-      <button [nzDropdownMenu]="menu" nz-button nzNoAnimation nzSize="small" nz-dropdown nzTrigger="click">
-        {{ note.config.looknfeel }}
-        <i nz-icon nzType="down"></i>
-      </button>
-      <nz-dropdown-menu #menu="nzDropdownMenu">
-        <ul nz-menu>
-          @for (lf of lfOption; track lf) {
-            <li nz-menu-item (click)="setLookAndFeel(lf)">{{ lf }}</li>
-          }
-        </ul>
-      </nz-dropdown-menu>
-    </nz-space-compact>
-  </div>
+        <nz-dropdown-menu #menu="nzDropdownMenu">
+          <ul nz-menu>
+            @for (lf of lfOption; track lf) {
+              <li nz-menu-item (click)="setLookAndFeel(lf)">{{ lf }}</li>
+            }
+          </ul>
+        </nz-dropdown-menu>
+      </nz-space-compact>
+    </div>
+  }
 </div>

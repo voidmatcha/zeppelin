@@ -67,10 +67,11 @@ import {
   CopyParagraph,
   InsertParagraph,
   MoveParagraph,
-  ParagraphAppendOutput,
   ParagraphClearAllOutput,
   ParagraphClearOutput,
   ParagraphExecutedBySpell,
+  ParagraphAppendOutput,
+  ParagraphOutputSnapshot,
   ParagraphRemove,
   ParagraphRemoved,
   ParagraphStatus,
@@ -117,6 +118,9 @@ export interface MessageReceiveDataTypeMap {
   [OP.EDITOR_SETTING]: EditorSettingReceived;
   [OP.PROGRESS]: Progress;
   [OP.PARAGRAPH_STATUS]: ParagraphStatus;
+  [OP.PARAGRAPH_APPEND_OUTPUT]: ParagraphAppendOutput;
+  [OP.PARAGRAPH_UPDATE_OUTPUT]: ParagraphUpdateOutput;
+  [OP.PARAGRAPH_OUTPUT_SNAPSHOT]: ParagraphOutputSnapshot;
   [OP.PARAGRAPH_MOVED]: ParagraphMoved;
   [OP.AUTH_INFO]: AuthInfo;
   [OP.NOTE_UPDATED]: NoteUpdated;
@@ -135,6 +139,7 @@ export interface MessageSendDataTypeMap {
   [OP.RELOAD_NOTES_FROM_REPO]: undefined;
   [OP.RELOAD_NOTE]: ReloadNote;
   [OP.GET_NOTE]: GetNode;
+  [OP.GET_PARAGRAPH_OUTPUT]: { noteId: string; paragraphId: string };
   [OP.NEW_NOTE]: NewNote;
   [OP.MOVE_NOTE_TO_TRASH]: MoveNoteToTrash;
   [OP.MOVE_FOLDER_TO_TRASH]: MoveFolderToTrash;

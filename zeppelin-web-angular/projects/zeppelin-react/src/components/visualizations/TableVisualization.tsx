@@ -12,19 +12,32 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Table } from 'antd';
-import { VisualizationControls } from './VisualizationControls';
+import { VisualizationControls, type VisualizationMode } from './VisualizationControls';
 import { applyChartTheme, useHostThemeMode } from '@/theme';
 import { parseTableData, exportFile } from '@/utils';
-import type { ParagraphConfigResult, ParagraphIResultsMsgItem, VisualizationMode } from '@zeppelin/sdk';
 import type { Chart, ChartConfiguration } from 'chart.js';
 
+type NotebookParagraphResult = Readonly<{ type: string; data: string }>;
+type NotebookResultConfig = Readonly<{ graph: unknown }>;
+
 interface TableVisualizationProps {
-  result: ParagraphIResultsMsgItem;
-  config?: ParagraphConfigResult;
+  result: NotebookParagraphResult;
+  config?: NotebookResultConfig;
+  modeChangeDisabled?: boolean;
+  onConfigChange?: (config: NotebookResultConfig) => void;
 }
 
-export const TableVisualization = ({ result, config }: TableVisualizationProps) => {
-  const [currentMode, setCurrentMode] = useState<VisualizationMode>(config?.graph.mode || 'table');
+export const TableVisualization = ({
+  result,
+  config,
+  modeChangeDisabled = false,
+  onConfigChange
+}: TableVisualizationProps) => {
+  const graphConfig =
+    typeof config?.graph === 'object' && config.graph !== null
+      ? (config.graph as Readonly<Record<string, unknown>> & { mode?: VisualizationMode })
+      : {};
+  const [currentMode, setCurrentMode] = useState<VisualizationMode>(graphConfig.mode || 'table');
   const chartRef = useRef<HTMLDivElement>(null);
   const themeMode = useHostThemeMode();
 
@@ -34,6 +47,14 @@ export const TableVisualization = ({ result, config }: TableVisualizationProps) 
     if (tableData) {
       exportFile(tableData, type);
     }
+  };
+
+  const changeMode = (mode: VisualizationMode): void => {
+    if (modeChangeDisabled) {
+      return;
+    }
+    setCurrentMode(mode);
+    onConfigChange?.({ graph: { ...graphConfig, mode } });
   };
 
   const renderVisualization = () => {
@@ -232,7 +253,12 @@ export const TableVisualization = ({ result, config }: TableVisualizationProps) 
 
   return (
     <div>
-      <VisualizationControls currentMode={currentMode} onModeChange={setCurrentMode} onExport={handleExport} />
+      <VisualizationControls
+        currentMode={currentMode}
+        modeChangeDisabled={modeChangeDisabled}
+        onModeChange={changeMode}
+        onExport={handleExport}
+      />
       {renderVisualization()}
     </div>
   );

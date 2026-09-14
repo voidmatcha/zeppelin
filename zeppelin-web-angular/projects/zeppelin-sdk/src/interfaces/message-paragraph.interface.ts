@@ -114,10 +114,18 @@ export interface ParagraphAppendOutput {
   paragraphId: string;
   index: number;
   data: string;
+  outputSequence?: number;
 }
 
 export interface ParagraphUpdateOutput extends ParagraphAppendOutput {
   type: DatasetType;
+}
+
+export interface ParagraphOutputSnapshot {
+  noteId: string;
+  paragraphId: string;
+  outputSequence: number;
+  results: ParagraphIResultsMsgItem[];
 }
 
 export interface ParasInfo {

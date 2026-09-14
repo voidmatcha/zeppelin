@@ -13,7 +13,7 @@
 import { Component, OnDestroy } from '@angular/core';
 import { Subscriber } from 'rxjs';
 
-import { Message, MessageReceiveDataTypeMap, ReceiveArgumentsType } from '@zeppelin/sdk';
+import { Message, MessageReceiveDataTypeMap, ReceiveArgumentsType, ReceiveMessageArgumentsType } from '@zeppelin/sdk';
 
 @Component({
   template: '',
@@ -56,6 +56,36 @@ export function MessageListener<K extends keyof MessageReceiveDataTypeMap>(op: K
             console.error(`Failed to handle WebSocket OP ${String(op)}`, error);
             throw error;
           }
+        })
+      );
+    };
+
+    if (!target.__zeppelinMessageListeners__) {
+      target.__zeppelinMessageListeners__ = [fn];
+    } else {
+      target.__zeppelinMessageListeners__.push(fn);
+    }
+
+    return descriptor;
+  };
+}
+
+export function MessageEnvelopeListener<K extends keyof MessageReceiveDataTypeMap>(op: K) {
+  return function (
+    target: MessageListenersManager,
+    propertyKey: string,
+    descriptor: TypedPropertyDescriptor<ReceiveMessageArgumentsType<K>>
+  ) {
+    const oldValue = descriptor.value as ReceiveMessageArgumentsType<K>;
+
+    const fn = function (this: MessageListenersManager) {
+      if (!this.__zeppelinMessageListeners$__) {
+        throw new Error('__zeppelinMessageListeners$__ is not defined');
+      }
+
+      this.__zeppelinMessageListeners$__.add(
+        this.messageService.receiveMessage(op).subscribe(message => {
+          oldValue.apply(this, [message]);
         })
       );
     };

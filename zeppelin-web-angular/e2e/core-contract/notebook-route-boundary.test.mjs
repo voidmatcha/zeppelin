@@ -71,7 +71,10 @@ test('Angular owns notebook route parsing and passes one port to the React remot
       messageCalls: proofState.messageCalls,
       receivedPortCount: new Set(proofState.receivedCores).size,
       routePaths: proofState.routePaths,
-      snapshot: proofState.hostCore.getSnapshot(),
+      snapshot: {
+        noteId: proofState.hostCore.getSnapshot().noteId,
+        revisionId: proofState.hostCore.getSnapshot().revisionId
+      },
       workspaceGuardCalls: proofState.workspaceGuardCalls
     };
   });

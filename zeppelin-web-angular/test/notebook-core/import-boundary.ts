@@ -175,6 +175,13 @@ export const findReactNotebookConsumerViolations = (
       return;
     }
     checked.add(path);
+    // Declaration files describe compile-time shapes and cannot create a runtime
+    // transport owner. Keep following runtime JavaScript/TypeScript dependencies,
+    // including dependencies under node_modules, without treating DOM names in
+    // third-party declarations as executable access.
+    if (path.endsWith('.d.ts')) {
+      return;
+    }
     const module = loadModule(path);
     if (!module) {
       violations.push(`${path}: cannot inspect notebook dependency`);

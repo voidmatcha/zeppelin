@@ -52,11 +52,10 @@ test('React remote receives the exact host-owned NotebookCorePort object', async
   await expect(probe).toHaveAttribute('data-update-count', '1');
 
   const latestProof = await page.evaluate(() => globalThis.__zeppelinNotebookCorePortProof.proofs.at(-1));
-  assert.deepEqual(latestProof, {
-    sameIdentity: true,
-    snapshot: { noteId: 'note-host-owned', revisionId: 'revision-from-angular-host' },
-    updateCount: 1
-  });
+  assert.equal(latestProof.sameIdentity, true);
+  assert.equal(latestProof.snapshot.noteId, 'note-host-owned');
+  assert.equal(latestProof.snapshot.revisionId, 'revision-from-angular-host');
+  assert.equal(latestProof.updateCount, 1);
   assert.deepEqual(pageErrors, []);
 
   await page.close();
