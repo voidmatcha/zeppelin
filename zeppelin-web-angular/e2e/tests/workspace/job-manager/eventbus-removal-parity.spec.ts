@@ -39,6 +39,7 @@ class JobManagerMessageRecorder {
 
     await page.routeWebSocket('**/ws', socket => {
       const server = socket.connectToServer();
+      socket.onMessage(message => server.send(message));
       server.onMessage(message => {
         recorder.record(message.toString());
         socket.send(message);
