@@ -172,7 +172,10 @@ test.describe('Notebook Visualization Rendering', () => {
     addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.X_AXIS_SETTING, testInfo);
 
     await test.step('Given the bar chart settings are open', async () => {
-      await visualizationPage.barChartMode.click();
+      await expect(async () => {
+        await visualizationPage.barChartMode.click();
+        await expect(visualizationPage.barChartMode.locator('input[type="radio"]')).toBeChecked({ timeout: 1000 });
+      }).toPass({ timeout: 10000 });
       await visualizationPage.settingTrigger.click();
       await expect(visualizationPage.pivotSetting).toBeVisible();
       await expect(visualizationPage.xAxisSetting).toBeVisible();
@@ -212,7 +215,10 @@ test.describe('Notebook Visualization Rendering', () => {
     addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.SCATTER_SETTING, testInfo);
 
     await test.step('Given the scatter chart settings are open', async () => {
-      await visualizationPage.scatterChartMode.click();
+      await expect(async () => {
+        await visualizationPage.scatterChartMode.click();
+        await expect(visualizationPage.scatterChartMode.locator('input[type="radio"]')).toBeChecked({ timeout: 1000 });
+      }).toPass({ timeout: 10000 });
       await visualizationPage.settingTrigger.click();
       await expect(visualizationPage.scatterSetting).toBeVisible();
     });
