@@ -115,6 +115,10 @@ export type NotebookMonacoEditorProps = Readonly<{
   requestCompletions?: (buffer: string, cursor: number) => Promise<readonly NotebookCompletionItem[]>;
 }>;
 
+type NotebookMonacoEditorHost = HTMLDivElement & {
+  __zeppelinNotebookEditorValue?: string;
+};
+
 const toMonacoLanguage = (language?: string): string => {
   switch (language) {
     case 'markdown':
@@ -142,7 +146,7 @@ export const NotebookMonacoEditor = ({
   onRun,
   requestCompletions
 }: NotebookMonacoEditorProps) => {
-  const host = useRef<HTMLDivElement>(null);
+  const host = useRef<NotebookMonacoEditorHost>(null);
   const instance = useRef<editor.IStandaloneCodeEditor | null>(null);
   const initialOptions = useRef({
     ariaLabel,
@@ -177,6 +181,11 @@ export const NotebookMonacoEditor = ({
       return;
     }
     const model = editor.createModel(initialOptions.current.value, initialOptions.current.language);
+    const nextHost = host.current;
+    Object.defineProperty(nextHost, '__zeppelinNotebookEditorValue', {
+      configurable: true,
+      get: () => model.getValue()
+    });
     const nextInstance = editor.create(host.current, {
       ariaLabel: initialOptions.current.ariaLabel,
       automaticLayout: true,
@@ -200,6 +209,7 @@ export const NotebookMonacoEditor = ({
     return () => {
       listener.dispose();
       unregisterInlineCompletion.current();
+      delete nextHost.__zeppelinNotebookEditorValue;
       model.dispose();
       nextInstance.dispose();
       instance.current = null;
