@@ -150,7 +150,7 @@ test('committed auth and error captures bind the canonical source and artifact m
       manifest => (manifest.sourceTree.sha256 = '0'.repeat(64)),
       manifest => (manifest.artifacts[0].sha256 = '0'.repeat(64))
     ]) {
-      const changed = structuredClone(fixture);
+      const changed = globalThis.structuredClone(fixture);
       mutation(changed.metadata.provenance.buildManifest);
       assert.match(validateFixture(changed).join('\n'), /verified artifacts/, `${name} accepted changed manifest`);
     }

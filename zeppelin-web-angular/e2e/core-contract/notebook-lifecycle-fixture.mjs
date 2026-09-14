@@ -521,7 +521,7 @@ export function createLifecycleStateReducer({ applyGranular = true } = {}) {
       }
       const fullNote = parseFullNoteSnapshot(record);
       if (fullNote) {
-        snapshots.set(snapshotKey, structuredClone(fullNote));
+        snapshots.set(snapshotKey, globalThis.structuredClone(fullNote));
         authoritativeSequences.set(snapshotKey, record.sequence);
         for (const state of commitStates.values()) {
           if (
