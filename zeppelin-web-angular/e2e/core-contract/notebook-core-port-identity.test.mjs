@@ -62,6 +62,8 @@ test('React remote receives the exact host-owned NotebookCorePort object', async
       title: null,
       noteForms: {},
       noteParams: {},
+      lookAndFeel: 'default',
+      personalizedMode: false,
       paragraphs: [],
       error: null
     },
