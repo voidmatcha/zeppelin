@@ -43,7 +43,7 @@ describe('notebook core import boundary', () => {
       'npm test notebook route boundary'
     ]) {
       const execution = pom.match(new RegExp(`<execution>\\s*<id>${id}</id>([\\s\\S]*?)</execution>`))?.[1];
-      expect(execution).toContain('<skip>${skipTests}</skip>');
+      expect(execution).toContain(`<skip>\${skipTests}</skip>`);
     }
   });
 

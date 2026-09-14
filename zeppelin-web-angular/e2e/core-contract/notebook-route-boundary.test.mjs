@@ -97,7 +97,7 @@ test('Angular owns notebook route parsing and passes one port to the React remot
   await expect(angularAdapter).toHaveAttribute('data-version', String(loadedRevisionVersion));
 
   const routeProof = await page.evaluate(() => {
-    const proofState = window.__zeppelinNotebookRouteBoundaryProof;
+    const proofState = globalThis.__zeppelinNotebookRouteBoundaryProof;
     return {
       allReceivedPortsAreHostOwned: proofState.receivedCores.every(core => Object.is(core, proofState.hostCore)),
       latestPortIsHostOwned: Object.is(proofState.receivedCore, proofState.hostCore),

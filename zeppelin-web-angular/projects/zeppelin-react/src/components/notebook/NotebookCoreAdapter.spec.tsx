@@ -292,9 +292,7 @@ describe('NotebookCoreAdapter', () => {
       permissions: { readers: [], owners: ['owner'], writers: ['writer'], runners: [] }
     });
 
-    render(
-      <NotebookCoreAdapter core={runtime.port} canManagePermissions onPermissionsChange={onPermissionsChange} />
-    );
+    render(<NotebookCoreAdapter core={runtime.port} canManagePermissions onPermissionsChange={onPermissionsChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Writers permissions' }), {
       target: { value: 'writer, analyst' }
@@ -483,12 +481,7 @@ describe('NotebookCoreAdapter', () => {
         ]
       });
     });
-    rerender(
-      <NotebookCoreAdapter
-        core={runtime.port}
-        onSetNotebookRevision={onSetNotebookRevision}
-      />
-    );
+    rerender(<NotebookCoreAdapter core={runtime.port} onSetNotebookRevision={onSetNotebookRevision} />);
     expect(screen.queryByRole('textbox', { name: 'Checkpoint message' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Set revision as head' }));
     expect(onSetNotebookRevision).toHaveBeenCalledTimes(1);
@@ -508,12 +501,7 @@ describe('NotebookCoreAdapter', () => {
     });
     runtime.apply({ type: 'collaboration-updated', users: [] });
 
-    render(
-      <NotebookCoreAdapter
-        core={runtime.port}
-        onScheduleChange={onScheduleChange}
-      />
-    );
+    render(<NotebookCoreAdapter core={runtime.port} onScheduleChange={onScheduleChange} />);
 
     expect(screen.getByLabelText('Collaborators').textContent).toBe('Collaborators: 0');
     fireEvent.change(screen.getByRole('textbox', { name: 'Cron expression' }), {

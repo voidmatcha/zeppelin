@@ -17,7 +17,6 @@ import {
   Message,
   OP,
   ParagraphIResultsMsgItem,
-  type AngularObjectRemove,
   type AngularObjectUpdate,
   type MessageReceiveDataTypeMap,
   type ParagraphConfig,

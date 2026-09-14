@@ -151,7 +151,7 @@ test('generic validation rejects an observed physical connection without a recon
   const source = fixture.records.find(record => record.connectionId === 'a-angular-2');
   assert.ok(source);
   fixture.records.push({
-    ...structuredClone(source),
+    ...globalThis.structuredClone(source),
     connectionId: 'a-angular-3',
     sequence: fixture.records.at(-1).sequence + 1
   });
@@ -172,7 +172,7 @@ test('structural event mutations fail causal validation and replay', async () =>
     ['PARAGRAPH_REMOVED id', 'PARAGRAPH_REMOVED', data => (data.id = 'missing-paragraph')]
   ];
   for (const [label, operation, mutate] of cases) {
-    const fixture = structuredClone(original);
+    const fixture = globalThis.structuredClone(original);
     for (const record of fixture.records) {
       if (record.authoritativeInput !== 'granular-event' || record.transport.websocket?.direction !== 'receive') {
         continue;
@@ -396,7 +396,7 @@ export const lifecycleFixture = () => {
     },
     'granular-event'
   );
-  const noteUpdated = ws(
+  ws(
     'viewer-a',
     'a-2',
     a,
@@ -407,7 +407,7 @@ export const lifecycleFixture = () => {
     },
     'granular-event'
   );
-  const modeStatus = ws(
+  ws(
     'viewer-b',
     'b-1',
     a,
@@ -452,7 +452,7 @@ export const lifecycleFixture = () => {
   ws('viewer-b', 'b-2', revision, 'send', { op: 'LIST_REVISION_HISTORY', data: { noteId: 'note-b' } });
   ws('viewer-b', 'b-2', revision, 'receive', { op: 'LIST_REVISION_HISTORY', data: [{ id: 'rev-1' }] });
 
-  const restStart = rest('viewer-b', 'b-3', a, 'request', 'POST', '/api/notebook/note-a/paragraph', undefined);
+  rest('viewer-b', 'b-3', a, 'request', 'POST', '/api/notebook/note-a/paragraph', undefined);
   rest('viewer-b', 'b-3', a, 'response', 'POST', '/api/notebook/note-a/paragraph', { body: 'p-rest' });
   ws(
     'viewer-b',

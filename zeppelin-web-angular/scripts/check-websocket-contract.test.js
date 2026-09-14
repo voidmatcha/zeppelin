@@ -175,7 +175,8 @@ test('reports operation drift and rejects frontend-only send operations', () => 
     ...NOTEBOOK_SCOPED_REPLY_PAIRS.map(([, responseOperation]) => responseOperation)
   ]);
   assert.throws(
-    () => validateContract(javaOperations, matchingTypeScriptOperations, requiredSendOperations, requiredReceiveOperations),
+    () =>
+      validateContract(javaOperations, matchingTypeScriptOperations, requiredSendOperations, requiredReceiveOperations),
     /Frontend-only operation LOCAL cannot be in MessageSendDataTypeMap/
   );
 });

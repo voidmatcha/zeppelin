@@ -96,7 +96,9 @@ export const NotebookCoreAdapter = ({
   const [interpreterBindingDraft, setInterpreterBindingDraft] = useState(interpreterBindings);
   const [firstRevisionId, setFirstRevisionId] = useState('');
   const [secondRevisionId, setSecondRevisionId] = useState('');
-  const [revisionComparison, setRevisionComparison] = useState<Awaited<ReturnType<NonNullable<typeof onRevisionCompare>>> | null>(null);
+  const [revisionComparison, setRevisionComparison] = useState<Awaited<
+    ReturnType<NonNullable<typeof onRevisionCompare>>
+  > | null>(null);
   const [revisionComparisonError, setRevisionComparisonError] = useState<string | null>(null);
   const [comparingRevisions, setComparingRevisions] = useState(false);
   const [permissionDraft, setPermissionDraft] = useState<NotebookPermissions | null>(snapshot.permissions ?? null);
@@ -320,7 +322,7 @@ export const NotebookCoreAdapter = ({
             ) : null}
           </>
         ) : null}
-  {coreScheduler || canSchedule ? (
+        {coreScheduler || canSchedule ? (
           <label>
             Scheduler
             <input
@@ -411,7 +413,11 @@ export const NotebookCoreAdapter = ({
             </label>
           ))}
           {permissionSaveError ? <p role="alert">{permissionSaveError}</p> : null}
-          <button type="button" disabled={!canManagePermissions || savingPermissions} onClick={() => void savePermissions()}>
+          <button
+            type="button"
+            disabled={!canManagePermissions || savingPermissions}
+            onClick={() => void savePermissions()}
+          >
             Save permissions
           </button>
           <button
@@ -436,15 +442,37 @@ export const NotebookCoreAdapter = ({
               <input
                 type="checkbox"
                 checked={binding.selected}
-                onChange={() => setInterpreterBindingDraft(bindings => bindings.map(candidate => candidate.id === binding.id ? { ...candidate, selected: !candidate.selected } : candidate))}
+                onChange={() =>
+                  setInterpreterBindingDraft(bindings =>
+                    bindings.map(candidate =>
+                      candidate.id === binding.id ? { ...candidate, selected: !candidate.selected } : candidate
+                    )
+                  )
+                }
               />
               {binding.name}
             </label>
           ))}
-          <button type="button" onClick={() => { onInterpreterBindingsChange?.(interpreterBindingDraft.filter(binding => binding.selected).map(binding => binding.id)); setInterpreterBindingsOpen(false); onExtensionChange?.('hide'); }}>
+          <button
+            type="button"
+            onClick={() => {
+              onInterpreterBindingsChange?.(
+                interpreterBindingDraft.filter(binding => binding.selected).map(binding => binding.id)
+              );
+              setInterpreterBindingsOpen(false);
+              onExtensionChange?.('hide');
+            }}
+          >
             Save interpreter bindings
           </button>
-          <button type="button" onClick={() => { setInterpreterBindingDraft(interpreterBindings); setInterpreterBindingsOpen(false); onExtensionChange?.('hide'); }}>
+          <button
+            type="button"
+            onClick={() => {
+              setInterpreterBindingDraft(interpreterBindings);
+              setInterpreterBindingsOpen(false);
+              onExtensionChange?.('hide');
+            }}
+          >
             Cancel interpreter bindings
           </button>
         </section>
@@ -454,26 +482,48 @@ export const NotebookCoreAdapter = ({
           <h2>Compare revisions</h2>
           <label>
             First revision
-            <select aria-label="First revision" value={firstRevisionId} onChange={event => setFirstRevisionId(event.target.value)}>
+            <select
+              aria-label="First revision"
+              value={firstRevisionId}
+              onChange={event => setFirstRevisionId(event.target.value)}
+            >
               <option value="">Choose...</option>
-              {coreRevisions.map(revision => <option key={revision.id} value={revision.id ?? ''}>{revision.message}</option>)}
+              {coreRevisions.map(revision => (
+                <option key={revision.id} value={revision.id ?? ''}>
+                  {revision.message}
+                </option>
+              ))}
             </select>
           </label>
           <label>
             Second revision
-            <select aria-label="Second revision" value={secondRevisionId} onChange={event => setSecondRevisionId(event.target.value)}>
+            <select
+              aria-label="Second revision"
+              value={secondRevisionId}
+              onChange={event => setSecondRevisionId(event.target.value)}
+            >
               <option value="">Choose...</option>
-              {coreRevisions.map(revision => <option key={revision.id} value={revision.id ?? ''}>{revision.message}</option>)}
+              {coreRevisions.map(revision => (
+                <option key={revision.id} value={revision.id ?? ''}>
+                  {revision.message}
+                </option>
+              ))}
             </select>
           </label>
-          <button type="button" disabled={comparingRevisions || !firstRevisionId || firstRevisionId === secondRevisionId} onClick={() => void compareRevisions()}>
+          <button
+            type="button"
+            disabled={comparingRevisions || !firstRevisionId || firstRevisionId === secondRevisionId}
+            onClick={() => void compareRevisions()}
+          >
             Compare revisions
           </button>
           {revisionComparisonError ? <p role="alert">{revisionComparisonError}</p> : null}
           {revisionComparison ? (
             <section aria-label="Revision comparison results">
               {revisionComparison.secondParagraphs.map(paragraph => {
-                const firstParagraph = revisionComparison.firstParagraphs.find(candidate => candidate.id === paragraph.id);
+                const firstParagraph = revisionComparison.firstParagraphs.find(
+                  candidate => candidate.id === paragraph.id
+                );
                 return (
                   <article key={paragraph.id} aria-label={`Revision paragraph ${paragraph.id}`}>
                     <h3>{paragraph.title ?? paragraph.id}</h3>
