@@ -64,6 +64,7 @@ import {
   NgZService,
   NoteStatusService,
   NoteVarShareService,
+  NotebookService,
   ReactFeatureService,
   SecurityService,
   SaveAsService,
@@ -111,6 +112,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   scrolledId: string | null = null;
   isOwner = true;
   noteRevisions: RevisionListItem[] = [];
+  revisionSupported = false;
   currentRevision?: string;
   collaborativeMode = false;
   revisionView = false;
@@ -871,6 +873,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private reactFeature: ReactFeatureService,
     private notebookCoreRouteAdapter: NotebookCoreRouteAdapter,
     private completionService: CompletionService,
+    private notebookService: NotebookService,
     private applicationRef: ApplicationRef,
     private environmentInjector: EnvironmentInjector,
     private ngZone: NgZone
@@ -933,6 +936,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       lookAndFeel: this.note?.config.looknfeel,
       onLookAndFeelChange: lookAndFeel => this.setReactLookAndFeel(lookAndFeel),
       onShowShortcut: () => this.showReactShortcut(),
+      revisionSupported: this.revisionSupported,
       revisions: this.noteRevisions.map(revision => ({
         id: revision.id,
         message: revision.message,
@@ -1237,6 +1241,14 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   ngOnInit() {
+    this.notebookService
+      .capabilities()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(capabilities => {
+        this.revisionSupported = capabilities.isRevisionSupported;
+        this.refreshCoreProofReactProps();
+        this.cdr.markForCheck();
+      });
     this.subscribeNotebookScopedReplies();
     this.messageService
       .receive(OP.PARAGRAPH_UPDATE_OUTPUT)

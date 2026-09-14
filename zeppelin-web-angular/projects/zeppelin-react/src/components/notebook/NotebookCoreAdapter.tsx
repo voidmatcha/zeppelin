@@ -26,6 +26,7 @@ import { NotebookMonacoEditor } from './NotebookMonacoEditor';
 import { ParagraphDynamicForms } from './ParagraphDynamicForms';
 
 const EMPTY_INTERPRETER_BINDINGS = Object.freeze([]);
+const HEAD_REVISION = Object.freeze([{ id: 'Head', message: 'Head' }]);
 
 export type NotebookCoreAdapterProps = NotebookCoreRemoteProps &
   Readonly<{
@@ -63,6 +64,7 @@ export const NotebookCoreAdapter = ({
   lookAndFeel = 'default',
   onLookAndFeelChange,
   onShowShortcut,
+  revisionSupported = false,
   revisions = [],
   currentRevision,
   revisionView = false,
@@ -86,7 +88,8 @@ export const NotebookCoreAdapter = ({
 }: NotebookCoreAdapterProps) => {
   const snapshot = useSyncExternalStore(core.subscribe, core.getSnapshot, core.getSnapshot);
   const coreScheduler = snapshot.scheduler ?? scheduler;
-  const coreRevisions = snapshot.revisions ?? revisions;
+  const availableRevisions = snapshot.revisions?.length ? snapshot.revisions : revisions;
+  const coreRevisions = availableRevisions.length ? availableRevisions : HEAD_REVISION;
   const coreCurrentRevision = snapshot.revisionId ?? currentRevision ?? 'Head';
   const coreRevisionView = snapshot.revisionId !== null || revisionView;
   const coreLookAndFeel = snapshot.lookAndFeel ?? lookAndFeel;
@@ -352,7 +355,7 @@ export const NotebookCoreAdapter = ({
             <option value="report">report</option>
           </select>
         </label>
-        {coreRevisions.length > 0 ? (
+        {revisionSupported ? (
           <>
             <label>
               Revision
@@ -453,19 +456,21 @@ export const NotebookCoreAdapter = ({
         >
           Permissions
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setPermissionsOpen(false);
-            setInterpreterBindingsOpen(false);
-            setRevisionsOpen(open => !open);
-            setRevisionComparison(null);
-            setRevisionComparisonError(null);
-            onExtensionChange?.('revisions');
-          }}
-        >
-          Revisions
-        </button>
+        {revisionSupported ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPermissionsOpen(false);
+              setInterpreterBindingsOpen(false);
+              setRevisionsOpen(open => !open);
+              setRevisionComparison(null);
+              setRevisionComparisonError(null);
+              onExtensionChange?.('revisions');
+            }}
+          >
+            Revisions
+          </button>
+        ) : null}
       </header>
       {permissionsOpen && permissionDraft ? (
         <section aria-label="Notebook permissions">

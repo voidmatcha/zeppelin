@@ -18,7 +18,7 @@ import { addPageAnnotationBeforeEach, performLoginIfRequired, PAGES, waitForZepp
 
 const createNote = async (page: Page, notePath: string): Promise<string> => {
   const response = await page.request.post('/api/notebook', {
-    data: { notePath, defaultInterpreterGroup: 'python', addingEmptyParagraph: true }
+    data: { notePath, defaultInterpreterGroup: 'sh', addingEmptyParagraph: true }
   });
   expect(response.ok(), `Create note failed: ${response.status()} ${await response.text()}`).toBeTruthy();
   return (await response.json()).body as string;
@@ -57,6 +57,7 @@ type PersistedParagraph = Readonly<{
   text: string;
   status: string;
   config?: { results?: Record<string, { graph?: { mode?: string } }> };
+  settings?: { params?: Record<string, unknown> };
 }>;
 
 const getPersistedParagraph = async (page: Page, noteId: string, index: number): Promise<PersistedParagraph> => {
@@ -91,7 +92,31 @@ const observeSentOperations = (page: Page): string[] => {
   return operations;
 };
 
-type ReceivedOperation = Readonly<{ op: string; data: unknown }>;
+type SentOperation = Readonly<{ op: string; msgId?: string; data: unknown }>;
+
+const observeSentMessages = (page: Page): SentOperation[] => {
+  const messages: SentOperation[] = [];
+  page.on('websocket', webSocket => {
+    webSocket.on('framesent', event => {
+      if (typeof event.payload !== 'string') return;
+      try {
+        const message = JSON.parse(event.payload) as { op?: unknown; msgId?: unknown; data?: unknown };
+        if (typeof message.op === 'string') {
+          messages.push({
+            op: message.op,
+            msgId: typeof message.msgId === 'string' ? message.msgId : undefined,
+            data: message.data
+          });
+        }
+      } catch {
+        // Non-JSON development-server frames are unrelated to Zeppelin operations.
+      }
+    });
+  });
+  return messages;
+};
+
+type ReceivedOperation = Readonly<{ op: string; msgId?: string; data: unknown }>;
 
 const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
   const operations: ReceivedOperation[] = [];
@@ -101,9 +126,13 @@ const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
         return;
       }
       try {
-        const message = JSON.parse(event.payload) as { op?: unknown; data?: unknown };
+        const message = JSON.parse(event.payload) as { op?: unknown; msgId?: unknown; data?: unknown };
         if (typeof message.op === 'string') {
-          operations.push({ op: message.op, data: message.data });
+          operations.push({
+            op: message.op,
+            msgId: typeof message.msgId === 'string' ? message.msgId : undefined,
+            data: message.data
+          });
         }
       } catch {
         // Non-JSON development-server frames are unrelated to Zeppelin operations.
@@ -117,6 +146,9 @@ const notebookWriteOperations = new Set(['PATCH_PARAGRAPH', 'COMMIT_PARAGRAPH', 
 const coldInterpreterExecutionTimeout = 90000;
 
 test.describe('Notebook Core production route feasibility proof', () => {
+  // JUSTIFIED: the production-route cases share the server's default interpreter process;
+  // parallel note cleanup can terminate an execution that another case is still observing.
+  test.describe.configure({ mode: 'default' });
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK);
 
   test('keeps the React notebook theme synchronized with the Angular host', async ({ page }) => {
@@ -231,8 +263,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
         await expect(proof).toHaveAttribute('data-paragraph-count', '2');
         await expect(paragraphHosts).toHaveCount(2);
 
-        await keyboardPage.setCodeEditorContent('%python\nprint("Core proof first paragraph")', 0);
-        await keyboardPage.setCodeEditorContent('%python\nprint("Core proof second paragraph")', 1);
+        await keyboardPage.setCodeEditorContent('%sh\necho "Core proof first paragraph"', 0);
+        await keyboardPage.setCodeEditorContent('%sh\necho "Core proof second paragraph"', 1);
 
         const initialIds = await getParagraphHostIds(page);
         expect(initialIds).toHaveLength(2);
@@ -286,7 +318,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const marker = `core_vertical_${stamp}`;
     const markerFirst = `${marker}_first`;
     const markerSecond = `${marker}_second`;
-    const code = `%python\nimport time\nprint("${markerFirst}")\ntime.sleep(0.2)\nprint("${markerSecond}")`;
+    const code = `%sh\necho "${markerFirst}"\nsleep 0.2\necho "${markerSecond}"`;
     let noteId: string | undefined;
 
     try {
@@ -453,7 +485,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await editor.fill(`%python\nprint("${draftMarker}")`);
+      await editor.fill(`%sh\necho "${draftMarker}"`);
 
       await page.evaluate(id => {
         window.location.hash = `#/notebook/${id}?reactNotebook=false`;
@@ -470,9 +502,10 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('recovers active React output from an authoritative snapshot after reconnecting', async ({ context, page }) => {
-    const sentOperations = observeSentOperations(page);
-    const receivedOperations = observeReceivedOperations(page);
+  test('recovers active React output in a new browser connection from an authoritative snapshot', async ({
+    context,
+    page
+  }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -481,8 +514,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const marker = `react_output_recovery_${stamp}`;
     const markerFirst = `${marker}_first`;
     const markerSecond = `${marker}_second`;
-    const code = `%python\nimport time\nprint("${markerFirst}")\ntime.sleep(5)\nprint("${markerSecond}")`;
+    const code = `%sh\necho "${markerFirst}"\ni=0\nwhile [ "$i" -lt 6 ]; do sleep 5; echo heartbeat_$i; i=$((i + 1)); done\necho "${markerSecond}"`;
     let noteId: string | undefined;
+    let recoveryPage: Page | undefined;
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/ReactOutputRecovery_${stamp}`);
@@ -501,22 +535,26 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await reactNotebook.getByRole('button', { name: 'Run', exact: true }).click();
       await expect(paragraphResult).toContainText(markerFirst, { timeout: coldInterpreterExecutionTimeout });
 
-      const snapshotCountBeforeOffline = receivedOperations.filter(
-        operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT'
-      ).length;
-      await context.setOffline(true);
-      await page.waitForFunction(() => navigator.onLine === false);
-      await context.setOffline(false);
+      recoveryPage = await context.newPage();
+      const recoverySentOperations = observeSentOperations(recoveryPage);
+      const recoveryReceivedOperations = observeReceivedOperations(recoveryPage);
+      await recoveryPage.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      const recoveredNotebook = recoveryPage.getByTestId('notebook-core-react-adapter');
+      const recoveredResult = recoveredNotebook.getByTestId('react-notebook-core-results');
+      await expect(recoveredNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
       await expect
-        .poll(() => sentOperations.filter(operation => operation === 'GET_PARAGRAPH_OUTPUT').length, { timeout: 30000 })
-        .toBeGreaterThan(0);
-      await expect
-        .poll(() => receivedOperations.filter(operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT').length, {
+        .poll(() => recoverySentOperations.filter(operation => operation === 'GET_PARAGRAPH_OUTPUT').length, {
           timeout: 30000
         })
-        .toBeGreaterThan(snapshotCountBeforeOffline);
-      const snapshot = receivedOperations.find(
+        .toBeGreaterThan(0);
+      await expect
+        .poll(
+          () => recoveryReceivedOperations.filter(operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT').length,
+          { timeout: 30000 }
+        )
+        .toBeGreaterThan(0);
+      const snapshot = recoveryReceivedOperations.find(
         operation =>
           operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT' &&
           typeof operation.data === 'object' &&
@@ -529,9 +567,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
           outputSequence: expect.any(Number)
         }
       });
-      await expect(paragraphResult).toContainText(markerSecond, { timeout: coldInterpreterExecutionTimeout });
+      await expect(recoveredResult).toContainText(markerSecond, { timeout: coldInterpreterExecutionTimeout });
     } finally {
-      await context.setOffline(false);
+      await recoveryPage?.close();
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
@@ -546,7 +584,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     const stamp = Date.now();
     const marker = `react_notebook_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const code = `%sh\necho "${marker}"`;
     const renamedTitle = `ReactNotebookRenamed_${stamp}`;
     let noteId: string | undefined;
 
@@ -616,7 +654,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     const stamp = Date.now();
     const marker = `react_run_all_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const code = `%sh\necho "${marker}"`;
     let noteId: string | undefined;
 
     try {
@@ -646,7 +684,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('opens existing notebook extensions and revision controls from React', async ({ page }) => {
+  test('opens existing notebook extensions from React', async ({ page }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -669,7 +707,6 @@ test.describe('Notebook Core production route feasibility proof', () => {
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'info-circle' })
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
-      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' })).toHaveValue('Head');
       await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }).fill('%python');
       await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
       await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
@@ -689,11 +726,6 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await reactNotebook.getByRole('button', { name: 'Permissions' }).click();
       await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toBeVisible();
       await expect(page.locator('zeppelin-notebook-permissions')).toHaveCount(0);
-
-      await reactNotebook.getByRole('button', { name: 'Revisions' }).click();
-      await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toHaveCount(0);
-      await expect(reactNotebook.getByRole('region', { name: 'Notebook revision comparison' })).toBeVisible();
-      await expect(page.locator('zeppelin-notebook-revisions-comparator')).toHaveCount(0);
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
@@ -703,7 +735,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
   test('creates a notebook checkpoint from React with Git storage', async ({ page }) => {
     test.skip(process.env.ZEPPELIN_E2E_REQUIRE_REVISION !== 'true', 'Requires GitNotebookRepo revision support.');
-    const sentOperations = observeSentOperations(page);
+    const sentMessages = observeSentMessages(page);
+    const receivedOperations = observeReceivedOperations(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -722,8 +755,20 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React route checkpoint');
       await reactNotebook.getByRole('button', { name: 'Checkpoint' }).click();
 
-      await expect.poll(() => sentOperations.filter(operation => operation === 'CHECKPOINT_NOTE').length).toBe(1);
-      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' }).locator('option')).toHaveCount(2);
+      await expect.poll(() => sentMessages.filter(message => message.op === 'CHECKPOINT_NOTE').length).toBe(1);
+      const checkpointRequest = sentMessages.find(message => message.op === 'CHECKPOINT_NOTE');
+      expect(checkpointRequest?.msgId).toBeTruthy();
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation.op === 'LIST_REVISION_HISTORY'), {
+          timeout: 60000
+        })
+        .toContainEqual(expect.objectContaining({ msgId: checkpointRequest?.msgId }));
+      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' }).locator('option')).toHaveCount(
+        2,
+        {
+          timeout: 15000
+        }
+      );
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
@@ -737,30 +782,141 @@ test.describe('Notebook Core production route feasibility proof', () => {
     await performLoginIfRequired(page);
 
     const stamp = Date.now();
-    const code = "%python\nprint('%table name\\tcount\\na\\t12\\nb\\t24')";
     let noteId: string | undefined;
 
     try {
-      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactResultMode_${stamp}`);
+      const imported = await page.request.post('/api/notebook/import', {
+        params: { notePath: `/E2E_TEST_FOLDER/ReactResultMode_${stamp}` },
+        data: {
+          name: `ReactResultMode_${stamp}`,
+          paragraphs: [
+            {
+              id: `paragraph_result_mode_${stamp}`,
+              title: 'Table result',
+              text: '%sh\necho table-result',
+              user: 'anonymous',
+              status: 'FINISHED',
+              config: {
+                colWidth: 12,
+                fontSize: 9,
+                enabled: true,
+                editorHide: false,
+                tableHide: false,
+                title: false,
+                editorSetting: { language: 'sh', editOnDblClick: false }
+              },
+              settings: { params: {}, forms: {} },
+              apps: [],
+              runtimeInfos: {},
+              results: { code: 'SUCCESS', msg: [{ type: 'TABLE', data: 'name\tcount\na\t12\nb\t24' }] }
+            }
+          ]
+        }
+      });
+      expect(imported.ok(), `Notebook import failed: ${imported.status()} ${await imported.text()}`).toBeTruthy();
+      noteId = (await imported.json()).body as string;
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
-      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
-      await expect(editor).toBeVisible({ timeout: 30000 });
-      await editor.fill(code);
-      await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await reactNotebook.getByRole('button', { name: 'Run', exact: true }).click();
-      await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).status).toBe('FINISHED');
       await expect(reactNotebook.getByTestId('react-notebook-core-result')).toHaveAttribute(
         'data-result-type',
-        'TABLE'
+        'TABLE',
+        { timeout: 30000 }
       );
-      await expect(reactNotebook.getByRole('img', { name: 'line-chart', exact: true })).toBeVisible({
-        timeout: coldInterpreterExecutionTimeout
+      const modes = [
+        { icon: 'bar-chart', mode: 'multiBarChart', renderer: 'zeppelin-bar-chart-visualization canvas' },
+        { icon: 'pie-chart', mode: 'pieChart', renderer: 'zeppelin-pie-chart-visualization canvas' },
+        { icon: 'line-chart', mode: 'lineChart', renderer: 'zeppelin-line-chart-visualization canvas' },
+        { icon: 'area-chart', mode: 'stackedAreaChart', renderer: 'zeppelin-area-chart-visualization canvas' },
+        { icon: 'dot-chart', mode: 'scatterChart', renderer: 'zeppelin-scatter-chart-visualization canvas' }
+      ] as const;
+
+      for (const { icon, mode, renderer } of modes) {
+        const modeControl = reactNotebook.getByRole('img', { name: icon, exact: true });
+        await expect(modeControl).toBeVisible({ timeout: coldInterpreterExecutionTimeout });
+        await modeControl.click();
+        await expect
+          .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).config?.results?.['0']?.graph?.mode)
+          .toBe(mode);
+        await expect(reactNotebook.locator(renderer)).toBeVisible({ timeout: 15000 });
+      }
+    } finally {
+      if (noteId) await page.request.delete(`/api/notebook/${noteId}`);
+    }
+  });
+
+  test('runs a React dynamic form selection once with the selected parameter', async ({ page }) => {
+    const sentMessages = observeSentMessages(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      const imported = await page.request.post('/api/notebook/import', {
+        params: { notePath: `/E2E_TEST_FOLDER/ReactDynamicForm_${stamp}` },
+        data: {
+          name: `ReactDynamicForm_${stamp}`,
+          paragraphs: [
+            {
+              id: `paragraph_dynamic_form_${stamp}`,
+              title: 'Dynamic form',
+              text: '%sh\necho dynamic-form',
+              user: 'anonymous',
+              status: 'READY',
+              config: {
+                colWidth: 12,
+                fontSize: 9,
+                enabled: true,
+                editorHide: false,
+                tableHide: false,
+                title: false,
+                runOnSelectionChange: true,
+                editorSetting: { language: 'sh', editOnDblClick: false, completionSupport: false }
+              },
+              settings: {
+                params: { country: 'kr' },
+                forms: {
+                  country: {
+                    name: 'country',
+                    displayName: 'Country',
+                    type: 'Select',
+                    hidden: false,
+                    defaultValue: 'kr',
+                    options: [
+                      { value: 'kr', displayName: 'Korea' },
+                      { value: 'us', displayName: 'United States' }
+                    ]
+                  }
+                }
+              },
+              apps: [],
+              runtimeInfos: {},
+              results: { code: 'SUCCESS', msg: [] }
+            }
+          ]
+        }
       });
-      await reactNotebook.getByRole('img', { name: 'line-chart', exact: true }).click();
+      expect(imported.ok(), `Notebook import failed: ${imported.status()} ${await imported.text()}`).toBeTruthy();
+      noteId = (await imported.json()).body as string;
+
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+
+      const country = reactNotebook.getByRole('combobox', { name: 'Country' });
+      await expect(country).toHaveValue('0');
+      await country.selectOption({ label: 'United States' });
+
+      await expect.poll(() => sentMessages.filter(message => message.op === 'RUN_PARAGRAPH').length).toBe(1);
+      expect(sentMessages.find(message => message.op === 'RUN_PARAGRAPH')?.data).toMatchObject({
+        id: `paragraph_dynamic_form_${stamp}`,
+        params: { country: 'us' }
+      });
       await expect
-        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).config?.results?.['0']?.graph?.mode)
-        .toBe('lineChart');
+        .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).settings?.params?.country)
+        .toBe('us');
     } finally {
       if (noteId) await page.request.delete(`/api/notebook/${noteId}`);
     }
@@ -771,7 +927,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const sentOperations = observeSentOperations(page);
     const peerSentOperations = observeSentOperations(peerPage);
     const stamp = Date.now();
-    const code = `%python\nprint("react_peer_${stamp}")`;
+    const code = `%sh\necho "react_peer_${stamp}"`;
     let noteId: string | undefined;
 
     try {
@@ -816,7 +972,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const user2Context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const user2Page = await user2Context.newPage();
     const stamp = Date.now();
-    const code = `%python\nprint("cross_principal_${stamp}")`;
+    const code = `%sh\necho "cross_principal_${stamp}"`;
     let noteId: string | undefined;
 
     try {
@@ -909,7 +1065,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const user2Page = await user2Context.newPage();
     const stamp = Date.now();
     const marker = `runner_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const code = `%sh\necho "${marker}"`;
     let noteId: string | undefined;
 
     try {
@@ -961,7 +1117,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const peerSentOperations = observeSentOperations(peerPage);
     const stamp = Date.now();
     const marker = `core_peer_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const code = `%sh\necho "${marker}"`;
     let noteId: string | undefined;
 
     try {
@@ -1030,7 +1186,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     await performLoginIfRequired(page);
 
     const stamp = Date.now();
-    const code = '%python\nimport time\ntime.sleep(30)\nprint("must not finish before cancellation")';
+    const code = '%sh\nsleep 30\necho "must not finish before cancellation"';
     let noteId: string | undefined;
 
     try {

@@ -211,6 +211,7 @@ export type NotebookCoreRemoteProps = Readonly<{
   lookAndFeel?: NotebookLookAndFeel;
   onLookAndFeelChange?: (lookAndFeel: NotebookLookAndFeel) => void;
   onShowShortcut?: () => void;
+  revisionSupported?: boolean;
   revisions?: readonly NotebookRevision[];
   currentRevision?: string;
   revisionView?: boolean;

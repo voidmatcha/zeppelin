@@ -305,6 +305,7 @@ describe('NotebookCoreAdapter', () => {
         onExportNotebook={onExportNotebook}
         onReloadNotebook={onReloadNotebook}
         canManagePermissions
+        revisionSupported
         onExtensionChange={onExtensionChange}
       />
     );
@@ -404,7 +405,7 @@ describe('NotebookCoreAdapter', () => {
       ]
     });
 
-    render(<NotebookCoreAdapter core={runtime.port} onRevisionCompare={onRevisionCompare} />);
+    render(<NotebookCoreAdapter core={runtime.port} revisionSupported onRevisionCompare={onRevisionCompare} />);
     fireEvent.click(screen.getByRole('button', { name: 'Revisions' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'First revision' }), { target: { value: 'revision-1' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Second revision' }), { target: { value: 'revision-2' } });
@@ -518,6 +519,7 @@ describe('NotebookCoreAdapter', () => {
     const { rerender } = render(
       <NotebookCoreAdapter
         core={runtime.port}
+        revisionSupported
         onRevisionSelect={onRevisionSelect}
         onCheckpointNotebook={onCheckpointNotebook}
         onSetNotebookRevision={onSetNotebookRevision}
@@ -552,10 +554,26 @@ describe('NotebookCoreAdapter', () => {
         ]
       });
     });
-    rerender(<NotebookCoreAdapter core={runtime.port} onSetNotebookRevision={onSetNotebookRevision} />);
+    rerender(
+      <NotebookCoreAdapter core={runtime.port} revisionSupported onSetNotebookRevision={onSetNotebookRevision} />
+    );
     expect(screen.queryByRole('textbox', { name: 'Checkpoint message' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Set revision as head' }));
     expect(onSetNotebookRevision).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes the first checkpoint only when the host supports revisions', () => {
+    const runtime = createNotebookCore({ noteId: 'note-1' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({ type: 'note-loaded', noteId: 'note-1', revisionId: null, title: 'Notebook', paragraphs: [] });
+
+    const view = render(<NotebookCoreAdapter core={runtime.port} />);
+    expect(view.queryByRole('button', { name: 'Revisions' })).toBeNull();
+    expect(view.queryByRole('textbox', { name: 'Checkpoint message' })).toBeNull();
+
+    view.rerender(<NotebookCoreAdapter core={runtime.port} revisionSupported />);
+    expect((view.getByRole('combobox', { name: 'Notebook revision' }) as HTMLSelectElement).value).toBe('Head');
+    expect(view.getByRole('textbox', { name: 'Checkpoint message' })).not.toBeNull();
   });
 
   it('delegates Core scheduler configuration and shows Core collaboration state', () => {
