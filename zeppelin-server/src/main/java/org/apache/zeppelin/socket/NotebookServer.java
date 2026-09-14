@@ -42,6 +42,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import jakarta.inject.Inject;
 import jakarta.inject.Provider;
 import jakarta.websocket.CloseReason;
@@ -64,6 +66,9 @@ import org.apache.zeppelin.display.AngularObjectRegistry;
 import org.apache.zeppelin.display.AngularObjectRegistryListener;
 import org.apache.zeppelin.display.GUI;
 import org.apache.zeppelin.display.Input;
+import org.apache.zeppelin.eventbus.EventBus;
+import org.apache.zeppelin.eventbus.NoteEvent;
+import org.apache.zeppelin.eventbus.NoteRemovedEvent;
 import org.apache.zeppelin.helium.ApplicationEventListener;
 import org.apache.zeppelin.helium.HeliumPackage;
 import org.apache.zeppelin.interpreter.InterpreterGroup;
@@ -119,7 +124,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
     RemoteInterpreterProcessListener,
     ApplicationEventListener,
     ParagraphJobListener,
-    NoteEventListener {
+    NoteEventListener,
+    AutoCloseable {
 
   /**
    * Job manager service type.
@@ -162,6 +168,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
   private Provider<NotebookService> notebookServiceProvider;
   private AuthorizationService authorizationService;
   private Provider<JobManagerService> jobManagerServiceProvider;
+  private CompositeDisposable subscriptions;
 
   public NotebookServer() {
     NotebookServer.self.set(this);
@@ -171,6 +178,31 @@ public class NotebookServer implements AngularObjectRegistryListener,
   @Inject
   public void setZeppelinConfiguration(ZeppelinConfiguration zConf) {
     this.zConf = zConf;
+  }
+
+  @Inject
+  public void registerEventBus(EventBus eventBus, ZeppelinConfiguration zConf) {
+    if (!zConf.isEventBusEnabled()) {
+      LOGGER.debug("ZeppelinEventBus is disabled");
+      return;
+    }
+    subscriptions = new CompositeDisposable();
+
+    subscriptions.add(eventBus.observe(NoteEvent.class)
+        .subscribe(event -> {
+          try {
+            handleNoteEvent(event);
+          } catch (Exception e) {
+            LOGGER.error("Failed to handle note event: {}", event, e);
+          }
+        }));
+  }
+
+  @Override
+  public void close() {
+    if (subscriptions != null && !subscriptions.isDisposed()) {
+      subscriptions.dispose();
+    }
   }
 
   @Inject
@@ -559,7 +591,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
               + "success=false, errorType={}",
           operation, principal, e.getClass().getSimpleName());
       try {
-        conn.send(serializeMessage(new Message(OP.ERROR_INFO).put("info", e.getMessage())));
+        conn.send(serializeMessage(new Message(OP.ERROR_INFO)
+            .withMsgId(receivedMessage == null ? null : receivedMessage.msgId)
+            .put("info", e.getMessage())));
       } catch (IOException iox) {
         LOGGER.error("Fail to send error info", iox);
       }
@@ -689,7 +723,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           if (!authorizationService.isReader(noteId, context.getUserAndRoles())) {
             permissionError(conn, "get interpreter bindings from",
                 context.getAutheInfo().getUser(), context.getUserAndRoles(),
-                authorizationService.getReaders(noteId));
+                authorizationService.getReaders(noteId), fromMessage.msgId);
             return null;
           }
           List<InterpreterSetting> bindedSettings =
@@ -699,10 +733,9 @@ public class NotebookServer implements AngularObjectRegistryListener,
                 setting.getInterpreterInfos(), true));
           }
         }
-        conn.send(serializeMessage(
-            new Message(OP.INTERPRETER_BINDINGS)
-                .withMsgId(fromMessage.msgId)
-                .put("interpreterBindings", settingList)));
+        conn.send(serializeMessage(new Message(OP.INTERPRETER_BINDINGS)
+            .withMsgId(fromMessage.msgId)
+            .put("interpreterBindings", settingList)));
         return null;
       });
   }
@@ -718,7 +751,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           if (!authorizationService.isWriter(noteId, context.getUserAndRoles())) {
             permissionError(conn, "save interpreter bindings for",
                 context.getAutheInfo().getUser(), context.getUserAndRoles(),
-                authorizationService.getWriters(noteId));
+                authorizationService.getWriters(noteId), fromMessage.msgId);
             return false;
           }
           List<String> settingIdList =
@@ -833,10 +866,17 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
   void permissionError(NotebookSocket conn, String op, String userName, Set<String> userAndRoles,
                        Set<String> allowed) throws IOException {
+    permissionError(conn, op, userName, userAndRoles, allowed, null);
+  }
+
+  void permissionError(NotebookSocket conn, String op, String userName, Set<String> userAndRoles,
+                       Set<String> allowed, String msgId) throws IOException {
     LOGGER.info("Cannot {}. Connection readers {}. Allowed readers {}", op, userAndRoles, allowed);
 
-    conn.send(serializeMessage(new Message(OP.AUTH_INFO).put("info",
-        "Insufficient privileges to " + op
+    conn.send(serializeMessage(new Message(OP.AUTH_INFO)
+        .withMsgId(msgId)
+        .put("info",
+            "Insufficient privileges to " + op
             + " note.\n\n" + "Allowed users or roles: "
             + allowed
             .toString() + "\n\n" + "But the user "
@@ -1692,7 +1732,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String commitMessage = (String) fromMessage.get("commitMessage");
 
     getNotebookService().checkpointNote(noteId, commitMessage, context,
-        new WebSocketServiceCallback<Revision>(conn) {
+        new WebSocketServiceCallback<Revision>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Revision revision, ServiceContext context) throws IOException {
             super.onSuccess(revision, context);
@@ -1700,14 +1740,15 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
               List<Revision> revisions = getNotebook().processNote(noteId,
                 note -> getNotebook().listRevisionHistory(noteId, note.getPath(), context.getAutheInfo()));
-              conn.send(serializeMessage(
-                  new Message(OP.LIST_REVISION_HISTORY)
-                      .withMsgId(fromMessage.msgId)
-                      .put("revisionList", revisions)));
+              conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY)
+                  .withMsgId(fromMessage.msgId)
+                  .put("revisionList", revisions)));
             } else {
               conn.send(serializeMessage(
-                  new Message(OP.ERROR_INFO).put("info",
-                      "Couldn't checkpoint note revision: possibly no changes found or storage doesn't support versioning. "
+                  new Message(OP.ERROR_INFO)
+                      .withMsgId(fromMessage.msgId)
+                      .put("info",
+                          "Couldn't checkpoint note revision: possibly no changes found or storage doesn't support versioning. "
                           + "Please check the logs for more details.")));
             }
           }
@@ -1719,14 +1760,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
                                    Message fromMessage) throws IOException {
     String noteId = (String) fromMessage.get("noteId");
     getNotebookService().listRevisionHistory(noteId, context,
-        new WebSocketServiceCallback<List<Revision>>(conn) {
+        new WebSocketServiceCallback<List<Revision>>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(List<Revision> revisions, ServiceContext context) throws IOException {
             super.onSuccess(revisions, context);
-            conn.send(serializeMessage(
-                new Message(OP.LIST_REVISION_HISTORY)
-                    .withMsgId(fromMessage.msgId)
-                    .put("revisionList", revisions)));
+            conn.send(serializeMessage(new Message(OP.LIST_REVISION_HISTORY)
+                .withMsgId(fromMessage.msgId)
+                .put("revisionList", revisions)));
           }
         });
   }
@@ -1737,13 +1777,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String noteId = (String) fromMessage.get("noteId");
     String revisionId = (String) fromMessage.get("revisionId");
     getNotebookService().setNoteRevision(noteId, revisionId, context,
-        new WebSocketServiceCallback<Note>(conn) {
+        new WebSocketServiceCallback<Note>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
             Note reloadedNote = getNotebook().loadNoteFromRepo(noteId, context.getAutheInfo());
-            conn.send(serializeMessage(
-                new Message(OP.SET_NOTE_REVISION).withMsgId(fromMessage.msgId).put("status", true)));
+            conn.send(serializeMessage(new Message(OP.SET_NOTE_REVISION)
+                .withMsgId(fromMessage.msgId)
+                .put("status", true)));
             broadcastNote(reloadedNote);
           }
         });
@@ -1756,12 +1797,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String noteId = (String) fromMessage.get("noteId");
     String revisionId = (String) fromMessage.get("revisionId");
     getNotebookService().getNotebyRevision(noteId, revisionId, context,
-        new WebSocketServiceCallback<Note>(conn) {
+        new WebSocketServiceCallback<Note>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
             conn.send(serializeMessage(
                 new Message(OP.NOTE_REVISION)
+                    .withMsgId(fromMessage.msgId)
                     .put("noteId", noteId)
                     .put("revisionId", revisionId)
                     .put("note", note)));
@@ -1801,34 +1843,30 @@ public class NotebookServer implements AngularObjectRegistryListener,
       return;
     }
     try {
-      getNotebook().processNote(noteId,
-        note -> {
-          if (note == null) {
-            LOGGER.warn("Note {} not found", noteId);
-            return null;
-          }
-          Paragraph paragraph = note.getParagraph(paragraphId);
-          if (paragraph == null) {
-            LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
-            return null;
-          }
-          if (note.isPersonalizedMode()) {
-            // Streaming events carry no owner. The shared outputBuffer is what checkpointOutput
-            // saves as the shared result and what other users' paragraphs are cloned from, so
-            // one user's output must not be written there. Personalized clients get their
-            // user-specific terminal snapshot instead.
-            return null;
-          }
-          paragraph.appendOutputBuffer(index, output);
-          Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
-              .put("noteId", noteId)
-              .put("paragraphId", paragraphId)
-              .put("index", index)
-              .put("data", output)
-              .put("outputSequence", paragraph.nextOutputSequence());
-          connectionManager.broadcast(noteId, msg);
+      getNotebook().processNote(noteId, note -> {
+        if (note == null) {
+          LOGGER.warn("Note {} not found", noteId);
           return null;
-        });
+        }
+        if (note.isPersonalizedMode()) {
+          // Streaming events do not identify the user that owns the execution.
+          return null;
+        }
+        Paragraph paragraph = note.getParagraph(paragraphId);
+        if (paragraph == null) {
+          LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
+          return null;
+        }
+        paragraph.appendOutputBuffer(index, output);
+        Message msg = new Message(OP.PARAGRAPH_APPEND_OUTPUT)
+            .put("noteId", noteId)
+            .put("paragraphId", paragraphId)
+            .put("index", index)
+            .put("data", output)
+            .put("outputSequence", paragraph.nextOutputSequence());
+        connectionManager.broadcast(noteId, msg);
+        return null;
+      });
     } catch (IOException e) {
       LOGGER.warn("Fail to call onOutputAppend", e);
     }
@@ -1852,16 +1890,16 @@ public class NotebookServer implements AngularObjectRegistryListener,
             LOGGER.warn("Note {} not found", noteId);
             return null;
           }
-          Paragraph paragraph = note.getParagraph(paragraphId);
-          if (paragraph == null) {
-            LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
-            return null;
-          }
           if (note.isPersonalizedMode()) {
             // Streaming events carry no owner. The shared outputBuffer is what checkpointOutput
             // saves as the shared result and what other users' paragraphs are cloned from, so
             // one user's output must not be written there. Personalized clients get their
             // user-specific terminal snapshot instead.
+            return null;
+          }
+          Paragraph paragraph = note.getParagraph(paragraphId);
+          if (paragraph == null) {
+            LOGGER.warn("Paragraph {} not found in note {}", paragraphId, noteId);
             return null;
           }
           paragraph.updateOutputBuffer(index, type, output);
@@ -2025,19 +2063,12 @@ public class NotebookServer implements AngularObjectRegistryListener,
 
   @Override
   public void onNoteRemove(Note note, AuthenticationInfo subject) {
-    try {
-      broadcastUpdateNoteJobInfo(note, System.currentTimeMillis() - 5000);
-    } catch (IOException e) {
-      LOGGER.warn("can not broadcast for job manager: {}", e.getMessage(), e);
+    if (zConf.isEventBusEnabled()) {
+      LOGGER.debug("ZeppelinEventBus is enabled");
+      return;
     }
 
-    try {
-      getJobManagerService().removeNoteJobInfo(note.getId(), null,
-          new JobManagerServiceCallback());
-    } catch (IOException e) {
-      LOGGER.warn("can not broadcast for job manager: {}", e.getMessage(), e);
-    }
-
+    handleNoteRemove(note);
   }
 
   @Override
@@ -2455,9 +2486,15 @@ public class NotebookServer implements AngularObjectRegistryListener,
   public class WebSocketServiceCallback<T> extends SimpleServiceCallback<T> {
 
     private final NotebookSocket conn;
+    private final String requestMsgId;
 
     WebSocketServiceCallback(NotebookSocket conn) {
+      this(conn, null);
+    }
+
+    WebSocketServiceCallback(NotebookSocket conn, String requestMsgId) {
       this.conn = conn;
+      this.requestMsgId = requestMsgId;
     }
 
     @Override
@@ -2469,14 +2506,41 @@ public class NotebookServer implements AngularObjectRegistryListener,
         Map<String, String> jsonObject =
             gson.fromJson(((ForbiddenException) ex).getResponse().getEntity().toString(), type);
         conn.send(serializeMessage(new Message(OP.AUTH_INFO)
+            .withMsgId(requestMsgId)
             .put("info", jsonObject.get("message"))));
       } else {
         String message = ex.getMessage();
         if (ex.getCause() != null) {
           message += ", cause: " + ex.getCause().getMessage();
         }
-        conn.send(serializeMessage(new Message(OP.ERROR_INFO).put("info", message)));
+        conn.send(serializeMessage(new Message(OP.ERROR_INFO)
+            .withMsgId(requestMsgId)
+            .put("info", message)));
       }
+    }
+  }
+
+  private void handleNoteEvent(NoteEvent event) {
+    if (event instanceof NoteRemovedEvent) {
+      Note note = event.getNote();
+      handleNoteRemove(note);
+    } else {
+      LOGGER.warn("Unknown event type: {}", event.getClass().getName());
+    }
+  }
+
+  private void handleNoteRemove(Note note) {
+    try {
+      broadcastUpdateNoteJobInfo(note, System.currentTimeMillis() - 5000);
+    } catch (IOException e) {
+      LOGGER.warn("can not broadcast for job manager: {}", e.getMessage(), e);
+    }
+
+    try {
+      getJobManagerService().removeNoteJobInfo(note.getId(), null,
+          new JobManagerServiceCallback());
+    } catch (IOException e) {
+      LOGGER.warn("can not broadcast for job manager: {}", e.getMessage(), e);
     }
   }
 }

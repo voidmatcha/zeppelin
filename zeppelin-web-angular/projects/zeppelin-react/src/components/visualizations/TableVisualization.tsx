@@ -15,16 +15,14 @@ import { Table } from 'antd';
 import { VisualizationControls, type VisualizationMode } from './VisualizationControls';
 import { applyChartTheme, useHostThemeMode } from '@/theme';
 import { parseTableData, exportFile } from '@/utils';
+import type { NotebookParagraphResult, NotebookParagraphResultConfig } from '@zeppelin/notebook-core';
 import type { Chart, ChartConfiguration } from 'chart.js';
-
-type NotebookParagraphResult = Readonly<{ type: string; data: string }>;
-type NotebookResultConfig = Readonly<{ graph: unknown }>;
 
 interface TableVisualizationProps {
   result: NotebookParagraphResult;
-  config?: NotebookResultConfig;
+  config?: NotebookParagraphResultConfig;
   modeChangeDisabled?: boolean;
-  onConfigChange?: (config: NotebookResultConfig) => void;
+  onConfigChange?: (config: NotebookParagraphResultConfig) => void;
 }
 
 export const TableVisualization = ({
@@ -33,11 +31,11 @@ export const TableVisualization = ({
   modeChangeDisabled = false,
   onConfigChange
 }: TableVisualizationProps) => {
-  const graphConfig =
-    typeof config?.graph === 'object' && config.graph !== null
-      ? (config.graph as Readonly<Record<string, unknown>> & { mode?: VisualizationMode })
-      : {};
-  const [currentMode, setCurrentMode] = useState<VisualizationMode>(graphConfig.mode || 'table');
+  const configuredMode =
+    config?.graph && typeof config.graph === 'object' && 'mode' in config.graph
+      ? (config.graph.mode as VisualizationMode)
+      : 'table';
+  const [currentMode, setCurrentMode] = useState<VisualizationMode>(configuredMode);
   const chartRef = useRef<HTMLDivElement>(null);
   const themeMode = useHostThemeMode();
 
@@ -54,7 +52,7 @@ export const TableVisualization = ({
       return;
     }
     setCurrentMode(mode);
-    onConfigChange?.({ graph: { ...graphConfig, mode } });
+    onConfigChange?.({ graph: { ...(config?.graph as object), mode } });
   };
 
   const renderVisualization = () => {

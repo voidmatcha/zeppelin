@@ -287,7 +287,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .toBe(1);
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
       await expect(proof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));
-      await expect(reactAdapter.getByRole('textbox', { name: 'Paragraph 1 editor' })).toHaveValue(code);
+      await expect(reactAdapter.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true })).toHaveValue(code);
 
       await reactAdapter.getByRole('button', { name: 'Run', exact: true }).click();
 
@@ -360,7 +360,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
       await context.setOffline(true);
-      await page.waitForTimeout(250);
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
       await context.setOffline(false);
 
       await expect
@@ -394,7 +394,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
       await context.setOffline(true);
-      await page.waitForTimeout(250);
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
       await context.setOffline(false);
 
       await expect
@@ -402,7 +402,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .toBeGreaterThan(noteEventsBeforeOffline);
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId);
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' })).toBeVisible();
+      await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true })).toBeVisible();
     } finally {
       await context.setOffline(false);
       if (noteId) {
@@ -429,7 +429,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       noteId = await createNote(page, `E2E_TEST_FOLDER/ReactOutputRecovery_${stamp}`);
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
-      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       const paragraphResult = reactNotebook.getByTestId('react-notebook-core-results');
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
@@ -493,14 +493,14 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
 
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
-      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(0);
       await expect(page.locator('zeppelin-notebook-action-bar')).toHaveCount(1);
       await expect(page.getByTestId('notebook-title')).toHaveCount(0);
       await expect(page.locator('zeppelin-notebook-sidebar')).toHaveCount(0);
 
-      const title = page.getByRole('textbox', { name: 'Notebook title' });
+      const title = page.getByRole('textbox', { name: 'Notebook title', exact: true });
       await title.fill(renamedTitle);
       await title.press('Tab');
       await expect(reactNotebook).toHaveAttribute('data-title', renamedTitle, { timeout: 30000 });
@@ -510,9 +510,15 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook.getByRole('navigation', { name: 'Notebook outline' }).getByRole('link')).toHaveCount(
         2
       );
-      await page.getByRole('button', { name: 'Move down', exact: true }).first().click();
+      await reactNotebook
+        .getByRole('article', { name: 'Paragraph 1', exact: true })
+        .getByRole('button', { name: 'Move down', exact: true })
+        .click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(2);
-      await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+      await reactNotebook
+        .getByRole('article', { name: 'Paragraph 1', exact: true })
+        .getByRole('button', { name: 'Delete', exact: true })
+        .click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(1);
 
       await editor.fill(code);
@@ -550,7 +556,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
 
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
-      const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await editor.fill(code);
       await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
@@ -597,7 +603,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' })).toHaveValue('Head');
-      await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill('%python');
+      await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }).fill('%python');
       await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
       await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
 
@@ -646,7 +652,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       noteId = await createNote(page, `E2E_TEST_FOLDER/ReactResultMode_${stamp}`);
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
-      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(editor).toBeVisible({ timeout: 30000 });
       await editor.fill(code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -682,8 +688,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
         peerPage.goto(`/#/notebook/${noteId}?reactNotebook=true`)
       ]);
 
-      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
-      const peerEditor = peerPage.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
+      const peerEditor = peerPage.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(editor).toBeVisible({ timeout: 30000 });
       await expect(peerEditor).toBeVisible({ timeout: 30000 });
 
@@ -725,8 +731,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
         user2Page.goto(`/#/notebook/${noteId}?reactNotebook=true`)
       ]);
 
-      const user1Editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
-      const user2Editor = user2Page.getByRole('textbox', { name: 'Paragraph 1 editor' });
+      const user1Editor = page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
+      const user2Editor = user2Page.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(user1Editor).toBeVisible({ timeout: 30000 });
       await expect(user2Editor).toBeVisible({ timeout: 30000 });
 
@@ -813,7 +819,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const ownerNotebook = page.getByTestId('notebook-core-react-adapter');
       await expect(ownerNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill(code);
+      await ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }).fill(code);
       await ownerNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 

@@ -284,6 +284,10 @@ class ProofMessageService {
   readonly connectedStatus = true;
   readonly connectedStatus$ = new BehaviorSubject(true);
   private readonly received = new Map<OP, Subject<unknown>>();
+  private readonly receivedEnvelopes = new Map<OP, Subject<unknown>>();
+  private activeNoteId?: string;
+  private activeRevisionId?: string;
+  private nextMsgId = 0;
 
   receive(op: OP) {
     let subject = this.received.get(op);
@@ -296,6 +300,14 @@ class ProofMessageService {
   receiveMessage() {
     return NEVER;
   }
+  receiveEnvelope(op: OP) {
+    let subject = this.receivedEnvelopes.get(op);
+    if (!subject) {
+      subject = new Subject();
+      this.receivedEnvelopes.set(op, subject);
+    }
+    return subject;
+  }
   sent() {
     return NEVER;
   }
@@ -307,16 +319,43 @@ class ProofMessageService {
     queueMicrotask(() => this.publishNote(OP.NOTE, noteId, null));
   }
   noteRevision(noteId: string, revisionId: string) {
+    const receipt = this.createReceipt(OP.NOTE_REVISION);
     window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'noteRevision', noteId, revisionId });
-    queueMicrotask(() => this.publishNote(OP.NOTE_REVISION, noteId, revisionId));
+    queueMicrotask(() => this.publishNote(OP.NOTE_REVISION, noteId, revisionId, receipt.msgId));
+    return receipt;
   }
   listRevisionHistory(noteId: string) {
     window.__zeppelinNotebookRouteBoundaryProof?.messageCalls.push({ method: 'listRevisionHistory', noteId });
+    return this.createReceipt(OP.LIST_REVISION_HISTORY);
   }
-  getInterpreterBindings() {}
+  getInterpreterBindings() {
+    return this.createReceipt(OP.GET_INTERPRETER_BINDINGS);
+  }
+  activateNotebookRoute(noteId: string, revisionId?: string) {
+    this.activeNoteId = noteId;
+    this.activeRevisionId = revisionId;
+  }
+  deactivateNotebookRoute() {
+    this.activeNoteId = undefined;
+    this.activeRevisionId = undefined;
+  }
+  isCurrentNotebookReply(message: { msgId?: string }, _op: OP, noteId?: string, revisionId?: string) {
+    return Boolean(
+      message.msgId &&
+      noteId === this.activeNoteId &&
+      (this.activeRevisionId === undefined || revisionId === this.activeRevisionId)
+    );
+  }
+  settleNotebookScopedFailure() {
+    return false;
+  }
 
-  private publishNote(op: OP.NOTE | OP.NOTE_REVISION, noteId: string, revisionId: string | null): void {
-    this.received.get(op)?.next({
+  private createReceipt(op: OP) {
+    return { op, msgId: `proof-${++this.nextMsgId}` };
+  }
+
+  private publishNote(op: OP.NOTE | OP.NOTE_REVISION, noteId: string, revisionId: string | null, msgId?: string): void {
+    const data = {
       note: {
         paragraphs: [],
         name: `Proof ${noteId}`,
@@ -335,7 +374,12 @@ class ProofMessageService {
         info: {}
       },
       ...(revisionId === null ? {} : { revisionId })
-    });
+    };
+    if (op === OP.NOTE_REVISION) {
+      this.receivedEnvelopes.get(op)?.next({ op, data, msgId });
+    } else {
+      this.received.get(op)?.next(data);
+    }
   }
 }
 

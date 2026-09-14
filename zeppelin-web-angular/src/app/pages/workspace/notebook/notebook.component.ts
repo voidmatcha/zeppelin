@@ -29,7 +29,7 @@ import { distinctUntilChanged, distinctUntilKeyChanged, filter, startWith, take,
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NzModalService } from 'ng-zorro-antd/modal';
 
-import { MessageEnvelopeListener, MessageListener, MessageListenersManager } from '@zeppelin/core';
+import { MessageListener, MessageListenersManager } from '@zeppelin/core';
 import { Permissions } from '@zeppelin/interfaces';
 import {
   OP,
@@ -66,7 +66,6 @@ import type {
 } from '@zeppelin/notebook-core';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
-import { NotebookRequestCorrelation } from './notebook-request-correlation';
 
 type LoadedNote = Exclude<Note['note'], undefined>;
 type LoadedParagraph = LoadedNote['paragraphs'][number];
@@ -76,7 +75,7 @@ type LoadedParagraph = LoadedNote['paragraphs'][number];
   templateUrl: './notebook.component.html',
   styleUrls: ['./notebook.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [NotebookCoreRouteAdapter, NotebookRequestCorrelation],
+  providers: [NotebookCoreRouteAdapter],
   standalone: false
 })
 export class NotebookComponent extends MessageListenersManager implements OnInit, AfterViewInit, OnDestroy {
@@ -144,12 +143,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  @MessageEnvelopeListener(OP.INTERPRETER_BINDINGS)
-  loadInterpreterBindings(message: ReceivedMessage<OP.INTERPRETER_BINDINGS>) {
-    if (!this.notebookRequestCorrelation.accept(message, this.activatedRoute.snapshot.params.noteId) || !message.data) {
-      return;
-    }
-    const data = message.data;
+  loadInterpreterBindings(data: MessageReceiveDataTypeMap[OP.INTERPRETER_BINDINGS]) {
     this.interpreterBindings = data.interpreterBindings;
     if (!this.interpreterBindings.some(item => item.selected)) {
       this.activatedExtension = 'interpreter';
@@ -223,7 +217,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.setNoteFormsStatus();
   }
 
-  @MessageListener(OP.NOTE_REVISION)
   getNoteRevision(data: MessageReceiveDataTypeMap[OP.NOTE_REVISION]) {
     const note = data.note;
     if (isNil(note)) {
@@ -239,11 +232,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  @MessageEnvelopeListener(OP.SET_NOTE_REVISION)
-  setNoteRevision(message: ReceivedMessage<OP.SET_NOTE_REVISION>) {
-    if (!this.notebookRequestCorrelation.accept(message, this.activatedRoute.snapshot.params.noteId)) {
-      return;
-    }
+  setNoteRevision(_data: MessageReceiveDataTypeMap[OP.SET_NOTE_REVISION]) {
     const { noteId } = this.activatedRoute.snapshot.params;
     this.router.navigate(['/notebook', noteId]).then();
   }
@@ -376,12 +365,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     this.cdr.markForCheck();
   }
 
-  @MessageEnvelopeListener(OP.LIST_REVISION_HISTORY)
-  listRevisionHistory(message: ReceivedMessage<OP.LIST_REVISION_HISTORY>) {
-    if (!this.notebookRequestCorrelation.accept(message, this.activatedRoute.snapshot.params.noteId) || !message.data) {
-      return;
-    }
-    const data = message.data;
+  listRevisionHistory(data: MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY]) {
     this.noteRevisions = data.revisionList;
     if (this.noteRevisions) {
       if (this.noteRevisions.length === 0 || this.noteRevisions[0].id !== 'Head') {
@@ -579,8 +563,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     private saveAsService: SaveAsService,
     private nzModalService: NzModalService,
     private reactFeature: ReactFeatureService,
-    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter,
-    private notebookRequestCorrelation: NotebookRequestCorrelation
+    private notebookCoreRouteAdapter: NotebookCoreRouteAdapter
   ) {
     super(messageService);
     this.coreProofReactProps = this.createCoreProofReactProps();
@@ -650,7 +633,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       onNoteFormsChange: noteParams =>
         this.onNoteFormChange(
           Object.entries(noteParams).reduce<DynamicFormParams>((params, [name, value]) => {
-            params[name] = value;
+            params[name] = Array.isArray(value) ? [...value] : value;
             return params;
           }, {})
         ),
@@ -905,12 +888,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   ngOnInit() {
-    this.messageService
-      .sent()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(message => {
-        this.notebookRequestCorrelation.record(message);
-      });
+    this.subscribeNotebookScopedReplies();
     this.messageService
       .receive(OP.PARAGRAPH_UPDATE_OUTPUT)
       .pipe(takeUntil(this.destroy$))
@@ -945,7 +923,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     });
     this.activatedRoute.params.pipe(takeUntil(this.destroy$)).subscribe(param => {
       this.revisionView = !!param.revisionId;
-      this.notebookRequestCorrelation.enterRoute(param.noteId, param.revisionId ?? null);
       this.notebookCoreRouteAdapter.enterRoute(param.noteId, param.revisionId ?? null);
       this.cdr.markForCheck();
     });
@@ -961,7 +938,6 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     ])
       .pipe(takeUntil(this.destroy$))
       .subscribe(([connected, params]) => {
-        this.notebookRequestCorrelation.connectionChanged(connected);
         if (!connected) {
           return;
         }
@@ -992,9 +968,78 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   ngOnDestroy(): void {
     super.ngOnDestroy();
     this.saveNote();
+    this.messageService.deactivateNotebookRoute();
     this.destroy$.next();
     this.destroy$.complete();
     this.titleService.setTitle('Zeppelin');
+  }
+
+  private subscribeNotebookScopedReplies(): void {
+    this.messageService
+      .receiveEnvelope(OP.INTERPRETER_BINDINGS)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.INTERPRETER_BINDINGS)) {
+          this.loadInterpreterBindings(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.LIST_REVISION_HISTORY)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.LIST_REVISION_HISTORY)) {
+          this.listRevisionHistory(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.SET_NOTE_REVISION)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.SET_NOTE_REVISION)) {
+          this.setNoteRevision(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.NOTE_REVISION)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        if (message.data && this.isCurrentNotebookReply(message, OP.NOTE_REVISION, message.data.revisionId)) {
+          this.getNoteRevision(message.data);
+        }
+      });
+    this.messageService
+      .receiveEnvelope(OP.AUTH_INFO)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        this.settleNotebookScopedFailure(message);
+      });
+    this.messageService
+      .receiveEnvelope(OP.ERROR_INFO)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(message => {
+        this.settleNotebookScopedFailure(message);
+      });
+  }
+
+  private isCurrentNotebookReply(
+    message: Parameters<MessageService['isCurrentNotebookReply']>[0],
+    op: OP,
+    revisionId?: string
+  ): boolean {
+    return this.messageService.isCurrentNotebookReply(
+      message,
+      op,
+      this.activatedRoute.snapshot.params.noteId,
+      revisionId
+    );
+  }
+
+  private settleNotebookScopedFailure(message: Parameters<MessageService['settleNotebookScopedFailure']>[0]): boolean {
+    return this.messageService.settleNotebookScopedFailure(
+      message,
+      this.activatedRoute.snapshot.params.noteId,
+      this.activatedRoute.snapshot.params.revisionId
+    );
   }
 
   private requestCurrentNote(): void {
@@ -1003,8 +1048,10 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       throw new Error('Route parameter `noteId` is required.');
     }
     if (revisionId) {
+      this.messageService.activateNotebookRoute(noteId, revisionId);
       this.messageService.noteRevision(noteId, revisionId);
     } else {
+      this.messageService.activateNotebookRoute(noteId);
       this.messageService.getNote(noteId);
     }
   }

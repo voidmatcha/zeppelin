@@ -17,7 +17,9 @@ export type NotebookParagraphResult = Readonly<{
   data: string;
 }>;
 
-export type NotebookParagraphResultConfigs = Readonly<Record<string, Readonly<{ graph: unknown }>>>;
+export type NotebookParagraphResultConfig = Readonly<{ graph: unknown }>;
+
+export type NotebookParagraphResultConfigs = Readonly<Record<string, NotebookParagraphResultConfig>>;
 
 export type NotebookFormValue = unknown;
 

@@ -13,4 +13,5 @@
 export { ConfigurationTable, mount as mountConfigurationTable } from './pages/ConfigurationTable';
 export { PublishedParagraph, mount } from './pages/PublishedParagraph';
 export { ParagraphFooter, mount as mountParagraphFooter } from './components/paragraph/ParagraphFooter';
+export { NotebookCoreAdapter, mount as mountNotebookCoreAdapter } from './components/notebook/NotebookCoreAdapter';
 export type { NotebookCoreRemoteProps } from './notebookCoreContract';

@@ -41,14 +41,18 @@ export type SendArgumentsType<K extends keyof MessageSendDataTypeMap> = MessageS
 export type ReceiveArgumentsType<K extends keyof MessageReceiveDataTypeMap> =
   MessageReceiveDataTypeMap[K] extends undefined ? () => void : (data: MessageReceiveDataTypeMap[K]) => void;
 
-export type ReceivedMessage<K extends keyof MessageReceiveDataTypeMap> = WebSocketMessage<MessageReceiveDataTypeMap> & {
-  op: K;
-  data?: MessageReceiveDataTypeMap[K];
-};
+export type ReceivedMessage<K extends keyof MessageReceiveDataTypeMap> = WebSocketMessage<MessageReceiveDataTypeMap, K>;
 
 export type ReceiveMessageArgumentsType<K extends keyof MessageReceiveDataTypeMap> = (
   message: ReceivedMessage<K>
 ) => void;
+
+export type ReceiveEnvelopeArgumentsType<K extends keyof MessageReceiveDataTypeMap> = ReceiveMessageArgumentsType<K>;
+
+export interface SendReceipt<Op extends keyof MessageSendDataTypeMap = keyof MessageSendDataTypeMap> {
+  readonly op: Op;
+  readonly msgId: string;
+}
 
 export class Message {
   public connectedStatus = false;
@@ -120,9 +124,6 @@ export class Message {
     if (!this.wsUrl) {
       throw new Error('WebSocket URL is not set. Please call setWsUrl() before connect()');
     }
-    if (this.offline) {
-      return;
-    }
 
     this.manuallyClosed = false;
     this.clearReconnectTimer();
@@ -184,7 +185,7 @@ export class Message {
     return this.received$.asObservable();
   }
 
-  send<K extends keyof MessageSendDataTypeMap>(...args: SendArgumentsType<K>): void {
+  send<K extends keyof MessageSendDataTypeMap>(...args: SendArgumentsType<K>): SendReceipt<K> {
     if (!this.ws) {
       throw new Error('WebSocket is not connected. Bootstrap first.');
     }
@@ -199,6 +200,10 @@ export class Message {
 
     this.ws.next(message);
     this.sent$.next(message);
+    return {
+      op,
+      msgId: message.msgId
+    };
   }
 
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
@@ -209,17 +214,25 @@ export class Message {
 
   receiveMessage<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<ReceivedMessage<K>> {
     const guard = getMessagePayloadGuard(op);
+
     return this.received$.pipe(
       filter((message): message is ReceivedMessage<K> => message.op === op),
       filter(message => {
         if (!guard || guard(message.data)) {
           return true;
         }
+
         // The payload can be large and carries note names, so log the OP alone.
         console.warn(`Dropped WebSocket OP ${String(op)}: payload failed validation`);
         return false;
       })
     );
+  }
+
+  receiveEnvelope<K extends keyof MessageReceiveDataTypeMap>(
+    op: K
+  ): Observable<WebSocketMessage<MessageReceiveDataTypeMap, K>> {
+    return this.receiveMessage(op);
   }
 
   shortCircuit(message: WebSocketMessage<MessageReceiveDataTypeMap>) {
@@ -235,7 +248,7 @@ export class Message {
 
   /**
    * Browser connectivity is an input to the transport, rather than another
-   * reconnect owner.  A later online notification is the only operation that
+   * reconnect owner. A later online notification is the only operation that
    * may resume this paused connection.
    */
   pauseReconnect(): void {
@@ -546,7 +559,7 @@ export class Message {
     paragraphParams: ParagraphConfig,
     noteId: string
   ): void {
-    return this.send<OP.COMMIT_PARAGRAPH>(OP.COMMIT_PARAGRAPH, {
+    this.send<OP.COMMIT_PARAGRAPH>(OP.COMMIT_PARAGRAPH, {
       id: paragraphId,
       noteId,
       title: paragraphTitle,
@@ -560,7 +573,7 @@ export class Message {
     // javascript add "," if change contains several patches
     // but java library requires patch list without ","
     const normalPatch = patch.replace(/,@@/g, '@@');
-    return this.send<OP.PATCH_PARAGRAPH>(OP.PATCH_PARAGRAPH, {
+    this.send<OP.PATCH_PARAGRAPH>(OP.PATCH_PARAGRAPH, {
       id: paragraphId,
       noteId,
       patch: normalPatch
@@ -573,28 +586,28 @@ export class Message {
     });
   }
 
-  checkpointNote(noteId: string, commitMessage: string): void {
-    this.send<OP.CHECKPOINT_NOTE>(OP.CHECKPOINT_NOTE, {
+  checkpointNote(noteId: string, commitMessage: string): SendReceipt<OP.CHECKPOINT_NOTE> {
+    return this.send<OP.CHECKPOINT_NOTE>(OP.CHECKPOINT_NOTE, {
       noteId,
       commitMessage
     });
   }
 
-  setNoteRevision(noteId: string, revisionId: string): void {
-    this.send<OP.SET_NOTE_REVISION>(OP.SET_NOTE_REVISION, {
+  setNoteRevision(noteId: string, revisionId: string): SendReceipt<OP.SET_NOTE_REVISION> {
+    return this.send<OP.SET_NOTE_REVISION>(OP.SET_NOTE_REVISION, {
       noteId,
       revisionId
     });
   }
 
-  listRevisionHistory(noteId: string): void {
-    this.send<OP.LIST_REVISION_HISTORY>(OP.LIST_REVISION_HISTORY, {
+  listRevisionHistory(noteId: string): SendReceipt<OP.LIST_REVISION_HISTORY> {
+    return this.send<OP.LIST_REVISION_HISTORY>(OP.LIST_REVISION_HISTORY, {
       noteId
     });
   }
 
-  noteRevision(noteId: string, revisionId: string): void {
-    this.send<OP.NOTE_REVISION>(OP.NOTE_REVISION, {
+  noteRevision(noteId: string, revisionId: string): SendReceipt<OP.NOTE_REVISION> {
+    return this.send<OP.NOTE_REVISION>(OP.NOTE_REVISION, {
       noteId,
       revisionId
     });
@@ -623,12 +636,12 @@ export class Message {
     this.send<OP.UNSUBSCRIBE_UPDATE_NOTE_JOBS>(OP.UNSUBSCRIBE_UPDATE_NOTE_JOBS);
   }
 
-  getInterpreterBindings(noteId: string): void {
-    this.send<OP.GET_INTERPRETER_BINDINGS>(OP.GET_INTERPRETER_BINDINGS, { noteId });
+  getInterpreterBindings(noteId: string): SendReceipt<OP.GET_INTERPRETER_BINDINGS> {
+    return this.send<OP.GET_INTERPRETER_BINDINGS>(OP.GET_INTERPRETER_BINDINGS, { noteId });
   }
 
-  saveInterpreterBindings(noteId: string, selectedSettingIds: string[]): void {
-    this.send<OP.SAVE_INTERPRETER_BINDINGS>(OP.SAVE_INTERPRETER_BINDINGS, {
+  saveInterpreterBindings(noteId: string, selectedSettingIds: string[]): SendReceipt<OP.SAVE_INTERPRETER_BINDINGS> {
+    return this.send<OP.SAVE_INTERPRETER_BINDINGS>(OP.SAVE_INTERPRETER_BINDINGS, {
       noteId,
       selectedSettingIds
     });

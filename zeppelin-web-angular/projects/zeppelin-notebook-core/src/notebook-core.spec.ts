@@ -877,6 +877,63 @@ describe('notebook core runtime spike', () => {
     scheduler.advanceBy(10000);
     expect(runtime.port.getSnapshot().paragraphs[0].hasConflict).toBe(true);
     expect(dispatchCommand).not.toHaveBeenCalled();
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md peer', source: 'server' });
+    scheduler.advanceBy(10000);
+    expect(runtime.port.getSnapshot().paragraphs[0].hasConflict).toBe(true);
+    expect(runtime.port.dispatch({ type: 'run-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(dispatchCommand).not.toHaveBeenCalled();
+  });
+
+  it('does not revive a consumed route draft after newer saves complete', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand: () => true });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v1' });
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-b',
+      revisionId: null,
+      title: 'Note B',
+      paragraphs: []
+    });
+    runtime.apply({ type: 'route-changed', noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md base', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v1', source: 'server' });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: '%md v2' });
+    runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v2', source: 'server' });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md v2', status: 'READY' }]
+    });
+
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%md v2',
+      isDirty: false,
+      hasConflict: false
+    });
+    expect(runtime.apply({ type: 'paragraph-save-cancelled', paragraphId: 'missing' })).toBe(false);
   });
 
   it('restores the prior status when the host rejects a Core run request', () => {

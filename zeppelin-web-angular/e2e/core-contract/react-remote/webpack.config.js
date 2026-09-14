@@ -17,7 +17,7 @@ const reactRemoteRoot = path.resolve(webRoot, 'projects/zeppelin-react');
 const ModuleFederationPlugin = require(
   path.join(reactRemoteRoot, 'node_modules/webpack/lib/container/ModuleFederationPlugin')
 );
-const MonacoWebpackPlugin = require(path.join(webRoot, 'node_modules/monaco-editor-webpack-plugin'));
+const MonacoWebpackPlugin = require(path.join(reactRemoteRoot, 'node_modules/monaco-editor-webpack-plugin'));
 
 class RejectNotebookCoreRuntimePlugin {
   apply(compiler) {

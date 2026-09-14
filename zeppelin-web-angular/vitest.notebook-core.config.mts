@@ -27,7 +27,6 @@ export default defineConfig({
     include: [
       'projects/zeppelin-notebook-core/**/*.spec.ts',
       'src/app/pages/workspace/notebook/notebook-core-route.adapter.spec.ts',
-      'src/app/pages/workspace/notebook/notebook-request-correlation.spec.ts',
       'test/notebook-core/**/*.spec.ts'
     ]
   }

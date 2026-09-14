@@ -16,17 +16,18 @@ import { ImageRenderer } from '@/components/renderers/ImageRenderer';
 import { TextRenderer } from '@/components/renderers/TextRenderer';
 import { TableVisualization } from '@/components/visualizations/TableVisualization';
 import { checkAndReplaceCarriageReturn } from '@/utils';
-
-type NotebookParagraphResult = Readonly<{ type: string; data: string }>;
-type NotebookResultConfig = Readonly<{ graph: unknown }>;
-type NotebookParagraphResultConfigs = Readonly<Record<string, NotebookResultConfig>>;
+import type {
+  NotebookParagraphResult,
+  NotebookParagraphResultConfig,
+  NotebookParagraphResultConfigs
+} from '@zeppelin/notebook-core';
 
 interface SingleResultRendererProps {
   result: NotebookParagraphResult;
   index: number;
   config?: NotebookParagraphResultConfigs;
   modeChangeDisabled?: boolean;
-  onConfigChange?: (config: NotebookResultConfig) => void;
+  onConfigChange?: (config: NotebookParagraphResultConfig) => void;
 }
 
 export const SingleResultRenderer = ({

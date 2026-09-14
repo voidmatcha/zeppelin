@@ -14,14 +14,14 @@ import { createRoot, Root } from 'react-dom/client';
 import { Empty, ReactErrorBoundary } from '@/components';
 import { SingleResultRenderer } from '@/templates';
 import { ZeppelinThemeProvider } from '@/theme';
-import type { ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import type { NotebookParagraphResult, NotebookParagraphResultConfigs } from '@zeppelin/notebook-core';
 
 const RESULT_FONT_FAMILY = "'Lucida Console', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace";
 
 export interface PublishedParagraphProps {
   paragraphId: string;
-  results?: ParagraphIResultsMsgItem[];
-  config?: ParagraphConfigResults;
+  results?: NotebookParagraphResult[];
+  config?: NotebookParagraphResultConfigs;
   onError?: (error: unknown) => void;
 }
 
