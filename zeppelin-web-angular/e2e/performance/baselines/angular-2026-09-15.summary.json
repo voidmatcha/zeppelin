@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "runId": "5605283b-98d7-4087-bc8f-2e5e5baa189c",
+  "generatedAt": "2026-09-14T18:05:08.062Z",
+  "dryRun": false,
+  "zeppelinCommit": "4d5820903283721120cc558c05ddee7b230bd1cf",
+  "workingTreeDirty": false,
+  "os": {
+    "platform": "darwin",
+    "release": "25.5.0"
+  },
+  "cpuModel": "Apple M1 Pro",
+  "memoryBytes": 34359738368,
+  "browserVersion": "140.0.7339.186",
+  "nodeVersion": "v26.8.1",
+  "buildCommand": "npm run build",
+  "fixture": {
+    "path": "e2e/fixtures/performance/notebook-route-100-paragraphs.json",
+    "sha256": "7f94de1f9a7e529c7baf473a8bba9ab017f410c896f21bd8357922b63bd81fde"
+  },
+  "baseURL": "http://127.0.0.1:18080",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "runsPerCache": 10,
+  "warmPrimingNavigations": 1,
+  "percentileMethod": "nearest-rank",
+  "bundles": {
+    "angularEntryChunks": [
+      {
+        "path": "dist/zeppelin/polyfills.ff67e561b2f2bf75.js",
+        "rawBytes": 56102,
+        "gzipBytes": 20504,
+        "sha256": "194d61d77df3cf43cc38b9fc29df74e3812e6548ce6300b5307477cdffe51802"
+      },
+      {
+        "path": "dist/zeppelin/styles.4dfa8f2b6c9676ff.js",
+        "rawBytes": 136850,
+        "gzipBytes": 23175,
+        "sha256": "da59e068bb19b04d42c2d988239f10c5c930a389657250b72645465d26dab95c"
+      },
+      {
+        "path": "dist/zeppelin/scripts.3e02b0ea73800c10.js",
+        "rawBytes": 825757,
+        "gzipBytes": 237645,
+        "sha256": "ca3bbd0856ca2debfdd5a58c49d95c57793dbfec3ed661920e87aa5506fa176f"
+      },
+      {
+        "path": "dist/zeppelin/main.86ea413303f47e71.js",
+        "rawBytes": 6690213,
+        "gzipBytes": 1780085,
+        "sha256": "ecda691c53aae3ed4b0f485dc46acfe20131528f89018605e25a19182d0164af"
+      }
+    ],
+    "reactRemoteEntry": {
+      "path": "dist/zeppelin/assets/react/remoteEntry.js",
+      "rawBytes": 3966,
+      "gzipBytes": 1759,
+      "sha256": "668dc9a20892e7e8619dc8ff50519022326c4268de099bf3197e3380dec52d09"
+    }
+  },
+  "summary": {
+    "cold": {
+      "count": 10,
+      "notebookReadyMs": {
+        "median": 1642,
+        "p95": 1682.2000000476837
+      },
+      "fcpMs": {
+        "median": 92,
+        "p95": 1708
+      }
+    },
+    "warm": {
+      "count": 10,
+      "notebookReadyMs": {
+        "median": 1182.3500000238419,
+        "p95": 1217.6999998092651
+      },
+      "fcpMs": {
+        "median": 68,
+        "p95": 1208
+      }
+    }
+  }
+}
