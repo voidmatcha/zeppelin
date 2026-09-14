@@ -68,16 +68,16 @@ Host components do not touch `window.reactApp` themselves; they bind props to th
 
 ## Feature flags
 
-Each React surface is behind a URL query flag, resolved by `ReactFeatureService`:
+Each React surface has a URL query flag resolved by `ReactFeatureService`:
 
 | URL | Result |
 | --- | --- |
 | `?react=true` | enabled |
 | `?react` | enabled |
 | `?react=false` | disabled |
-| flag absent | disabled |
+| flag absent | uses the surface default |
 
-Append `?react=true` to any published paragraph URL, `?reactNotebook=true` to a notebook URL, `?reactFooter=true` to a notebook URL, or `?reactConfiguration=true` to the configuration URL to activate React mode. The React notebook uses the host-owned Shared Notebook Core and delegates table visualizations and legacy `ANGULAR` results to the Angular renderer so existing display plugins and configuration continue to work.
+The notebook route uses React by default. Append `?reactNotebook=false` to use the Angular notebook during the compatibility period. Published paragraphs, paragraph footers, and the configuration table remain opt-in through `?react=true`, `?reactFooter=true`, and `?reactConfiguration=true`. The React notebook uses the host-owned Shared Notebook Core and delegates table visualizations and legacy `ANGULAR` results to the Angular renderer so existing display plugins and configuration continue to work.
 
 ## Setup
 

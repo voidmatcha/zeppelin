@@ -129,7 +129,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     try {
       noteId = await createNote(page, `E2E_TEST_FOLDER/CoreTheme_${stamp}`);
-      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+      await page.goto(`/#/notebook/${noteId}`);
 
       const reactAdapter = page.getByTestId('notebook-core-react-adapter');
       await expect(reactAdapter).toHaveAttribute('data-port-shared', 'true', { timeout: 30000 });
