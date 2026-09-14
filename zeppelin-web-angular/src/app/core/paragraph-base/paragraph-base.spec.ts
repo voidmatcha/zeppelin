@@ -345,4 +345,14 @@ describe('ParagraphBase save responses', () => {
     expect(paragraph.originalText).toBe('remote edit');
     expect(paragraph.dirtyText).toBeUndefined();
   });
+
+  it('accepts a remote edit that is not an acknowledgement of the last local save', () => {
+    const paragraph = createSaveTestParagraph('local edit', 'local edit');
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'remote edit' } as ParagraphItem);
+
+    expect(paragraph.paragraph?.text).toBe('remote edit');
+    expect(paragraph.originalText).toBe('remote edit');
+    expect(paragraph.dirtyText).toBeUndefined();
+  });
 });

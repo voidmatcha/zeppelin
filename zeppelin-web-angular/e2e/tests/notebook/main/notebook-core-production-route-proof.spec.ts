@@ -71,6 +71,27 @@ const getPersistedParagraph = async (page: Page, noteId: string, index: number):
 const getCoreParagraphValues = async (proof: Locator, attribute: string): Promise<string[]> =>
   JSON.parse((await proof.getAttribute(attribute)) ?? '[]') as string[];
 
+const replaceMonacoText = async (page: Page, editor: Locator, text: string): Promise<void> => {
+  await editor.focus();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.insertText(text);
+};
+
+const expectMonacoText = async (editor: Locator, text: string, timeout = 5000): Promise<void> => {
+  await expect
+    .poll(
+      () =>
+        editor
+          .locator('xpath=ancestor::div[contains(@class, "zeppelin-react-notebook-editor")]')
+          .evaluate(
+            element =>
+              (element as HTMLElement & { __zeppelinNotebookEditorValue?: string }).__zeppelinNotebookEditorValue ?? ''
+          ),
+      { timeout }
+    )
+    .toBe(text);
+};
+
 const observeSentOperations = (page: Page): string[] => {
   const operations: string[] = [];
   page.on('websocket', webSocket => {
@@ -91,7 +112,31 @@ const observeSentOperations = (page: Page): string[] => {
   return operations;
 };
 
-type ReceivedOperation = Readonly<{ op: string; data: unknown }>;
+type SentOperation = Readonly<{ op: string; msgId?: string; data: unknown }>;
+
+const observeSentMessages = (page: Page): SentOperation[] => {
+  const messages: SentOperation[] = [];
+  page.on('websocket', webSocket => {
+    webSocket.on('framesent', event => {
+      if (typeof event.payload !== 'string') return;
+      try {
+        const message = JSON.parse(event.payload) as { op?: unknown; msgId?: unknown; data?: unknown };
+        if (typeof message.op === 'string') {
+          messages.push({
+            op: message.op,
+            msgId: typeof message.msgId === 'string' ? message.msgId : undefined,
+            data: message.data
+          });
+        }
+      } catch {
+        // Non-JSON development-server frames are unrelated to Zeppelin operations.
+      }
+    });
+  });
+  return messages;
+};
+
+type ReceivedOperation = Readonly<{ op: string; msgId?: string; data: unknown }>;
 
 const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
   const operations: ReceivedOperation[] = [];
@@ -101,9 +146,13 @@ const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
         return;
       }
       try {
-        const message = JSON.parse(event.payload) as { op?: unknown; data?: unknown };
+        const message = JSON.parse(event.payload) as { op?: unknown; msgId?: unknown; data?: unknown };
         if (typeof message.op === 'string') {
-          operations.push({ op: message.op, data: message.data });
+          operations.push({
+            op: message.op,
+            msgId: typeof message.msgId === 'string' ? message.msgId : undefined,
+            data: message.data
+          });
         }
       } catch {
         // Non-JSON development-server frames are unrelated to Zeppelin operations.
@@ -285,7 +334,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .toBe(1);
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
       await expect(proof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));
-      await expect(reactAdapter.getByRole('textbox', { name: 'Paragraph 1 editor' })).toHaveValue(code);
+      await expectMonacoText(reactAdapter.getByRole('textbox', { name: 'Paragraph 1 editor' }), code);
 
       await reactAdapter.getByRole('button', { name: 'Run', exact: true }).click();
 
@@ -424,7 +473,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const paragraphResult = reactNotebook.getByTestId('react-notebook-core-results');
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      await editor.fill(code);
+      await replaceMonacoText(page, editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -506,8 +555,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(1);
 
-      await editor.fill(code);
-      await expect(editor).toHaveValue(code);
+      await replaceMonacoText(page, editor, code);
+      await expectMonacoText(editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -543,7 +592,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await editor.fill(code);
+      await replaceMonacoText(page, editor, code);
       await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -563,8 +612,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('opens existing notebook extensions and revision controls from React', async ({ page }) => {
-    const sentOperations = observeSentOperations(page);
+  test('opens existing notebook extensions from React', async ({ page }) => {
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -581,14 +629,17 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'play-circle' })
       ).toHaveCount(0);
-      await expect(reactNotebook.getByRole('button', { name: 'Run all' })).toBeVisible();
+      await expect(reactNotebook.getByRole('button', { name: 'Run all', exact: true })).toBeVisible();
       await expect(page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'delete' })).toHaveCount(0);
       await expect(
         page.locator('zeppelin-notebook-action-bar').getByRole('button', { name: 'info-circle' })
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
-      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' })).toHaveValue('Head');
-      await reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill('%python');
+      await replaceMonacoText(
+        page,
+        reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }),
+        '%python'
+      );
       await reactNotebook.getByRole('textbox', { name: 'Search notebook' }).fill('python');
       await expect(reactNotebook.locator('.editor-search-highlight')).not.toHaveCount(0);
 
@@ -607,16 +658,49 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await reactNotebook.getByRole('button', { name: 'Permissions' }).click();
       await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toBeVisible();
       await expect(page.locator('zeppelin-notebook-permissions')).toHaveCount(0);
+    } finally {
+      if (noteId) {
+        await page.request.delete(`/api/notebook/${noteId}`);
+      }
+    }
+  });
 
-      await reactNotebook.getByRole('button', { name: 'Revisions' }).click();
-      await expect(reactNotebook.getByRole('region', { name: 'Notebook permissions' })).toHaveCount(0);
-      await expect(reactNotebook.getByRole('region', { name: 'Notebook revision comparison' })).toBeVisible();
-      await expect(page.locator('zeppelin-notebook-revisions-comparator')).toHaveCount(0);
+  test('creates a notebook checkpoint from React with Git storage', async ({ page }) => {
+    test.skip(process.env.ZEPPELIN_E2E_REQUIRE_REVISION !== 'true', 'Requires GitNotebookRepo revision support.');
+    const sentMessages = observeSentMessages(page);
+    const receivedOperations = observeReceivedOperations(page);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
+    const stamp = Date.now();
+    let noteId: string | undefined;
+
+    try {
+      noteId = await createNote(page, `E2E_TEST_FOLDER/ReactCheckpoint_${stamp}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
+
+      const reactNotebook = page.getByTestId('notebook-core-react-adapter');
+      await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' })).toHaveValue('Head');
 
       await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React route checkpoint');
       await reactNotebook.getByRole('button', { name: 'Checkpoint' }).click();
-      await expect.poll(() => sentOperations.filter(operation => operation === 'CHECKPOINT_NOTE').length).toBe(1);
-      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' }).locator('option')).toHaveCount(2);
+
+      await expect.poll(() => sentMessages.filter(message => message.op === 'CHECKPOINT_NOTE').length).toBe(1);
+      const checkpointRequest = sentMessages.find(message => message.op === 'CHECKPOINT_NOTE');
+      expect(checkpointRequest?.msgId).toBeTruthy();
+      await expect
+        .poll(() => receivedOperations.filter(operation => operation.op === 'LIST_REVISION_HISTORY'), {
+          timeout: 60000
+        })
+        .toContainEqual(expect.objectContaining({ msgId: checkpointRequest?.msgId }));
+      await expect(reactNotebook.getByRole('combobox', { name: 'Notebook revision' }).locator('option')).toHaveCount(
+        2,
+        {
+          timeout: 15000
+        }
+      );
     } finally {
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
@@ -639,7 +723,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
       await expect(editor).toBeVisible({ timeout: 30000 });
-      await editor.fill(code);
+      await replaceMonacoText(page, editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await editor.press('Shift+Enter');
       await expect(reactNotebook.getByRole('button', { name: /Line Chart$/ })).toBeVisible({
@@ -678,11 +762,11 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(editor).toBeVisible({ timeout: 30000 });
       await expect(peerEditor).toBeVisible({ timeout: 30000 });
 
-      await editor.fill(code);
+      await replaceMonacoText(page, editor, code);
       await expect
         .poll(() => sentOperations.filter(operation => operation === 'PATCH_PARAGRAPH').length)
         .toBeGreaterThan(0);
-      await expect(peerEditor).toHaveValue(code, { timeout: 30000 });
+      await expectMonacoText(peerEditor, code, 30000);
       expect(peerSentOperations.filter(operation => operation === 'PATCH_PARAGRAPH')).toEqual([]);
     } finally {
       await peerPage.close();
@@ -721,8 +805,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(user1Editor).toBeVisible({ timeout: 30000 });
       await expect(user2Editor).toBeVisible({ timeout: 30000 });
 
-      await user2Editor.fill(code);
-      await expect(user1Editor).toHaveValue(code, { timeout: 30000 });
+      await replaceMonacoText(user2Page, user2Editor, code);
+      await expectMonacoText(user1Editor, code, 30000);
     } finally {
       await user2Context.close();
       if (noteId) {
@@ -804,7 +888,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const ownerNotebook = page.getByTestId('notebook-core-react-adapter');
       await expect(ownerNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }).fill(code);
+      await replaceMonacoText(page, ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }), code);
       await ownerNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 

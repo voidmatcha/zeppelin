@@ -17,11 +17,18 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   // Kept in sync with the `resolve.alias` block in webpack.config.js.
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@zeppelin/notebook-core': fileURLToPath(new URL('../zeppelin-notebook-core/src/public-api.ts', import.meta.url)),
-      '@zeppelin/sdk': fileURLToPath(new URL('../zeppelin-sdk/src', import.meta.url))
-    }
+    alias: [
+      {
+        find: /^monaco-editor$/,
+        replacement: fileURLToPath(new URL('./node_modules/monaco-editor/esm/vs/editor/editor.api.js', import.meta.url))
+      },
+      {
+        find: /^@zeppelin\/notebook-core$/,
+        replacement: fileURLToPath(new URL('../zeppelin-notebook-core/src/public-api.ts', import.meta.url))
+      },
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      { find: '@zeppelin/sdk', replacement: fileURLToPath(new URL('../zeppelin-sdk/src', import.meta.url)) }
+    ]
   },
   test: {
     environment: 'jsdom',

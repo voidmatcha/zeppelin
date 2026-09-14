@@ -38,6 +38,7 @@ interface CommitParagraphMessage extends NotebookSocketMessage {
 
 export class CommitParagraphSocketProbe {
   private shouldHoldFirstCommitResponse = false;
+  private shouldQueueServerMessages = false;
   private heldResponseMsgId: string | null = null;
   private readonly commits: CommitParagraphMessage[] = [];
   private readonly forwardedResponseMsgIds: string[] = [];
@@ -56,17 +57,20 @@ export class CommitParagraphSocketProbe {
   }
 
   handleServerMessage(socket: WebSocketRoute, message: string | Buffer): void {
-    // Delay the server stream in order, as a slow connection would, rather than reordering save responses.
-    if (this.heldResponses.size > 0) {
-      this.queuedResponses.push({ socket, message });
-      return;
-    }
     const parsed = parseSocketMessage(message);
     if (parsed?.op === 'PARAGRAPH' && parsed.msgId) {
       if (parsed.msgId === this.heldResponseMsgId && !this.heldResponses.has(parsed.msgId)) {
         this.heldResponses.set(parsed.msgId, { socket, message });
+        this.shouldQueueServerMessages = true;
         return;
       }
+    }
+    // Preserve server order while the delayed response is delivered and observed in isolation.
+    if (this.shouldQueueServerMessages) {
+      this.queuedResponses.push({ socket, message });
+      return;
+    }
+    if (parsed?.op === 'PARAGRAPH' && parsed.msgId) {
       this.forwardedResponseMsgIds.push(parsed.msgId);
     }
     socket.send(message);
@@ -93,6 +97,10 @@ export class CommitParagraphSocketProbe {
       .toBeGreaterThanOrEqual(1);
   }
 
+  commitCount(): number {
+    return this.commits.length;
+  }
+
   forwardedResponseCount(msgId: string): number {
     return this.forwardedResponseMsgIds.filter(forwardedMsgId => forwardedMsgId === msgId).length;
   }
@@ -107,6 +115,10 @@ export class CommitParagraphSocketProbe {
     this.shouldHoldFirstCommitResponse = false;
     this.forwardedResponseMsgIds.push(msgId);
     held.socket.send(held.message);
+  }
+
+  releaseQueuedResponses(): void {
+    this.shouldQueueServerMessages = false;
     for (const queued of this.queuedResponses.splice(0)) {
       this.handleServerMessage(queued.socket, queued.message);
     }
