@@ -26,9 +26,9 @@ import {
 } from '../../../utils';
 
 const TABLE_PARAGRAPH = `%sh
-printf '%%table city\\tsales\\tcost\\nSeoul\\t30\\t12\\nBusan\\t20\\t8\\nIncheon\\t10\\t5\\n'`;
-const TABLE_HEADERS = ['city', 'sales', 'cost'];
-const TABLE_CELLS = ['Seoul', '30', '12', 'Busan', '20', '8', 'Incheon', '10', '5'];
+printf '%%table city\\tsales\\tcost\\tprofit\\nSeoul\\t30\\t12\\t18\\nBusan\\t20\\t8\\t12\\nIncheon\\t10\\t5\\t5\\n'`;
+const TABLE_HEADERS = ['city', 'sales', 'cost', 'profit'];
+const TABLE_CELLS = ['Seoul', '30', '12', '18', 'Busan', '20', '8', '12', 'Incheon', '10', '5', '5'];
 
 interface SavedGraphConfig {
   keys?: Array<{ name?: string }>;
@@ -182,13 +182,13 @@ test.describe('Notebook Visualization Rendering', () => {
     });
 
     await test.step('When assigning fields to the pivot configuration', async () => {
-      await visualizationPage.dragField(visualizationPage.availablePivotField('city'), visualizationPage.pivotKeys);
-      await visualizationPage.dragField(visualizationPage.availablePivotField('sales'), visualizationPage.pivotValues);
+      await visualizationPage.dragField(visualizationPage.availablePivotField('cost'), visualizationPage.pivotKeys);
+      await visualizationPage.dragField(visualizationPage.availablePivotField('profit'), visualizationPage.pivotValues);
     });
 
     await test.step('Then the selected pivot fields are displayed', async () => {
-      await expect(visualizationPage.pivotKeys.getByText('city', { exact: true })).toBeVisible();
-      await expect(visualizationPage.pivotValues.getByText('sales', { exact: true })).toBeVisible();
+      await expect(visualizationPage.pivotKeys.getByText('cost', { exact: true })).toBeVisible();
+      await expect(visualizationPage.pivotValues.getByText('profit', { exact: true })).toBeVisible();
     });
 
     await test.step('When rotating the x-axis labels', async () => {
@@ -201,9 +201,17 @@ test.describe('Notebook Visualization Rendering', () => {
       await expect(visualizationPage.xAxisRotate.locator('input[type="radio"]')).toBeChecked();
       await expect(visualizationPage.xAxisDegree).toHaveValue('30');
       await waitForSavedGraph(page, noteId, paragraphId, graph => {
+        const keyNames = graph.keys
+          ?.map(field => field.name)
+          .sort()
+          .join(',');
+        const valueNames = graph.values
+          ?.map(field => field.name)
+          .sort()
+          .join(',');
         return (
-          graph.keys?.[0]?.name === 'city' &&
-          graph.values?.[0]?.name === 'sales' &&
+          keyNames === 'city,cost' &&
+          valueNames === 'profit,sales' &&
           graph.setting?.multiBarChart?.xLabelStatus === 'rotate' &&
           graph.setting.multiBarChart.rotate?.degree === '30'
         );
