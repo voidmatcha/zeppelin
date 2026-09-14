@@ -39,6 +39,7 @@ const optionalLauncherRoots = [
   'lib',
   'lib/interpreter',
   'zeppelin-interpreter/target/lib',
+  'zeppelin-web/dist',
   'zeppelin-web/target/lib',
   'zeppelin-web-angular/target/lib'
 ];
@@ -145,6 +146,22 @@ test('build manifest rejects tracked launcher changes hidden with skip-worktree'
     const result = spawnSync(process.execPath, [script, 'verify', manifest, root], { encoding: 'utf8' });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /tracked source differs from HEAD/);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test('build manifest rejects changed classic frontend assets', () => {
+  const root = createRepository();
+  try {
+    const manifest = join(root, 'manifest.json');
+    writeFileSync(join(root, 'zeppelin-web', 'dist', 'index.html'), 'captured classic frontend');
+    execFileSync(process.execPath, [script, 'create', manifest, root]);
+    writeFileSync(join(root, 'zeppelin-web', 'dist', 'index.html'), 'changed classic frontend');
+
+    const changed = spawnSync(process.execPath, [script, 'verify', manifest, root], { encoding: 'utf8' });
+    assert.notEqual(changed.status, 0);
+    assert.match(changed.stderr, /does not match the current source and launched artifacts/);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

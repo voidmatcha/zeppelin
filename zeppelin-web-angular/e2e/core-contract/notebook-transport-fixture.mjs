@@ -176,6 +176,7 @@ export function validateCaptureProvenance(metadata) {
     'zeppelin-server/target/test-classes',
     'zeppelin-web-angular/dist/zeppelin',
     'zeppelin-web-angular/target/lib',
+    'zeppelin-web/dist',
     'zeppelin-web/target/lib'
   ].map(artifact => (typeof artifact === 'string' ? { path: artifact, selection: 'tree' } : artifact));
   const buildManifest = provenance.buildManifest;

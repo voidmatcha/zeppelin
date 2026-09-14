@@ -312,6 +312,17 @@ test.describe('Notebook execution transport capture', () => {
           .reverse()
           .find(message => terminalStatuses.has(String((message.data?.paragraph as { status?: string })?.status)));
         expect(terminal).toBeDefined();
+        const terminalParagraph = terminal?.data?.paragraph as
+          | { results?: { code?: string; msg?: Array<{ type?: string; data?: string }> }; status?: string }
+          | undefined;
+        expect(terminalParagraph?.status).toBe('FINISHED');
+        expect(terminalParagraph?.results?.code).toBe('SUCCESS');
+        expect(
+          terminalParagraph?.results?.msg
+            ?.filter(message => message.type === 'TEXT')
+            .map(message => message.data)
+            .join('')
+        ).toBe('first\nsecond\n');
         const executionOperationNames = executionOperations.map(message => message.op);
         expect({
           append: executionOperationNames.includes('PARAGRAPH_APPEND_OUTPUT'),
