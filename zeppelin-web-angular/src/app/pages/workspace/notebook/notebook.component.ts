@@ -87,6 +87,7 @@ import type {
 import { NotebookParagraphResultComponent } from '../share/result/result.component';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
+import { preserveExistingParagraphViews } from './paragraph/paragraph-input-change';
 import { nextPersonalizedMode } from './personalized-mode';
 
 type LoadedNote = Exclude<Note['note'], undefined>;
@@ -191,7 +192,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     const definedNote = this.note;
     const paragraphIndex = definedNote.paragraphs.findIndex(p => p.id === data.id);
     const paragraphs = this.notebookCoreRouteAdapter.acceptParagraphRemoved(data.id);
-    if (!this.renderParagraphProjection(paragraphs)) {
+    if (!this.renderParagraphProjection(paragraphs, true)) {
       return;
     }
     this.ngZService.removeParagraph(data.id);
@@ -214,7 +215,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       return;
     }
     const paragraphs = this.notebookCoreRouteAdapter.acceptParagraphAdded(data.paragraph, data.index);
-    if (!this.renderParagraphProjection(paragraphs)) {
+    if (!this.renderParagraphProjection(paragraphs, true)) {
       return;
     }
     const paragraphIndex = this.note.paragraphs.findIndex(p => p.id === data.paragraph.id);
@@ -273,7 +274,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
     if (!this.revisionView) {
       const paragraphs = this.notebookCoreRouteAdapter.acceptParagraphMoved(data.id, data.index);
-      if (this.renderParagraphProjection(paragraphs)) {
+      if (this.renderParagraphProjection(paragraphs, true)) {
         const paragraphComponent = this.listOfNotebookParagraphComponent.find(e => e.paragraph.id === data.id);
         this.cdr.markForCheck();
         if (paragraphComponent) {
@@ -1486,11 +1487,18 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     }
   }
 
-  private renderParagraphProjection(paragraphs: readonly LoadedParagraph[] | null): boolean {
+  private renderParagraphProjection(
+    paragraphs: readonly LoadedParagraph[] | null,
+    preserveExistingViews = false
+  ): boolean {
     if (!this.note || !paragraphs) {
       return false;
     }
-    this.note = { ...this.note, paragraphs: [...paragraphs] };
+    if (preserveExistingViews) {
+      this.note.paragraphs = [...preserveExistingParagraphViews(this.note.paragraphs, paragraphs)];
+    } else {
+      this.note = { ...this.note, paragraphs: [...paragraphs] };
+    }
     return true;
   }
 

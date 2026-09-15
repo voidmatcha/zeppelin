@@ -173,6 +173,37 @@ describe('ParagraphBase streaming state isolation', () => {
     expect(component.results).toEqual([{ type: DatasetType.TEXT, data: 'first\nsecond\n' }]);
     component.ngOnDestroy();
   });
+
+  it('accepts output between the local and server pending updates of a new run', () => {
+    const component = new TestParagraph(paragraph('A', 'FINISHED'));
+    component.hydrate({
+      ...paragraph('A', 'FINISHED'),
+      results: { msg: [{ type: DatasetType.TEXT, data: 'previous run\n' }] }
+    });
+
+    component.onParagraphStatus({ id: 'A', status: 'PENDING' });
+    component.paragraphData({ paragraph: paragraph('A', 'PENDING') });
+    beginOutput(component);
+    appendOutput(component);
+    component.paragraphData({ paragraph: paragraph('A', 'RUNNING', '2026-01-01T00:00:01Z') });
+    appendOutput(component);
+
+    expect(component.results).toEqual([{ type: DatasetType.TEXT, data: 'first\nsecond\nsecond\n' }]);
+    component.ngOnDestroy();
+  });
+
+  it('does not clear fresh output on a duplicate pending update', () => {
+    const component = new TestParagraph(paragraph('A', 'FINISHED'));
+    component.hydrate(paragraph('A', 'FINISHED'));
+    component.onParagraphStatus({ id: 'A', status: 'PENDING' });
+    beginOutput(component);
+
+    component.onParagraphStatus({ id: 'A', status: 'PENDING' });
+    appendOutput(component);
+
+    expect(component.results).toEqual([{ type: DatasetType.TEXT, data: 'first\nsecond\n' }]);
+    component.ngOnDestroy();
+  });
 });
 
 describe('ParagraphBase streaming boundaries', () => {
