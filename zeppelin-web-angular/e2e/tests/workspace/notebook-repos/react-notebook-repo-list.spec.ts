@@ -79,7 +79,9 @@ test.describe('Notebook Repository - React list behind a flag', () => {
     await expect(page.locator(MOUNTED_LIST)).toBeVisible({ timeout: 15000 });
 
     const card = page.locator(`${MOUNT} ${REPO_ITEM}`).first();
-    const value = (await settingRows(page, `${MOUNT} ${REPO_ITEM}`).first().locator('td').nth(1).innerText()).trim();
+    // JUSTIFIED: the expected value is dynamic fixture data, so it must be read before edit mode
+    // replaces the display cells. The row index below ties it to the matching INPUT row.
+    const values = await settingRows(page, `${MOUNT} ${REPO_ITEM}`).locator('td:nth-child(2)').allInnerTexts();
 
     await card.getByRole('button', { name: 'Edit' }).click();
     // JUSTIFIED: inline rather than NotebookRepoItemPage - this spec locates the card via
@@ -89,7 +91,12 @@ test.describe('Notebook Repository - React list behind a flag', () => {
     // <input role="combobox"> that this would otherwise match instead.
     const input = card.locator('input.ant-input').first();
     await expect(input).toBeVisible();
-    await expect(input).toHaveValue(value);
+    const inputRowIndex = await input.evaluate(element => {
+      const row = element.closest('tr');
+      return row?.parentElement ? Array.from(row.parentElement.children).indexOf(row) : -1;
+    });
+    expect(inputRowIndex).toBeGreaterThanOrEqual(0);
+    await expect(input).toHaveValue(values[inputRowIndex].trim());
 
     await card.getByRole('button', { name: 'Cancel' }).click();
     await expect(card.getByRole('button', { name: 'Edit' })).toBeVisible();
