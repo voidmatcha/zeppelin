@@ -59,8 +59,8 @@ test.describe('Note Create Modal', () => {
     await expect(page).toHaveURL(/notebook\//);
 
     // Verify the note was created with the correct name
-    const notebookTitle = page.locator('[data-testid="notebook-title"]');
-    await expect(notebookTitle).toContainText(uniqueName);
+    const notebookTitle = page.getByRole('textbox', { name: 'Notebook title', exact: true });
+    await expect(notebookTitle).toHaveValue(uniqueName);
 
     // Verify in the navigation tree if available
     await page.goto('/#/');
@@ -86,8 +86,8 @@ test.describe('Note Create Modal', () => {
     await expect(page).toHaveURL(/notebook\//);
 
     // Verify the note was created with the correct name (without folder path)
-    const notebookTitle = page.locator('[data-testid="notebook-title"]');
-    await expect(notebookTitle).toContainText(noteName);
+    const notebookTitle = page.getByRole('textbox', { name: 'Notebook title', exact: true });
+    await expect(notebookTitle).toHaveValue(noteName);
 
     // Verify the folder structure was created
     await page.goto('/#/');

@@ -59,8 +59,8 @@ test.describe('Notebook Navigation', () => {
 
     // We are now on note B (freshly mounted) — the URL and title must both reflect note B.
     await expect(page).toHaveURL(new RegExp(`/notebook/${noteIdB}`));
-    const title = page.locator('[data-testid="notebook-title"]');
-    await expect(title).toContainText(nameB, { timeout: 15000 });
+    const title = page.getByRole('textbox', { name: 'Notebook title', exact: true });
+    await expect(title).toHaveValue(nameB, { timeout: 15000 });
 
     // In-app navigation to note A via the header notebook list — this reuses the
     // already-mounted NotebookComponent, which is exactly what the regression broke.
@@ -71,6 +71,6 @@ test.describe('Notebook Navigation', () => {
 
     // The URL changing alone never caught the bug — the content must change too.
     await expect(page).toHaveURL(new RegExp(`/notebook/${noteIdA}`));
-    await expect(title).toContainText(nameA, { timeout: 15000 });
+    await expect(title).toHaveValue(nameA, { timeout: 15000 });
   });
 });
