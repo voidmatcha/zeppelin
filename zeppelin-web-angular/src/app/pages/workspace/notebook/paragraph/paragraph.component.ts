@@ -63,6 +63,7 @@ import {
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NotebookParagraphResultComponent } from '../../share/result/result.component';
 import { NotebookParagraphCodeEditorComponent } from './code-editor/code-editor.component';
+import { shouldHydrateParagraphInput } from './paragraph-input-change';
 import { makeParagraphPatch } from './paragraph-patch';
 
 type Mode = 'edit' | 'command';
@@ -769,7 +770,7 @@ export class NotebookParagraphComponent
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes.paragraph || changes.note) {
+    if (shouldHydrateParagraphInput(changes)) {
       this.setParagraphSnapshot(this.paragraph);
     }
     const { index, select, scrolled } = changes;

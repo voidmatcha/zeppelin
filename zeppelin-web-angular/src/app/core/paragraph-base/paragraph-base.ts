@@ -63,6 +63,7 @@ export abstract class ParagraphBase extends MessageListenersManager {
     forms: {}
   };
   private readonly outputState = new ParagraphOutputState();
+  private outputResetForActiveRun = false;
 
   constructor(
     public messageService: Message,
@@ -88,6 +89,16 @@ export abstract class ParagraphBase extends MessageListenersManager {
   @MessageListener(OP.PARAGRAPH_STATUS)
   onParagraphStatus(data: MessageReceiveDataTypeMap[OP.PARAGRAPH_STATUS]) {
     if (data.id === this.paragraph?.id) {
+      const previousStatus = this.paragraph.status;
+      if (
+        data.status === ParagraphStatus.PENDING &&
+        previousStatus !== ParagraphStatus.PENDING &&
+        previousStatus !== ParagraphStatus.RUNNING
+      ) {
+        this.resetOutputForRun();
+      } else if (data.status !== ParagraphStatus.PENDING && data.status !== ParagraphStatus.RUNNING) {
+        this.outputResetForActiveRun = false;
+      }
       this.paragraph.status = data.status;
       this.cdr.markForCheck();
     }
@@ -162,12 +173,13 @@ export abstract class ParagraphBase extends MessageListenersManager {
     const newRunActive = newPara.status === ParagraphStatus.PENDING || newPara.status === ParagraphStatus.RUNNING;
     const runChanged =
       newPara.dateStarted != null && oldPara.dateStarted != null && newPara.dateStarted !== oldPara.dateStarted;
-    if (newRunActive && (!oldRunActive || runChanged)) {
-      this.outputState.reset();
+    if (newRunActive && (!oldRunActive || runChanged) && !this.outputResetForActiveRun) {
+      this.resetOutputForRun();
     }
     // Close the stream before publishing the terminal snapshot.
     if (isTerminalParagraphStatus(newPara.status)) {
       this.outputState.finish(newPara.results?.msg);
+      this.outputResetForActiveRun = false;
     }
     if (this.isUpdateRequired(oldPara, newPara)) {
       this.updateParagraph(oldPara, newPara, () => {
@@ -244,6 +256,15 @@ export abstract class ParagraphBase extends MessageListenersManager {
     if (!this.outputState.isInitialized) {
       this.outputState.reset(this.results, isTerminalParagraphStatus(this.paragraph?.status));
     }
+  }
+
+  private resetOutputForRun(): void {
+    this.results = [];
+    if (this.paragraph) {
+      this.paragraph.results = {};
+    }
+    this.outputState.reset();
+    this.outputResetForActiveRun = true;
   }
 
   private applyStreamingResult(index: number): void {
@@ -460,6 +481,8 @@ export abstract class ParagraphBase extends MessageListenersManager {
     }
     const terminal = isTerminalParagraphStatus(paragraph?.status);
     this.outputState.reset(this.results, terminal);
+    this.outputResetForActiveRun =
+      paragraph?.status === ParagraphStatus.PENDING || paragraph?.status === ParagraphStatus.RUNNING;
     this.cdr.markForCheck();
   }
 }

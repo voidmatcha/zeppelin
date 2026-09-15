@@ -65,6 +65,7 @@ import type {
 } from '@zeppelin/notebook-core';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
+import { preserveExistingParagraphViews } from './paragraph/paragraph-input-change';
 import { nextPersonalizedMode } from './personalized-mode';
 
 type LoadedNote = Exclude<Note['note'], undefined>;
@@ -1109,7 +1110,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
     if (!this.note || !paragraphs) {
       return false;
     }
-    this.note = { ...this.note, paragraphs: [...paragraphs] };
+    this.note.paragraphs = [...preserveExistingParagraphViews(this.note.paragraphs, paragraphs)];
     return true;
   }
 
