@@ -447,6 +447,30 @@ export class NotebookKeyboardPage extends BasePage {
     const paragraph = this.getParagraphByIndex(paragraphIndex);
 
     const paragraphId = await this.resolveParagraphId(noteId, paragraphIndex);
+
+    // A REST seed is authoritative test setup. Wait until Core has observed the
+    // preceding editor autosave so it cannot correctly classify this PUT as a
+    // stale response to a newer local draft.
+    await expect
+      .poll(
+        async () => {
+          const currentText = (await this.readEditorText(paragraph)).replace(/\s+/g, '');
+          const noteResponse = await this.page.request.get(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+          if (!noteResponse.ok()) {
+            throw new Error(
+              `Fetch notebook REST request failed: ${noteResponse.status()} ${await noteResponse.text()}`
+            );
+          }
+          const json = (await noteResponse.json()) as {
+            body?: { paragraphs?: Array<{ id?: string; text?: string }> };
+          };
+          const savedText = json.body?.paragraphs?.find(candidate => candidate.id === paragraphId)?.text ?? '';
+          return savedText.replace(/\s+/g, '') === currentText;
+        },
+        { timeout: 15000 }
+      )
+      .toBe(true);
+
     const response = await this.page.request.put(`/api/notebook/${noteId}/paragraph/${paragraphId}`, {
       data: { text: content },
       failOnStatusCode: false
