@@ -295,6 +295,10 @@ const emptyParagraphState = (): Pick<NotebookCoreState, 'paragraphOrder' | 'para
   paragraphsById: {}
 });
 
+const hasLocalDraft = (paragraph: NotebookParagraphState): boolean =>
+  paragraph.snapshot.text !== paragraph.savedText ||
+  (paragraph.pendingSaveText !== null && paragraph.snapshot.text !== paragraph.pendingSaveText);
+
 const toParagraphState = (
   paragraphs: readonly NotebookParagraphInput[],
   previousParagraphsById: Readonly<Record<string, NotebookParagraphState>> = {},
@@ -309,7 +313,7 @@ const toParagraphState = (
     const previous = previousParagraphsById[paragraph.id];
     const retainedDraft = retainedDrafts[paragraph.id];
     const draft =
-      previous && previous.snapshot.text !== previous.savedText
+      previous && hasLocalDraft(previous)
         ? {
             text: previous.snapshot.text,
             baseText: previous.pendingSaveText ?? previous.savedText,
@@ -363,7 +367,7 @@ const currentDrafts = (state: NotebookCoreState): Readonly<Record<string, Notebo
   Object.freeze(
     state.paragraphOrder.reduce<Record<string, NotebookRetainedDraft>>((drafts, paragraphId) => {
       const paragraph = state.paragraphsById[paragraphId];
-      if (paragraph.snapshot.text !== paragraph.savedText) {
+      if (hasLocalDraft(paragraph)) {
         drafts[paragraphId] = Object.freeze({
           text: paragraph.snapshot.text,
           baseText: paragraph.pendingSaveText ?? paragraph.savedText,
@@ -511,17 +515,18 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
       const isCollaborationTextUpdate = event.source === 'collaboration' && event.text !== undefined;
       const isServerTextUpdate =
         (event.source === 'server' || event.source === 'collaboration') && event.text !== undefined;
-      const hadLocalDraft = currentSnapshot.text !== current.savedText;
+      const clearsPendingSave = event.source === 'server' && event.text !== undefined;
+      const hadLocalDraft = hasLocalDraft(current);
       const serverText =
         isCollaborationTextUpdate && hadLocalDraft
           ? current.savedText
           : isServerTextUpdate
             ? event.text
             : current.savedText;
-      const serverAcknowledgedPending = isServerTextUpdate && event.text === current.pendingSaveText;
+      const serverAcknowledgedPending = clearsPendingSave && event.text === current.pendingSaveText;
       const localText = isCollaborationTextUpdate
         ? event.text
-        : isServerTextUpdate && currentSnapshot.text !== current.savedText
+        : isServerTextUpdate && hadLocalDraft
           ? currentSnapshot.text
           : (event.text ?? currentSnapshot.text);
       const hasConflict = isCollaborationTextUpdate
@@ -548,10 +553,10 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           },
           serverText,
           hasConflict,
-          isServerTextUpdate ? false : current.pendingSaveText !== null
+          clearsPendingSave ? false : current.pendingSaveText !== null
         ),
         savedText: serverText,
-        pendingSaveText: isServerTextUpdate ? null : current.pendingSaveText,
+        pendingSaveText: clearsPendingSave ? null : current.pendingSaveText,
         hasConflict,
         pendingRunStatus: event.status !== undefined && event.status !== 'PENDING' ? null : current.pendingRunStatus,
         outputSequence: event.status === 'PENDING' ? null : current.outputSequence

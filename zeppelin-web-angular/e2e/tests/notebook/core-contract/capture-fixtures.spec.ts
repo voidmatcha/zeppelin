@@ -313,14 +313,31 @@ const sendNotebookMessageWithoutResponse = (
     outbound =>
       new Promise<boolean>((resolve, reject) => {
         const socket = new WebSocket(`${location.origin.replace('http:', 'ws:')}/ws`);
-        const timeout = window.setTimeout(() => {
+        let responseTimeout: number | undefined;
+        const connectionTimeout = window.setTimeout(() => {
           socket.close();
-          resolve(false);
-        }, 750);
-        socket.onerror = () => reject(new Error('Notebook WebSocket failed'));
-        socket.onopen = () => socket.send(JSON.stringify(outbound));
+          reject(new Error('Notebook WebSocket did not open'));
+        }, 10_000);
+        socket.onerror = () => {
+          window.clearTimeout(connectionTimeout);
+          if (responseTimeout !== undefined) {
+            window.clearTimeout(responseTimeout);
+          }
+          reject(new Error('Notebook WebSocket failed'));
+        };
+        socket.onopen = () => {
+          window.clearTimeout(connectionTimeout);
+          socket.send(JSON.stringify(outbound));
+          responseTimeout = window.setTimeout(() => {
+            socket.close();
+            resolve(false);
+          }, 750);
+        };
         socket.onmessage = () => {
-          window.clearTimeout(timeout);
+          window.clearTimeout(connectionTimeout);
+          if (responseTimeout !== undefined) {
+            window.clearTimeout(responseTimeout);
+          }
           socket.close();
           resolve(true);
         };
@@ -1185,6 +1202,11 @@ test.describe('Notebook core transport capture', () => {
         const removedTicketFixture = await removedTicketRecorder.write(liveFixturePath('session-ticket-removed.json'));
         expect(removedTicketLogoutStatus).toBe(401);
         expect(removedTicketReceived).toBe(false);
+        const removedTicketSends = removedTicketFixture.records.flatMap(record => {
+          const frame = record.websocket;
+          return frame?.direction === 'send' ? [JSON.parse(frame.payloadText)] : [];
+        });
+        expect(removedTicketSends).toEqual([expect.objectContaining({ op: 'GET_NOTE', data: { id: noteId } })]);
         expect(removedTicketFixture.records.filter(record => record.websocket?.direction === 'receive')).toHaveLength(
           0
         );
