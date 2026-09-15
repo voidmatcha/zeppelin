@@ -184,7 +184,8 @@ export const NotebookMonacoEditor = ({
     const nextHost = host.current;
     Object.defineProperty(nextHost, '__zeppelinNotebookEditorValue', {
       configurable: true,
-      get: () => model.getValue()
+      get: () => model.getValue(),
+      set: (nextValue: string) => model.setValue(nextValue)
     });
     const nextInstance = editor.create(host.current, {
       ariaLabel: initialOptions.current.ariaLabel,
