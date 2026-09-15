@@ -39,6 +39,8 @@ import {
 } from '@zeppelin/services';
 import { NoteCreateComponent, ShortcutComponent } from '@zeppelin/share';
 
+import { nextPersonalizedMode } from '../personalized-mode';
+
 @Component({
   selector: 'zeppelin-notebook-action-bar',
   templateUrl: './action-bar.component.html',
@@ -315,11 +317,7 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
         nzTitle: 'Setting the result display',
         nzContent: `Do you want to ${modeText} your analysis?`,
         nzOnOk: () => {
-          if (this.note.config.personalizedMode === undefined || this.note.config.personalizedMode === 'true') {
-            this.note.config.personalizedMode = 'false';
-          } else {
-            this.note.config.personalizedMode = 'true';
-          }
+          this.note.config.personalizedMode = nextPersonalizedMode(this.note.config.personalizedMode);
           this.messageService.updatePersonalizedMode(this.note.id, this.note.config.personalizedMode);
         }
       });

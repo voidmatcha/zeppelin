@@ -65,6 +65,7 @@ import type {
 } from '@zeppelin/notebook-core';
 import { NotebookCoreRouteAdapter } from './notebook-core-route.adapter';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
+import { nextPersonalizedMode } from './personalized-mode';
 
 type LoadedNote = Exclude<Note['note'], undefined>;
 type LoadedParagraph = LoadedNote['paragraphs'][number];
@@ -816,10 +817,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       nzTitle: 'Setting the result display',
       nzContent: `Do you want to ${modeText} your analysis?`,
       nzOnOk: () => {
-        this.note!.config.personalizedMode =
-          this.note!.config.personalizedMode === undefined || this.note!.config.personalizedMode === 'true'
-            ? 'false'
-            : 'true';
+        this.note!.config.personalizedMode = nextPersonalizedMode(this.note!.config.personalizedMode);
         this.notebookCoreRouteAdapter.acceptPersonalizedMode(this.note!.config.personalizedMode === 'true');
         this.messageService.updatePersonalizedMode(this.note!.id, this.note!.config.personalizedMode);
       }
