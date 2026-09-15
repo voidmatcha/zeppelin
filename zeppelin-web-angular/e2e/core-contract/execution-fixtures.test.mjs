@@ -32,6 +32,11 @@ const terminalParagraph = fixture =>
   operations(fixture, 'receive')
     .filter(message => message.op === 'PARAGRAPH')
     .findLast(message => ['FINISHED', 'ERROR', 'ABORT'].includes(message.data?.paragraph?.status));
+const paragraphTextOutput = paragraph =>
+  paragraph?.data?.paragraph?.results?.msg
+    ?.filter(message => message.type === 'TEXT')
+    .map(message => message.data)
+    .join('');
 
 const replay = async fixture => {
   const routeHandlers = [];
@@ -154,11 +159,15 @@ test('streaming-disabled execution omits incremental events and retains a termin
     ),
     false
   );
-  assert.equal(terminalParagraph(fixture)?.data.paragraph.status, 'FINISHED');
+  const terminal = terminalParagraph(fixture);
+  assert.equal(terminal?.data.paragraph.status, 'FINISHED');
+  assert.equal(paragraphTextOutput(terminal), 'first\nsecond\n');
+  const replayed = await replay(fixture);
   assert.deepEqual(
-    (await replay(fixture)).map(message => message.op),
+    replayed.map(message => message.op),
     received.map(message => message.op)
   );
+  assert.equal(paragraphTextOutput(replayed.findLast(message => message.op === 'PARAGRAPH')), 'first\nsecond\n');
 });
 
 test('cancellation replays run and explicit cancel before an ABORT terminal paragraph', async () => {

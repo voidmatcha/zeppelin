@@ -1058,6 +1058,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const peerKeyboardPage = new NotebookKeyboardPage(peerPage);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(peerProof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
+      await expect(proof).toHaveAttribute('data-collaborative-mode', 'true', { timeout: 30000 });
 
       await keyboardPage.tryFocusCodeEditor(0);
       await keyboardPage.pressSelectAll();
@@ -1066,7 +1067,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       await expect
         .poll(() => sentOperations.filter(operation => operation === 'PATCH_PARAGRAPH').length, { timeout: 15000 })
-        .toBeGreaterThan(0);
+        .toBe(1);
       await expect.poll(() => peerKeyboardPage.getParagraphTextByIndex(0)).toBe(code);
       await expect(proof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));
       await expect(peerProof).toHaveAttribute('data-paragraph-texts', JSON.stringify([code]));

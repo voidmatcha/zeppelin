@@ -41,6 +41,7 @@ const artifactInputs = [
   { path: 'zeppelin-interpreter/target/lib', required: false },
   { path: 'zeppelin-server/target/lib' },
   { path: 'zeppelin-web/target/lib', required: false },
+  { path: 'zeppelin-web/dist', required: false },
   { path: 'zeppelin-web-angular/target/lib', required: false },
   { path: 'zeppelin-server/target/test-classes' },
   { path: 'interpreter' },

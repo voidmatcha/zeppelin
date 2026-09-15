@@ -24,6 +24,7 @@
     [attr.data-paragraph-texts]="coreProofParagraphTexts(coreSnapshot)"
     [attr.data-paragraph-statuses]="coreProofParagraphStatuses(coreSnapshot)"
     [attr.data-paragraph-results]="coreProofParagraphResults(coreSnapshot)"
+    [attr.data-collaborative-mode]="collaborativeMode"
   ></output>
   <div [zeppelin-react-mount]="'./NotebookCoreAdapter'" [reactProps]="coreProofReactProps"></div>
 }

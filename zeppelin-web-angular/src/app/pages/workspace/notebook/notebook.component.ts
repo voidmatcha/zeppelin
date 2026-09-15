@@ -324,9 +324,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   updateCoreParagraphText({ paragraphId, text }: { paragraphId: string; text: string }): void {
-    if (!this.notebookCoreRouteAdapter.updateParagraphText(paragraphId, text)) {
-      this.syncParagraphTextFromCore(paragraphId);
-    }
+    this.notebookCoreRouteAdapter.acceptParagraphText(paragraphId, text);
   }
 
   private syncParagraphTextFromCore(paragraphId: string): void {
