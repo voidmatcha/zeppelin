@@ -138,7 +138,7 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
 
     adapter.enterRoute(note.id, null);
     adapter.acceptNote(note, null);
-    adapter.acceptParagraphUpdated(updatedParagraph);
+    expect(adapter.acceptParagraphUpdated(updatedParagraph)).toBe(true);
 
     expect(adapter.port.dispatch({ type: 'run-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
     expect(runParagraph).toHaveBeenCalledWith(
@@ -168,6 +168,36 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0].results).toBeUndefined();
   });
 
+  it('projects terminal server fields together with the latest Core text', () => {
+    const adapter = new NotebookCoreRouteAdapter({ getParagraphOutput: vi.fn() } as unknown as MessageService);
+    const note = createNote('RUNNING');
+    const finalResult = { code: 'SUCCESS', msg: [{ type: 'TEXT', data: 'complete' }] };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', '%python\nlocal draft');
+    adapter.acceptParagraphUpdated({
+      ...note.paragraphs[0],
+      title: 'Finished title',
+      text: '%python\nserver edit',
+      status: 'FINISHED',
+      dateFinished: '2026-09-15T01:00:00.000Z',
+      results: finalResult,
+      config: { ...note.paragraphs[0].config, colWidth: 6 },
+      settings: { ...note.paragraphs[0].settings, params: { final: 'value' } }
+    });
+
+    expect(adapter.projectParagraphViewsFromCore()?.[0]).toMatchObject({
+      title: 'Finished title',
+      text: '%python\nlocal draft',
+      status: 'FINISHED',
+      dateFinished: '2026-09-15T01:00:00.000Z',
+      results: finalResult,
+      config: { colWidth: 6 },
+      settings: { params: { final: 'value' } }
+    });
+  });
+
   it('projects an unsaved Core draft back into the Angular paragraph view', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
@@ -185,6 +215,24 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
       progress: 40,
       results: { msg: [{ type: 'TEXT', data: 'retained output' }] }
     });
+  });
+
+  it('preserves a local draft when a paragraph update is followed by an insert', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    const draft = '%python\nlocal draft';
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', draft);
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: '%python\nstale server text' });
+
+    const paragraphs = adapter.acceptParagraphAdded({ ...note.paragraphs[0], id: 'paragraph-2', text: '%python' }, 0);
+
+    expect(paragraphs?.map(paragraph => [paragraph.id, paragraph.text])).toEqual([
+      ['paragraph-2', '%python'],
+      ['paragraph-1', draft]
+    ]);
   });
 
   it('preserves the current snapshot while requesting a reconnect snapshot', () => {
@@ -250,6 +298,38 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
 
     expect(adapter.port.dispatch({ type: 'run-all-paragraphs' })).toBe(false);
     expect(runAllParagraphs).not.toHaveBeenCalled();
+  });
+
+  it('accepts a repeated paragraph text event without dispatching another edit', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.updateParagraphText('paragraph-1', '%python\nlocal()')).toBe(true);
+    const version = adapter.port.getSnapshot().version;
+
+    expect(adapter.updateParagraphText('paragraph-1', '%python\nlocal()')).toBe(true);
+    expect(adapter.port.getSnapshot().version).toBe(version);
+  });
+
+  it('projects the latest draft after an earlier save response arrives', () => {
+    const commitParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ commitParagraph } as unknown as MessageService);
+    const note = createNote();
+    const firstText = '%python\nfirst()';
+    const latestText = '%python\nlatest()';
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.updateParagraphText('paragraph-1', firstText)).toBe(true);
+    expect(adapter.port.dispatch({ type: 'commit-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
+    expect(adapter.updateParagraphText('paragraph-1', latestText)).toBe(true);
+
+    expect(adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: firstText })).toBe(true);
+
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: latestText, isDirty: true });
+    expect(adapter.projectParagraphViewsFromCore()?.[0].text).toBe(latestText);
   });
 
   it('maps saved paragraph result configuration into the Core snapshot', () => {

@@ -109,7 +109,7 @@
               ></zeppelin-note-form-block>
             }
             <div class="paragraph-inner" nz-row>
-              @for (p of note.paragraphs; track p; let first = $first; let last = $last; let i = $index) {
+              @for (p of note.paragraphs; track p.id; let first = $first; let last = $last; let i = $index) {
                 <zeppelin-notebook-paragraph
                   nz-col
                   [nzSpan]="(p.config.colWidth || 12) * 2"
