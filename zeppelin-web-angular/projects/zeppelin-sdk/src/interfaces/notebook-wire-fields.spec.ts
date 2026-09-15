@@ -12,7 +12,7 @@
 
 import { expect, expectTypeOf, it } from 'vitest';
 
-import { EditorSettingReceived, ImportNote, Note } from './message-notebook.interface';
+import { EditorSettingReceived, ImportNote, ListRevision, Note, RevisionListItem } from './message-notebook.interface';
 import { AngularObjectRemove, ImportParagraphItem, ParagraphItem } from './message-paragraph.interface';
 
 it('separates received wire fields from backward-compatible import input', () => {
@@ -100,4 +100,11 @@ it('accepts the personalized GET_NOTE response without a version', () => {
 
   expectTypeOf<NonNullable<Note['note']>['version']>().toEqualTypeOf<string | undefined>();
   expect(personalizedNote.note).not.toHaveProperty('version');
+});
+
+it('accepts an omitted revision list when version control is unavailable', () => {
+  const unsupportedRevisionHistory = {} satisfies ListRevision;
+
+  expectTypeOf<ListRevision['revisionList']>().toEqualTypeOf<RevisionListItem[] | undefined>();
+  expect(unsupportedRevisionHistory).not.toHaveProperty('revisionList');
 });

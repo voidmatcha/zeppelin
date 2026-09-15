@@ -368,8 +368,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   listRevisionHistory(data: MessageReceiveDataTypeMap[OP.LIST_REVISION_HISTORY]) {
-    this.noteRevisions = data.revisionList;
-    if (this.noteRevisions) {
+    const revisions = data.revisionList;
+    this.noteRevisions = revisions ? [...revisions] : [];
+    if (revisions) {
       if (this.noteRevisions.length === 0 || this.noteRevisions[0].id !== 'Head') {
         this.noteRevisions.splice(0, 0, { id: 'Head', message: 'Head' });
       }
@@ -383,6 +384,8 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       } else {
         this.currentRevision = 'Head';
       }
+    } else {
+      this.currentRevision = undefined;
     }
     this.notebookCoreRouteAdapter.acceptRevisions(
       this.noteRevisions.map(revision => ({ id: revision.id, message: revision.message, time: revision.time }))
