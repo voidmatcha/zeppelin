@@ -52,6 +52,7 @@ jobs:
       ZEPPELIN_JOBMANAGER_ENABLE: 'true'
       ZEPPELIN_EVENTBUS_ENABLED: ${{ matrix.eventbus == 'eventbus' }}
     strategy:
+      fail-fast: false
       matrix:
         mode: [anonymous, auth]
         eventbus: [legacy, eventbus]
