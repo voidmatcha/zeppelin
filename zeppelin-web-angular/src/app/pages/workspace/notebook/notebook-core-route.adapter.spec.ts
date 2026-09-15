@@ -523,6 +523,28 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'recovered output' }]);
   });
 
+  it('accepts the first output frame after a server paragraph starts another run', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphOutputSnapshot(note.id, 'paragraph-1', [{ type: 'TEXT', data: 'old output' }], 2);
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], status: 'PENDING' });
+    adapter.acceptParagraphOutputUpdate(note.id, 'paragraph-1', 0, 'TEXT', 'new output', 1);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'new output' }]);
+
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], status: 'PENDING' });
+    adapter.acceptParagraphOutputUpdate(note.id, 'paragraph-1', 0, 'TEXT', 'stale output', 1);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].results).toBeUndefined();
+
+    adapter.acceptParagraphOutputUpdate(note.id, 'paragraph-1', 0, 'TEXT', 'next output', 2);
+
+    expect(adapter.port.getSnapshot().paragraphs[0].results).toEqual([{ type: 'TEXT', data: 'next output' }]);
+  });
+
   it('rejects output snapshots from another note and from the live note while viewing a revision', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();
