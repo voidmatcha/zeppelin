@@ -11,7 +11,7 @@
  */
 
 import { expect, Locator, Page } from '@playwright/test';
-import { navigateToNotebookWithFallback } from '../utils';
+import { navigateToNotebookWithFallback, waitForZeppelinReady } from '../utils';
 import { ShortcutsMap } from '../../src/app/key-binding/shortcuts-map';
 import { ParagraphActions } from '../../src/app/key-binding/paragraph-actions';
 import { BasePage } from './base-page';
@@ -484,9 +484,18 @@ export class NotebookKeyboardPage extends BasePage {
       throw new Error(`Seed paragraph REST request failed: ${response.status()} ${await response.text()}`);
     }
 
-    // The PUT broadcasts the paragraph; wait for the flush to render the exact content.
+    // The PUT normally broadcasts the paragraph. If the socket reconnects during
+    // test setup, reload the persisted note instead of making a keyboard test
+    // depend on receiving that one broadcast.
     const expected = content.replace(/\r\n?/g, '\n');
-    await expect.poll(async () => this.readEditorText(paragraph), { timeout: 15000 }).toBe(expected);
+    try {
+      await expect.poll(async () => this.readEditorText(paragraph), { timeout: 5000 }).toBe(expected);
+    } catch {
+      await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+      await waitForZeppelinReady(this.page);
+      await expect(paragraph).toBeVisible({ timeout: 30000 });
+      await expect.poll(async () => this.readEditorText(paragraph), { timeout: 15000 }).toBe(expected);
+    }
   }
 
   private async resolveParagraphId(noteId: string, paragraphIndex: number): Promise<string> {
