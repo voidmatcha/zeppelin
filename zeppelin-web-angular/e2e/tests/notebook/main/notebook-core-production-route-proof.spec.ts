@@ -73,7 +73,8 @@ const getCoreParagraphValues = async (proof: Locator, attribute: string): Promis
 
 const replaceMonacoText = async (page: Page, editor: Locator, text: string): Promise<void> => {
   await editor.focus();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  const isMacintosh = await page.evaluate(() => navigator.userAgent.includes('Macintosh'));
+  await page.keyboard.press(isMacintosh ? 'Meta+A' : 'Control+A');
   await page.keyboard.insertText(text);
 };
 
@@ -400,7 +401,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
       await context.setOffline(true);
-      await page.waitForTimeout(250);
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
       await context.setOffline(false);
 
       await expect
@@ -434,7 +435,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
       await context.setOffline(true);
-      await page.waitForTimeout(250);
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
       await context.setOffline(false);
 
       await expect
@@ -550,8 +551,14 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook.getByRole('navigation', { name: 'Notebook outline' }).getByRole('link')).toHaveCount(
         2
       );
+      const paragraphItems = reactNotebook.locator('ol[aria-label="Notebook paragraphs"] > li');
+      const paragraphOrderBeforeMove = await paragraphItems.evaluateAll(items =>
+        items.map(item => item.getAttribute('data-testid'))
+      );
       await page.getByRole('button', { name: 'Move down', exact: true }).first().click();
-      await expect(reactNotebook.getByRole('article')).toHaveCount(2);
+      await expect
+        .poll(() => paragraphItems.evaluateAll(items => items.map(item => item.getAttribute('data-testid'))))
+        .toEqual([...paragraphOrderBeforeMove].reverse());
       await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(1);
 
