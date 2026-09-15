@@ -96,6 +96,13 @@
           {
             "exists": false,
             "fileCount": 0,
+            "path": "zeppelin-web/dist",
+            "selection": "tree",
+            "sha256": "b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4"
+          },
+          {
+            "exists": false,
+            "fileCount": 0,
             "path": "zeppelin-web-angular/target/lib",
             "selection": "tree",
             "sha256": "b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4"
@@ -137,7 +144,7 @@
           }
         ],
         "baseCommit": "e816bf1b76b50282cc32b284cdb8755f932f657e",
-        "id": "90f6668819d55160f0112ac987f9eedc6f0298fc879bca351869e6ac18292355",
+        "id": "97518d114acf7884a920337ce2696a87d2c14859411064aa523658a82329343a",
         "launchTargets": {
           "angularWeb": {
             "kind": "directory",

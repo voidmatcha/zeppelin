@@ -1086,6 +1086,131 @@ describe('notebook core runtime spike', () => {
     });
   });
 
+  it('keeps a pending save through peer patches until its server acknowledgement', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({
+      noteId: 'note-a',
+      revisionId: null,
+      dispatchCommand,
+      createParagraphPatch: (previousText, nextText) => `${previousText}->${nextText}`
+    });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'A', status: 'READY' }]
+    });
+    runtime.apply({ type: 'collaboration-updated', users: [] });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'B' });
+    runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: 'BC', source: 'collaboration' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'BC',
+      isDirty: true,
+      isSaving: true,
+      hasConflict: false
+    });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: 'B', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'BC',
+      isDirty: true,
+      isSaving: false,
+      hasConflict: false
+    });
+  });
+
+  it('preserves an edit back to the saved text while another save is pending', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'A', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'B' });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'A' });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: 'B', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'A',
+      isDirty: true,
+      isSaving: false,
+      hasConflict: false
+    });
+
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: 'A', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'A',
+      isDirty: false,
+      isSaving: false,
+      hasConflict: false
+    });
+  });
+
+  it('retains a pending-save undo across reload and route restoration', () => {
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand: () => true });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'A', status: 'READY' }]
+    });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'B' });
+    runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'A' });
+
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'B', status: 'READY' }]
+    });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'A',
+      isDirty: true,
+      hasConflict: false
+    });
+
+    runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' });
+    runtime.port.dispatch({ type: 'edit-paragraph', paragraphId: 'p-1', text: 'B' });
+    runtime.apply({ type: 'route-changed', noteId: 'note-b', revisionId: null });
+    runtime.apply({ type: 'route-changed', noteId: 'note-a', revisionId: null });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: 'A', status: 'READY' }]
+    });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'B',
+      isDirty: true,
+      hasConflict: false
+    });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: 'B', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: 'B',
+      isDirty: false,
+      isSaving: false,
+      hasConflict: false
+    });
+  });
+
   it('preserves collaboration status received before the note snapshot', () => {
     const dispatchCommand = vi.fn(() => true);
     const runtime = createNotebookCore({
