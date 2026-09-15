@@ -76,7 +76,7 @@ test.describe('Published paragraph streaming', () => {
             notebook.paragraphId,
             `%sh\nset -e\necho first\n${waitForViewer}/0\necho second\n${waitForViewer}/1\necho third`
           );
-          await page.goto(`/#/notebook/${notebook.noteId}`);
+          await page.goto(`/#/notebook/${notebook.noteId}?reactNotebook=false`);
           await expect(owner.paragraphContainer).toBeVisible();
           await viewer.goto(`/#/notebook/${notebook.noteId}/paragraph/${notebook.paragraphId}?react=${react}`);
           await waitForZeppelinReady(viewer);

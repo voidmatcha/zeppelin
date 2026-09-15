@@ -40,7 +40,7 @@ test.describe('Copy table result to clipboard', () => {
     testNotebook = await createTestNotebook(page);
     paragraphPage = new NotebookParagraphPage(page);
 
-    await page.goto(`/#/notebook/${testNotebook.noteId}`);
+    await page.goto(`/#/notebook/${testNotebook.noteId}?reactNotebook=false`);
     await expect(page.locator('zeppelin-notebook-paragraph')).toHaveCount(1, { timeout: 15000 });
 
     // Without the %table marker the output renders as TEXT and no export control exists.

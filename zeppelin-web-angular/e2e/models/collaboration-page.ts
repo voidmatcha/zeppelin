@@ -32,7 +32,7 @@ export class CollaborationPage extends BasePage {
   }
 
   async openNotebook(noteId: string): Promise<void> {
-    await this.page.goto(`/#/notebook/${noteId}`);
+    await this.page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
     await waitForZeppelinReady(this.page);
     await expect(this.paragraph).toBeVisible({ timeout: 15000 });
   }
