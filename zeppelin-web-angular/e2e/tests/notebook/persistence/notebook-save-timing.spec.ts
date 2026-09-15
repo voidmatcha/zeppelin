@@ -14,6 +14,8 @@ import { expect, test } from '@playwright/test';
 import { NotebookKeyboardPage } from '../../../models/notebook-keyboard-page';
 import {
   CommitParagraphSocketProbe,
+  getBrowserCommitReceiptStatus,
+  hasBrowserPendingParagraphCommit,
   installBrowserParagraphReceiptProbe,
   installCommitParagraphProbe,
   waitForBrowserObservedParagraphResponseAfterFrame
@@ -78,6 +80,7 @@ test.describe('Notebook editor save timing', () => {
       const [commit] = await commitProbe.waitForCommitCount(1);
       expect(commit.data.paragraph).toBe(text);
       await commitProbe.waitForForwardedResponse(commit.msgId);
+      await expect.poll(() => getBrowserCommitReceiptStatus(page, noteId!, commit.data.id, text)).toBe('acknowledged');
       await expect(notebookPage.firstEditorInput).toBeFocused();
       await expect.poll(() => notebookPage.getParagraphTextByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS }).toBe(text);
     });
@@ -99,6 +102,7 @@ test.describe('Notebook editor save timing', () => {
     const continuedEdit = '; cursor stays here';
     const finalText = `${latestText}${continuedEdit}`;
     let firstMsgId: string;
+    let firstParagraphId: string;
 
     await test.step('When the real server response to the first save is delayed', async () => {
       commitProbe.holdFirstCommitParagraphResponse();
@@ -110,8 +114,10 @@ test.describe('Notebook editor save timing', () => {
       const [firstCommit] = await commitProbe.waitForCommitCount(1);
       expect(firstCommit.data.paragraph).toBe(firstText);
       firstMsgId = firstCommit.msgId;
+      firstParagraphId = firstCommit.data.id;
       await commitProbe.waitForHeldResponse(firstMsgId);
       expect(commitProbe.forwardedResponseCount(firstMsgId)).toBe(0);
+      await expect.poll(() => hasBrowserPendingParagraphCommit(page, noteId!, firstParagraphId)).toBe(true);
     });
 
     await test.step('When another edit is made before the earlier response arrives', async () => {
@@ -129,6 +135,10 @@ test.describe('Notebook editor save timing', () => {
       commitProbe.releaseHeldResponse(firstMsgId);
       // The next frame follows browser delivery, so this check cannot precede the delayed response.
       await waitForBrowserObservedParagraphResponseAfterFrame(page, firstMsgId);
+      await expect
+        .poll(() => getBrowserCommitReceiptStatus(page, noteId!, firstParagraphId, firstText))
+        .toBe('acknowledged');
+      await expect.poll(() => hasBrowserPendingParagraphCommit(page, noteId!, firstParagraphId)).toBe(false);
       await expect
         .poll(() => notebookPage.getCodeEditorContentByIndex(0), { timeout: PERSISTENCE_TIMEOUT_MS })
         .toBe(latestText);
