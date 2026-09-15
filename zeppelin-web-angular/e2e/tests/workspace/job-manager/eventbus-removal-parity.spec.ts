@@ -31,13 +31,15 @@ interface JobManagerMessage {
   };
 }
 
+const ZEPPELIN_WS_URL_PATTERN = /\/ws(\?|$)/;
+
 class JobManagerMessageRecorder {
   private readonly messages: JobManagerMessage[] = [];
 
   static async install(page: Page): Promise<JobManagerMessageRecorder> {
     const recorder = new JobManagerMessageRecorder();
 
-    await page.routeWebSocket('**/ws', socket => {
+    await page.routeWebSocket(ZEPPELIN_WS_URL_PATTERN, socket => {
       const server = socket.connectToServer();
       socket.onMessage(message => server.send(message));
       server.onMessage(message => {
@@ -131,6 +133,7 @@ const verifyRemovalParity = async (
   const barrierNote = await createNote(ownerPage, 'barrier');
   const observerContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const observerPage = await observerContext.newPage();
+  const observerRecorder = await JobManagerMessageRecorder.install(observerPage);
 
   try {
     if (observerCredentials) {
@@ -138,7 +141,6 @@ const verifyRemovalParity = async (
     }
 
     const ownerRecorder = await JobManagerMessageRecorder.install(ownerPage);
-    const observerRecorder = await JobManagerMessageRecorder.install(observerPage);
     const ownerJobManager = new JobManagerPage(ownerPage);
     const observerJobManager = new JobManagerPage(observerPage);
 
