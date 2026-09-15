@@ -10,12 +10,24 @@
  * limitations under the License.
  */
 
+import { dirname } from 'node:path';
+
 import ts from 'typescript';
 
 export const createFixtureHost = (options: ts.CompilerOptions, files: ReadonlyMap<string, string>): ts.CompilerHost => {
   const host = ts.createCompilerHost(options);
-  const { readFile, fileExists } = host;
+  const { directoryExists, readFile, fileExists } = host;
+  const directories = new Set<string>();
+  for (const file of files.keys()) {
+    for (let directory = dirname(file); !directories.has(directory); directory = dirname(directory)) {
+      directories.add(directory);
+      if (directory === dirname(directory)) {
+        break;
+      }
+    }
+  }
   host.readFile = file => files.get(file) ?? readFile(file);
   host.fileExists = file => files.has(file) || fileExists(file);
+  host.directoryExists = directory => directories.has(directory) || directoryExists?.(directory) === true;
   return host;
 };

@@ -299,7 +299,9 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   @MessageListener(OP.PARAGRAPH)
   updateCoreParagraph(data: MessageReceiveDataTypeMap[OP.PARAGRAPH]) {
-    this.notebookCoreRouteAdapter.acceptParagraphUpdated(data.paragraph);
+    if (this.notebookCoreRouteAdapter.acceptParagraphUpdated(data.paragraph)) {
+      this.syncParagraphViewFromCore(data.paragraph);
+    }
   }
 
   @MessageListener(OP.EDITOR_SETTING)
@@ -381,7 +383,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   }
 
   updateCoreParagraphText({ paragraphId, text }: { paragraphId: string; text: string }): void {
-    if (!this.notebookCoreRouteAdapter.port.dispatch({ type: 'edit-paragraph', paragraphId, text })) {
+    if (!this.notebookCoreRouteAdapter.updateParagraphText(paragraphId, text)) {
       this.syncParagraphTextFromCore(paragraphId);
     }
   }
@@ -422,6 +424,18 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       return;
     }
     this.note.paragraphs[index] = { ...this.note.paragraphs[index], text: coreParagraph.text };
+    this.cdr.markForCheck();
+  }
+
+  private syncParagraphViewFromCore(serverParagraph: LoadedParagraph): void {
+    const coreParagraph = this.notebookCoreRouteAdapter.port
+      .getSnapshot()
+      .paragraphs.find(paragraph => paragraph.id === serverParagraph.id);
+    const index = this.note?.paragraphs.findIndex(paragraph => paragraph.id === serverParagraph.id) ?? -1;
+    if (!coreParagraph || !this.note || index < 0) {
+      return;
+    }
+    this.note.paragraphs[index] = { ...serverParagraph, text: coreParagraph.text };
     this.cdr.markForCheck();
   }
 

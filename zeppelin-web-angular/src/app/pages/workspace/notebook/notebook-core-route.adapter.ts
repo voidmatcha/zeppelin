@@ -203,16 +203,15 @@ export class NotebookCoreRouteAdapter {
     return this.selectParagraphViews();
   }
 
-  acceptParagraphUpdated(paragraph: LoadedParagraph): void {
+  acceptParagraphUpdated(paragraph: LoadedParagraph): boolean {
     const snapshot = this.port.getSnapshot();
     if (
       snapshot.phase !== 'ready' ||
       snapshot.revisionId !== null ||
       !snapshot.paragraphs.some(candidate => candidate.id === paragraph.id)
     ) {
-      return;
+      return false;
     }
-    this.paragraphViewsById.set(paragraph.id, paragraph);
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
@@ -227,6 +226,12 @@ export class NotebookCoreRouteAdapter {
       config: toParagraphSnapshot(paragraph).config,
       source: 'server'
     });
+    const coreParagraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraph.id);
+    if (!coreParagraph) {
+      return false;
+    }
+    this.paragraphViewsById.set(paragraph.id, { ...paragraph, text: coreParagraph.text });
+    return true;
   }
 
   acceptParagraphPresentation(paragraph: LoadedParagraph): void {
@@ -435,6 +440,14 @@ export class NotebookCoreRouteAdapter {
 
   acceptPersonalizedMode(personalizedMode: boolean): void {
     this.runtime.apply({ type: 'personalized-mode-updated', personalizedMode });
+  }
+
+  updateParagraphText(paragraphId: string, text: string): boolean {
+    const paragraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraphId);
+    if (paragraph?.text === text) {
+      return true;
+    }
+    return this.port.dispatch({ type: 'edit-paragraph', paragraphId, text });
   }
 
   acceptRevisions(revisions: readonly NotebookRevision[]): void {
