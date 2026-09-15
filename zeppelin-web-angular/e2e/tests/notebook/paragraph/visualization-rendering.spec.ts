@@ -188,7 +188,7 @@ test.describe('Notebook Visualization Rendering', () => {
 
     await test.step('Then the selected pivot fields are displayed and persisted', async () => {
       await expect(visualizationPage.pivotKeys.getByText('cost', { exact: true })).toBeVisible();
-      await expect(visualizationPage.pivotValues.getByText('profit', { exact: true })).toBeVisible();
+      await expect(visualizationPage.pivotValues.locator('.field-item').filter({ hasText: 'profit' })).toBeVisible();
       await waitForSavedGraph(page, noteId, paragraphId, graph => {
         const keyNames = graph.keys
           ?.map(field => field.name)
