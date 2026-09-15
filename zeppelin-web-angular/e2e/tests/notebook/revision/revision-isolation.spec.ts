@@ -29,7 +29,7 @@ const prepareWorkspace = async (page: Page): Promise<void> => {
 };
 
 const openNotebook = async (page: Page, noteId: string): Promise<void> => {
-  await page.goto(`/#/notebook/${noteId}`);
+  await page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
   await waitForZeppelinReady(page);
 };
 

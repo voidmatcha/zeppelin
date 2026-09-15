@@ -68,7 +68,7 @@ export class EditorSearchPage extends BasePage {
   }
 
   async openNotebook(noteId: string): Promise<void> {
-    await this.page.goto(`/#/notebook/${noteId}`);
+    await this.page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
     await waitForZeppelinReady(this.page);
     await expect(this.editor).toBeVisible({ timeout: 15000 });
   }
@@ -81,7 +81,7 @@ export class EditorSearchPage extends BasePage {
   // Separate from openNotebookWithSearchTerm: a paragraph whose editor starts hidden renders no
   // Monaco instance, so the caller cannot wait for the editor before acting.
   async navigateToNotebookWithSearchTerm(noteId: string, term: string): Promise<void> {
-    await this.page.goto(`/#/notebook/${noteId}?term=${encodeURIComponent(term)}`);
+    await this.page.goto(`/#/notebook/${noteId}?term=${encodeURIComponent(term)}&reactNotebook=false`);
     await waitForZeppelinReady(this.page);
   }
 
