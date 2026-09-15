@@ -143,7 +143,7 @@ jobs:
           xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./node/npm run e2e -- tests/notebook/revision/revision-isolation.spec.ts --output=test-results-revision --reporter=github,html
           PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-react-revision \
             xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" \
-            ./node/npm run e2e -- tests/notebook/main/notebook-core-production-route-proof.spec.ts \
+            ./node/npm run e2e:production-route -- \
             --grep "opens historical revisions and compares checkpoints from React with Git storage" \
             --output=test-results-react-revision --reporter=github,html
       - name: Upload Playwright Report
@@ -156,6 +156,7 @@ jobs:
             zeppelin-web-angular/playwright-report-classic/
             zeppelin-web-angular/playwright-report-revision/
             zeppelin-web-angular/playwright-report-react-revision/
+            zeppelin-web-angular/playwright-report-production-route/
           retention-days: 3
       - name: Print Zeppelin logs
         if: always()
