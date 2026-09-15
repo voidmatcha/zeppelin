@@ -36,7 +36,7 @@ test.describe('React Paragraph Footer', () => {
   test('without reactFooter flag, Angular footer renders', async ({ page }) => {
     const { noteId } = testNotebook;
 
-    await page.goto(`/#/notebook/${noteId}`);
+    await page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
     await waitForZeppelinReady(page);
 
     await expect(page.locator('[data-testid="angular-paragraph-footer"]').first()).toBeAttached({ timeout: 15000 });
@@ -46,7 +46,7 @@ test.describe('React Paragraph Footer', () => {
   test('with reactFooter=true, React footer renders', async ({ page }) => {
     const { noteId } = testNotebook;
 
-    await page.goto(`/#/notebook/${noteId}?reactFooter=true`);
+    await page.goto(`/#/notebook/${noteId}?reactFooter=true&reactNotebook=false`);
     await waitForZeppelinReady(page);
 
     await expect(page.locator('[data-testid="react-paragraph-footer-content"]').first()).toBeAttached({
@@ -59,7 +59,7 @@ test.describe('React Paragraph Footer', () => {
     const { noteId } = testNotebook;
 
     await test.step('When I open the notebook with a valueless reactFooter flag', async () => {
-      await page.goto(`/#/notebook/${noteId}?reactFooter`);
+      await page.goto(`/#/notebook/${noteId}?reactFooter&reactNotebook=false`);
       await waitForZeppelinReady(page);
     });
 
@@ -75,7 +75,7 @@ test.describe('React Paragraph Footer', () => {
     const { noteId } = testNotebook;
 
     await test.step('When I navigate with an explicit reactFooter=false', async () => {
-      await page.goto(`/#/notebook/${noteId}?reactFooter=false`);
+      await page.goto(`/#/notebook/${noteId}?reactFooter=false&reactNotebook=false`);
       await waitForZeppelinReady(page);
     });
 
@@ -88,7 +88,7 @@ test.describe('React Paragraph Footer', () => {
   test('reactFooter=true preserves the paragraph query param', async ({ page }) => {
     const { noteId, paragraphId } = testNotebook;
 
-    await page.goto(`/#/notebook/${noteId}?paragraph=${paragraphId}&reactFooter=true`);
+    await page.goto(`/#/notebook/${noteId}?paragraph=${paragraphId}&reactFooter=true&reactNotebook=false`);
     await waitForZeppelinReady(page);
 
     await expect(page).toHaveURL(/reactFooter=true/);
@@ -104,7 +104,7 @@ test.describe('React Paragraph Footer', () => {
     // Simulate a dead remote: every remoteEntry.js request fails
     await page.route('**/remoteEntry.js', route => route.abort());
 
-    await page.goto(`/#/notebook/${noteId}?reactFooter=true`);
+    await page.goto(`/#/notebook/${noteId}?reactFooter=true&reactNotebook=false`);
     await waitForZeppelinReady(page);
 
     // The loader rejection reaches each paragraph's onError, which flips
@@ -122,7 +122,7 @@ test.describe('React Paragraph Footer', () => {
     });
 
     await test.step('When the notebook opens with the React footer enabled', async () => {
-      await page.goto(`/#/notebook/${noteId}?reactFooter=true`);
+      await page.goto(`/#/notebook/${noteId}?reactFooter=true&reactNotebook=false`);
       await waitForZeppelinReady(page);
     });
 
@@ -143,7 +143,7 @@ test.describe('React Paragraph Footer', () => {
     });
 
     await test.step('When the notebook opens with the React footer enabled', async () => {
-      await page.goto(`/#/notebook/${noteId}?reactFooter=true`);
+      await page.goto(`/#/notebook/${noteId}?reactFooter=true&reactNotebook=false`);
       await waitForZeppelinReady(page);
     });
 
@@ -169,7 +169,7 @@ test.describe('React Paragraph Footer', () => {
 
     // Navigate away only once the request is in-flight, so destroy-while-loading is exercised.
     const remoteRequested = page.waitForRequest('**/remoteEntry.js');
-    await page.goto(`/#/notebook/${noteId}?reactFooter=true`);
+    await page.goto(`/#/notebook/${noteId}?reactFooter=true&reactNotebook=false`);
     await remoteRequested;
     await page.goto('/#/');
     await waitForZeppelinReady(page);

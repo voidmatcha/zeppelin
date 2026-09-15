@@ -47,7 +47,7 @@ test.describe('Notebook Visualization Rendering', () => {
 
       paragraphPage = new NotebookParagraphPage(page);
       visualizationPage = new NotebookVisualizationPage(page);
-      await page.goto(`/#/notebook/${noteId}`);
+      await page.goto(`/#/notebook/${noteId}?reactNotebook=false`);
       await expect(paragraphPage.paragraphContainer).toBeVisible({ timeout: 30000 });
 
       await paragraphPage.runParagraph();

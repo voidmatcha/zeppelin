@@ -28,7 +28,7 @@ const openInlineCompletionEditor = async (page: Page) => {
   const noteResponse = await page.request.get(`/api/notebook/${noteId}`);
   expect(noteResponse.ok()).toBeTruthy();
 
-  await page.goto(`/#/notebook/${noteId}?aiInlineComplete=true`);
+  await page.goto(`/#/notebook/${noteId}?aiInlineComplete=true&reactNotebook=false`);
   await expect(page).toHaveURL(/#\/notebook\/[^?]+\?aiInlineComplete=true/);
 
   const keyboardPage = new NotebookKeyboardPage(page);
