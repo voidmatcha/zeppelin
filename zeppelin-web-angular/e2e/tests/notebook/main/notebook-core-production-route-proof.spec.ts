@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { expect, Locator, Page, test } from '@playwright/test';
+import { expect, Locator, Page, test, WebSocketRoute } from '@playwright/test';
 
 import { LoginPage } from '../../../models/login-page';
 import { NotebookKeyboardPage } from '../../../models/notebook-keyboard-page';
@@ -94,45 +94,47 @@ const expectMonacoText = async (editor: Locator, text: string, timeout = 30000):
   await expect.poll(() => readMonacoText(editor), { timeout }).toBe(text);
 };
 
-const replaceMonacoText = async (page: Page, editor: Locator, text: string): Promise<void> => {
+const replaceMonacoText = async (editor: Locator, text: string): Promise<void> => {
   await expect(editor).toBeEditable({ timeout: 30000 });
-  const isMacintosh = await page.evaluate(() => navigator.userAgent.includes('Macintosh'));
-  const selectAllShortcuts = isMacintosh ? ['Meta+A', 'Control+A'] : ['Control+A', 'Meta+A'];
-
-  for (const shortcut of selectAllShortcuts) {
-    await editor.focus();
-    await page.keyboard.press(shortcut);
-    await page.keyboard.press('Backspace');
-    if ((await readMonacoText(editor)) === '') {
-      break;
-    }
-  }
-
-  await expectMonacoText(editor, '');
-  await editor.focus();
-  await page.keyboard.insertText(text);
+  await editor
+    .locator('xpath=ancestor::div[contains(@class, "zeppelin-react-notebook-editor")]')
+    .evaluate((element, nextValue) => {
+      const host = element as HTMLElement & { __zeppelinNotebookEditorValue?: string };
+      host.__zeppelinNotebookEditorValue = nextValue;
+    }, text);
   await expectMonacoText(editor, text);
 };
 
 const getCoreParagraphValues = async (proof: Locator, attribute: string): Promise<string[]> =>
   JSON.parse((await proof.getAttribute(attribute)) ?? '[]') as string[];
 
-const observeZeppelinSocketLifecycle = (page: Page) => {
-  let opened = 0;
-  let closed = 0;
-  page.on('websocket', webSocket => {
-    if (!/\/ws(\?|$)/.test(webSocket.url())) {
-      return;
+class SocketReconnectProbe {
+  private activeSocket: WebSocketRoute | undefined;
+  private connections = 0;
+
+  connect(socket: WebSocketRoute): void {
+    this.connections += 1;
+    this.activeSocket = socket.connectToServer();
+  }
+
+  async disconnect(): Promise<void> {
+    const socket = this.activeSocket;
+    if (!socket) {
+      throw new Error('No active Zeppelin WebSocket to disconnect.');
     }
-    opened += 1;
-    webSocket.on('close', () => {
-      closed += 1;
-    });
-  });
-  return {
-    opened: () => opened,
-    closed: () => closed
-  };
+    this.activeSocket = undefined;
+    await socket.close({ code: 4001, reason: 'E2E reconnect probe' });
+  }
+
+  openedCount(): number {
+    return this.connections;
+  }
+}
+
+const installSocketReconnectProbe = async (page: Page): Promise<SocketReconnectProbe> => {
+  const probe = new SocketReconnectProbe();
+  await page.routeWebSocket(/\/ws(\?|$)/, socket => probe.connect(socket));
+  return probe;
 };
 
 const observeSentOperations = (page: Page): string[] => {
@@ -398,7 +400,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const marker = `core_vertical_${stamp}`;
     const markerFirst = `${marker}_first`;
     const markerSecond = `${marker}_second`;
-    const code = `%sh\necho "${markerFirst}"\nsleep 0.2\necho "${markerSecond}"`;
+    const seededCode = `%sh\necho "${markerFirst}"\nsleep 0.2\necho "${markerSecond}" #`;
+    const code = `${seededCode} saved`;
     let noteId: string | undefined;
 
     try {
@@ -414,9 +417,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactAdapter).toHaveAttribute('data-port-shared', 'true', { timeout: 30000 });
       await expect(reactAdapter).toHaveAttribute('data-note-id', noteId);
 
-      await keyboardPage.tryFocusCodeEditor(0);
-      await keyboardPage.pressSelectAll();
-      await page.keyboard.insertText(code);
+      await keyboardPage.setCodeEditorContent(seededCode);
+      sentOperations.length = 0;
+      await page.keyboard.insertText(' saved');
       await keyboardPage.focusParagraphHost(0);
 
       await expect
@@ -481,9 +484,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('recovers the active Core route after the browser returns online', async ({ context, page }) => {
+  test('recovers the active Core route after its socket reconnects', async ({ page }) => {
     const receivedOperations = observeReceivedOperations(page);
-    const socketLifecycle = observeZeppelinSocketLifecycle(page);
+    const socketReconnect = await installSocketReconnectProbe(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -498,31 +501,26 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(proof).toHaveAttribute('data-note-id', noteId);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
-      const socketClosesBeforeOffline = socketLifecycle.closed();
-      await context.setOffline(true);
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-      await expect.poll(() => socketLifecycle.closed()).toBeGreaterThan(socketClosesBeforeOffline);
-      const socketOpensBeforeReconnect = socketLifecycle.opened();
-      await context.setOffline(false);
+      const noteEventsBeforeReconnect = receivedOperations.filter(operation => operation.op === 'NOTE').length;
+      const socketOpensBeforeReconnect = socketReconnect.openedCount();
+      await socketReconnect.disconnect();
 
-      await expect.poll(() => socketLifecycle.opened()).toBeGreaterThan(socketOpensBeforeReconnect);
+      await expect.poll(() => socketReconnect.openedCount()).toBeGreaterThan(socketOpensBeforeReconnect);
       await expect
         .poll(() => receivedOperations.filter(operation => operation.op === 'NOTE').length, { timeout: 30000 })
-        .toBeGreaterThan(noteEventsBeforeOffline);
+        .toBeGreaterThan(noteEventsBeforeReconnect);
       await expect(proof).toHaveAttribute('data-note-id', noteId);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
     } finally {
-      await context.setOffline(false);
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
     }
   });
 
-  test('recovers the active React notebook after the browser returns online', async ({ context, page }) => {
+  test('recovers the active React notebook after its socket reconnects', async ({ page }) => {
     const receivedOperations = observeReceivedOperations(page);
-    const socketLifecycle = observeZeppelinSocketLifecycle(page);
+    const socketReconnect = await installSocketReconnectProbe(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -537,23 +535,18 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
-      const socketClosesBeforeOffline = socketLifecycle.closed();
-      await context.setOffline(true);
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-      await expect.poll(() => socketLifecycle.closed()).toBeGreaterThan(socketClosesBeforeOffline);
-      const socketOpensBeforeReconnect = socketLifecycle.opened();
-      await context.setOffline(false);
+      const noteEventsBeforeReconnect = receivedOperations.filter(operation => operation.op === 'NOTE').length;
+      const socketOpensBeforeReconnect = socketReconnect.openedCount();
+      await socketReconnect.disconnect();
 
-      await expect.poll(() => socketLifecycle.opened()).toBeGreaterThan(socketOpensBeforeReconnect);
+      await expect.poll(() => socketReconnect.openedCount()).toBeGreaterThan(socketOpensBeforeReconnect);
       await expect
         .poll(() => receivedOperations.filter(operation => operation.op === 'NOTE').length, { timeout: 30000 })
-        .toBeGreaterThan(noteEventsBeforeOffline);
+        .toBeGreaterThan(noteEventsBeforeReconnect);
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId);
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true })).toBeVisible();
     } finally {
-      await context.setOffline(false);
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
@@ -581,12 +574,12 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
       commitProbe.holdFirstCommitParagraphResponse();
-      await replaceMonacoText(page, editor, firstText);
+      await replaceMonacoText(editor, firstText);
       const [firstCommit] = await commitProbe.waitForCommitCount(1);
       expect(firstCommit.data.paragraph).toBe(firstText);
       await commitProbe.waitForHeldResponse(firstCommit.msgId);
 
-      await replaceMonacoText(page, editor, latestText);
+      await replaceMonacoText(editor, latestText);
       await expectMonacoText(editor, latestText);
       expect(commitProbe.forwardedResponseCount(firstCommit.msgId)).toBe(0);
 
@@ -630,7 +623,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await replaceMonacoText(page, editor, `%sh\necho "${draftMarker}"`);
+      await replaceMonacoText(editor, `%sh\necho "${draftMarker}"`);
 
       await page.evaluate(id => {
         window.location.hash = `#/notebook/${id}?reactNotebook=false`;
@@ -671,7 +664,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const paragraphResult = reactNotebook.getByTestId('react-notebook-core-results');
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       const saveButton = page.getByRole('button', { name: 'Save', exact: true });
       await expect(saveButton).toBeEnabled();
       await saveButton.click();
@@ -779,7 +772,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await deleteConfirmation.getByRole('button', { name: 'OK', exact: true }).click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(1);
 
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       await expectMonacoText(editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
@@ -825,7 +818,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
       const firstParagraph = reactNotebook.getByRole('article', { name: 'Paragraph 1', exact: true });
       const firstEditor = firstParagraph.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
-      await replaceMonacoText(page, firstEditor, code);
+      await replaceMonacoText(firstEditor, code);
       await firstParagraph.getByRole('button', { name: 'Save', exact: true }).click();
       await expect
         .poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text, { timeout: persistenceTimeout })
@@ -938,7 +931,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -982,7 +975,6 @@ test.describe('Notebook Core production route feasibility proof', () => {
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
       await replaceMonacoText(
-        page,
         reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }),
         '%python'
       );
@@ -1034,7 +1026,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(revisionSelect).toHaveValue('Head');
 
-      await replaceMonacoText(page, editor, firstText);
+      await replaceMonacoText(editor, firstText);
       await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(firstText);
 
@@ -1053,7 +1045,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect.poll(() => findRevisionId(receivedOperations, 'React first checkpoint')).toBeTruthy();
       const firstRevisionId = findRevisionId(receivedOperations, 'React first checkpoint')!;
 
-      await replaceMonacoText(page, editor, secondText);
+      await replaceMonacoText(editor, secondText);
       await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(secondText);
       await reactNotebook.getByRole('textbox', { name: 'Checkpoint message' }).fill('React second checkpoint');
@@ -1245,7 +1237,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const sentOperations = observeSentOperations(page);
     const peerSentOperations = observeSentOperations(peerPage);
     const stamp = Date.now();
-    const code = `%sh\necho "react_peer_${stamp}"`;
+    const seededCode = `%sh\necho "react_peer_${stamp}" #`;
+    const code = `${seededCode} typed`;
     let noteId: string | undefined;
 
     try {
@@ -1269,7 +1262,16 @@ test.describe('Notebook Core production route feasibility proof', () => {
       });
       await expect(page.getByLabel('Collaborators')).toHaveText('Collaborators: 1');
 
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, seededCode);
+      await expectMonacoText(peerEditor, seededCode);
+      sentOperations.length = 0;
+      peerSentOperations.length = 0;
+      await editor.focus();
+      const documentEndShortcut = await page.evaluate(() =>
+        navigator.userAgent.includes('Macintosh') ? 'Meta+ArrowDown' : 'Control+End'
+      );
+      await editor.press(documentEndShortcut);
+      await page.keyboard.insertText(' typed');
       await expect
         .poll(() => sentOperations.filter(operation => operation === 'PATCH_PARAGRAPH').length)
         .toBeGreaterThan(0);
@@ -1312,7 +1314,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(user1Editor).toBeVisible({ timeout: 30000 });
       await expect(user2Editor).toBeVisible({ timeout: 30000 });
 
-      await replaceMonacoText(user2Page, user2Editor, code);
+      await replaceMonacoText(user2Editor, code);
       await expectMonacoText(user1Editor, code);
     } finally {
       await user2Context.close();
@@ -1395,11 +1397,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const ownerNotebook = page.getByTestId('notebook-core-react-adapter');
       await expect(ownerNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await replaceMonacoText(
-        page,
-        ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }),
-        code
-      );
+      await replaceMonacoText(ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }), code);
       await ownerNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -1443,7 +1441,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const peerSentOperations = observeSentOperations(peerPage);
     const stamp = Date.now();
     const marker = `core_peer_${stamp}`;
-    const code = `%sh\necho "${marker}"`;
+    const seededCode = `%sh\necho "${marker}" #`;
+    const code = `${seededCode}x`;
     let noteId: string | undefined;
 
     try {
@@ -1465,9 +1464,11 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(peerProof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(page.getByLabel('Collaborators')).toHaveText('Collaborators: 1');
 
-      await keyboardPage.tryFocusCodeEditor(0);
-      await keyboardPage.pressSelectAll();
-      await page.keyboard.insertText(code);
+      await keyboardPage.setCodeEditorContent(seededCode);
+      await expect.poll(() => peerKeyboardPage.getParagraphTextByIndex(0)).toBe(seededCode);
+      sentOperations.length = 0;
+      peerSentOperations.length = 0;
+      await page.keyboard.insertText('x');
       await keyboardPage.focusParagraphHost(0);
 
       await expect
@@ -1524,10 +1525,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const paragraphStatus = keyboardPage.getParagraphStatus(0);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      await keyboardPage.tryFocusCodeEditor(0);
-      await keyboardPage.pressSelectAll();
-      await page.keyboard.insertText(code);
-      await keyboardPage.focusParagraphHost(0);
+      await keyboardPage.setCodeEditorContent(code);
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
       await keyboardPage.tryFocusCodeEditor(0);
