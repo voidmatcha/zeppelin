@@ -243,12 +243,18 @@ export class NotebookCoreRouteAdapter {
       return false;
     }
     const next = toParagraphSnapshot(paragraph);
+    const previousParagraph = this.paragraphViewsById.get(paragraph.id);
+    const previousStatus = previousParagraph ? normalizeParagraphStatus(previousParagraph.status) : undefined;
+    const status = normalizeParagraphStatus(paragraph.status);
+    if (status === 'PENDING' && previousStatus !== 'PENDING') {
+      this.resetOutputSequence(paragraph.id);
+    }
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
       title: paragraph.title,
       text: paragraph.text ?? '',
-      status: normalizeParagraphStatus(paragraph.status),
+      status,
       language: editorLanguage(paragraph),
       results: paragraph.results?.msg?.map(result => ({ type: result.type, data: result.data })),
       resultConfigs: paragraph.config?.results,
@@ -373,9 +379,7 @@ export class NotebookCoreRouteAdapter {
 
   acceptParagraphStatus(paragraphId: string, status: string): void {
     if (normalizeParagraphStatus(status) === 'PENDING') {
-      this.outputSequences.delete(paragraphId);
-      this.outputRecoveryRequested.delete(paragraphId);
-      this.outputSequencesExpectedFromStart.add(paragraphId);
+      this.resetOutputSequence(paragraphId);
     }
     this.runtime.apply({
       type: 'paragraph-updated',
@@ -657,5 +661,11 @@ export class NotebookCoreRouteAdapter {
     this.outputSequences.set(paragraphId, outputSequence);
     this.outputSequencesExpectedFromStart.delete(paragraphId);
     return true;
+  }
+
+  private resetOutputSequence(paragraphId: string): void {
+    this.outputSequences.delete(paragraphId);
+    this.outputRecoveryRequested.delete(paragraphId);
+    this.outputSequencesExpectedFromStart.add(paragraphId);
   }
 }
