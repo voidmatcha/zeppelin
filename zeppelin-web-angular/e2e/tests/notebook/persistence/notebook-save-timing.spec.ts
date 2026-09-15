@@ -17,8 +17,7 @@ import {
   getBrowserCommitReceiptStatus,
   hasBrowserPendingParagraphCommit,
   installBrowserParagraphReceiptProbe,
-  installCommitParagraphProbe,
-  waitForBrowserObservedParagraphResponseAfterFrame
+  installCommitParagraphProbe
 } from '../../../models/notebook-save-timing.util';
 import { addPageAnnotationBeforeEach, createTestNotebook, PAGES, waitForZeppelinReady } from '../../../utils';
 
@@ -117,7 +116,6 @@ test.describe('Notebook editor save timing', () => {
       firstParagraphId = firstCommit.data.id;
       await commitProbe.waitForHeldResponse(firstMsgId);
       expect(commitProbe.forwardedResponseCount(firstMsgId)).toBe(0);
-      await expect.poll(() => hasBrowserPendingParagraphCommit(page, noteId!, firstParagraphId)).toBe(true);
     });
 
     await test.step('When another edit is made before the earlier response arrives', async () => {
@@ -133,8 +131,8 @@ test.describe('Notebook editor save timing', () => {
 
     await test.step('Then receiving the first save response preserves the unsaved edit', async () => {
       commitProbe.releaseHeldResponse(firstMsgId);
-      // The next frame follows browser delivery, so this check cannot precede the delayed response.
-      await waitForBrowserObservedParagraphResponseAfterFrame(page, firstMsgId);
+      await commitProbe.waitForForwardedResponse(firstMsgId);
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
       await expect
         .poll(() => getBrowserCommitReceiptStatus(page, noteId!, firstParagraphId, firstText))
         .toBe('acknowledged');

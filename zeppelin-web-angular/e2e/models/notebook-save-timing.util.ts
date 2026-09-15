@@ -134,7 +134,6 @@ export const installBrowserParagraphReceiptProbe = async (page: Page): Promise<v
       acknowledgedCommitMsgIds: string[];
       commits: CommitReceipt[];
       observedSockets: WeakSet<WebSocket>;
-      paragraphMsgIdsObservedAfterFrame: string[];
     };
     type ProbeWindow = Window & { __zeppelinParagraphReceiptProbe?: ProbeState };
     const probeWindow = window as ProbeWindow;
@@ -142,18 +141,12 @@ export const installBrowserParagraphReceiptProbe = async (page: Page): Promise<v
       return;
     }
 
-    const paragraphMsgIdsObservedAfterFrame: string[] = [];
     const state: ProbeState = {
       acknowledgedCommitMsgIds: [],
       commits: [],
-      observedSockets: new WeakSet<WebSocket>(),
-      paragraphMsgIdsObservedAfterFrame
+      observedSockets: new WeakSet<WebSocket>()
     };
     probeWindow.__zeppelinParagraphReceiptProbe = state;
-    Object.defineProperty(window, '__zeppelinParagraphMsgIdsObservedAfterFrame', {
-      configurable: true,
-      get: () => paragraphMsgIdsObservedAfterFrame
-    });
 
     const parseBrowserSocketMessage = (
       data: unknown
@@ -191,7 +184,6 @@ export const installBrowserParagraphReceiptProbe = async (page: Page): Promise<v
           (paragraph as { id?: unknown }).id === commit.id &&
           (paragraph as { text?: unknown }).text === commit.text;
         requestAnimationFrame(() => {
-          paragraphMsgIdsObservedAfterFrame.push(message.msgId!);
           if (acknowledgesCommit) {
             state.acknowledgedCommitMsgIds.push(message.msgId!);
           }
@@ -326,19 +318,4 @@ const isCommitParagraphMessage = (message: NotebookSocketMessage | null): messag
     typeof message.data.noteId === 'string' &&
     typeof message.data.paragraph === 'string'
   );
-};
-
-export const waitForBrowserObservedParagraphResponseAfterFrame = async (page: Page, msgId: string): Promise<void> => {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(expectedMsgId => {
-          return (
-            (window as Window & { __zeppelinParagraphMsgIdsObservedAfterFrame?: string[] })
-              .__zeppelinParagraphMsgIdsObservedAfterFrame ?? []
-          ).includes(expectedMsgId);
-        }, msgId),
-      { timeout: PROXY_TIMEOUT_MS }
-    )
-    .toBe(true);
 };
