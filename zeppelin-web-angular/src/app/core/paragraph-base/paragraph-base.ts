@@ -327,9 +327,15 @@ export abstract class ParagraphBase extends MessageListenersManager {
           this.paragraph.text = newPara.text;
           this.dirtyText = undefined;
           this.originalText = newPara.text;
-        } else {
+        } else if (this.originalText === newPara.text) {
           // An earlier save response must not replace an edit made while it was in flight.
           this.paragraph.text = this.dirtyText;
+        } else {
+          // A different server value is a remote edit, not an acknowledgement of the
+          // last local save. Accept it and discard the superseded local edit.
+          this.paragraph.text = newPara.text;
+          this.dirtyText = undefined;
+          this.originalText = newPara.text;
         }
       } else {
         this.paragraph.text = newPara.text;
