@@ -41,6 +41,16 @@ describe('CoverageReporter', () => {
     expect(reporter.targetPaths).toEqual(cfg.transform);
   });
 
+  it('writes independent reports to a runner-specific output path', async () => {
+    const outputPath = mkdtempSync(join(tmpdir(), 'zeppelin-e2e-coverage-report-'));
+    fixtureRoots.push(outputPath);
+    const reporter = new CoverageReporter({ outputPath });
+
+    await reporter.saveResultsToFile([], 'passed');
+
+    expect(existsSync(join(outputPath, 'coverage.log'))).toBe(true);
+  });
+
   it('discovers component additions and deletions while honoring exclusions', () => {
     const rootPath = mkdtempSync(join(tmpdir(), 'zeppelin-e2e-coverage-'));
     fixtureRoots.push(rootPath);

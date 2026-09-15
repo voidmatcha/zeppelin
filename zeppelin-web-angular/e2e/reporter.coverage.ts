@@ -41,10 +41,19 @@ interface TestedPathType {
 
 const OUTPUT_FILE_NAME = 'coverage.log';
 
+type CoverageReporterOptions = Readonly<{
+  outputPath?: string;
+}>;
+
 class CoverageReporter implements Reporter {
   testedPaths = new Map<string, TestedPathType>();
   testedIds = new Map<string, TestStatusType>();
   targetPaths: string[] = [];
+  private readonly outputPath: string;
+
+  constructor(options: CoverageReporterOptions = {}) {
+    this.outputPath = options.outputPath ?? cfg.outputPath;
+  }
 
   onBegin() {
     console.log('Coverage reporter starting...');
@@ -251,8 +260,8 @@ class CoverageReporter implements Reporter {
     ].join('\n');
 
     try {
-      await fs.mkdir(cfg.outputPath, { recursive: true });
-      await fs.writeFile(join(cfg.outputPath, OUTPUT_FILE_NAME), contents, 'utf8');
+      await fs.mkdir(this.outputPath, { recursive: true });
+      await fs.writeFile(join(this.outputPath, OUTPUT_FILE_NAME), contents, 'utf8');
       console.log('The file has been saved!');
     } catch (e) {
       console.error('Error saving coverage report:', e);
