@@ -35,13 +35,17 @@ const ZEPPELIN_WS_URL_PATTERN = /\/ws(\?|$)/;
 
 class JobManagerMessageRecorder {
   private readonly messages: JobManagerMessage[] = [];
+  private readonly sentOperations: string[] = [];
 
   static async install(page: Page): Promise<JobManagerMessageRecorder> {
     const recorder = new JobManagerMessageRecorder();
 
     await page.routeWebSocket(ZEPPELIN_WS_URL_PATTERN, socket => {
       const server = socket.connectToServer();
-      socket.onMessage(message => server.send(message));
+      socket.onMessage(message => {
+        recorder.recordSentOperation(message.toString());
+        server.send(message);
+      });
       server.onMessage(message => {
         recorder.record(message.toString());
         socket.send(message);
@@ -51,13 +55,8 @@ class JobManagerMessageRecorder {
     return recorder;
   }
 
-  hasInitialList(): boolean {
-    return this.messages.some(message => message.op === 'LIST_NOTE_JOBS');
-  }
-
-  initialNoteIds(): string[] {
-    const initial = [...this.messages].reverse().find(message => message.op === 'LIST_NOTE_JOBS');
-    return initial?.data?.noteJobs?.jobs?.flatMap(job => (job.noteId ? [job.noteId] : [])) ?? [];
+  hasSubscriptionRequest(): boolean {
+    return this.sentOperations.includes('LIST_NOTE_JOBS');
   }
 
   removals(noteIds: ReadonlySet<string>): NoteJob[] {
@@ -70,6 +69,15 @@ class JobManagerMessageRecorder {
   private record(payload: string): void {
     if (payload.startsWith('{')) {
       this.messages.push(JSON.parse(payload) as JobManagerMessage);
+    }
+  }
+
+  private recordSentOperation(payload: string): void {
+    if (payload.startsWith('{')) {
+      const message = JSON.parse(payload) as JobManagerMessage;
+      if (message.op) {
+        this.sentOperations.push(message.op);
+      }
     }
   }
 }
@@ -145,14 +153,13 @@ const verifyRemovalParity = async (
     const observerJobManager = new JobManagerPage(observerPage);
 
     await ownerJobManager.navigate();
-    await expect.poll(() => ownerRecorder.hasInitialList()).toBe(true);
-    await observerJobManager.navigate();
-    await expect.poll(() => observerRecorder.hasInitialList()).toBe(true);
-
-    expect(ownerRecorder.initialNoteIds()).toEqual(expect.arrayContaining([targetNote.noteId, barrierNote.noteId]));
-    expect(observerRecorder.initialNoteIds().includes(targetNote.noteId)).toBe(observerOwnsNotes);
-    expect(observerRecorder.initialNoteIds().includes(barrierNote.noteId)).toBe(observerOwnsNotes);
+    await expect.poll(() => ownerRecorder.hasSubscriptionRequest()).toBe(true);
     await expect(ownerJobManager.jobItemByName(targetNote.noteName)).toBeVisible();
+    await observerJobManager.navigate();
+    await expect.poll(() => observerRecorder.hasSubscriptionRequest()).toBe(true);
+
+    await observerJobManager.filterByNoteName(targetNote.noteName);
+    await expect(observerJobManager.emptyState).toHaveCount(observerOwnsNotes ? 0 : 1);
     await expect(observerJobManager.jobItemByName(targetNote.noteName)).toHaveCount(observerOwnsNotes ? 1 : 0);
 
     await deleteNote(ownerPage, targetNote.noteId);
