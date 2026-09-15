@@ -198,7 +198,15 @@ export class NotebookCoreRouteAdapter {
     return this.selectParagraphViews();
   }
 
-  acceptParagraphUpdated(paragraph: LoadedParagraph): void {
+  acceptParagraphUpdated(paragraph: LoadedParagraph): boolean {
+    const snapshot = this.port.getSnapshot();
+    if (
+      snapshot.phase !== 'ready' ||
+      snapshot.revisionId !== null ||
+      !snapshot.paragraphs.some(candidate => candidate.id === paragraph.id)
+    ) {
+      return false;
+    }
     this.runtime.apply({
       type: 'paragraph-updated',
       paragraphId: paragraph.id,
@@ -208,6 +216,10 @@ export class NotebookCoreRouteAdapter {
       resultConfigs: paragraph.config?.results,
       source: 'server'
     });
+    return (
+      this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraph.id)?.text !==
+      (paragraph.text ?? '')
+    );
   }
 
   acceptParagraphText(paragraphId: string, text: string): void {

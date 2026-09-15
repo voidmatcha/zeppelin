@@ -107,6 +107,41 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(paragraphClearAllOutput).toHaveBeenCalledWith(note.id);
   });
 
+  it('accepts a repeated paragraph text event without dispatching another edit', () => {
+    const patchParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({ patchParagraph } as unknown as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.updateParagraphText('paragraph-1', '%python\nlocal()')).toBe(true);
+    const version = adapter.port.getSnapshot().version;
+
+    expect(adapter.updateParagraphText('paragraph-1', '%python\nlocal()')).toBe(true);
+    expect(adapter.port.getSnapshot().version).toBe(version);
+    expect(patchParagraph).toHaveBeenCalledTimes(1);
+  });
+
+  it('projects the latest draft after an earlier save response arrives', () => {
+    const commitParagraph = vi.fn();
+    const adapter = new NotebookCoreRouteAdapter({
+      commitParagraph,
+      patchParagraph: vi.fn()
+    } as unknown as MessageService);
+    const note = createNote();
+    const firstText = '%python\nfirst()';
+    const latestText = '%python\nlatest()';
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    expect(adapter.updateParagraphText('paragraph-1', firstText)).toBe(true);
+    expect(adapter.port.dispatch({ type: 'commit-paragraph', paragraphId: 'paragraph-1' })).toBe(true);
+    expect(adapter.updateParagraphText('paragraph-1', latestText)).toBe(true);
+
+    expect(adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: firstText })).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: latestText, isDirty: true });
+  });
+
   it('maps saved paragraph result configuration into the Core snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();

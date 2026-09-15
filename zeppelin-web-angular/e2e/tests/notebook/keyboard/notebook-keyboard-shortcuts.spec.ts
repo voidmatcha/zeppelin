@@ -585,12 +585,6 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
       await keyboardPage.tryFocusCodeEditor();
       await keyboardPage.setCodeEditorContent('%python\nprint("Link Test")');
 
-      // Get the current URL to extract notebook ID
-      const currentUrl = keyboardPage.page.url();
-      const notebookMatch = currentUrl.match(/\/notebook\/([^\/]+)/);
-      expect(notebookMatch).not.toBeNull();
-      const notebookId = notebookMatch![1];
-
       // Listen for new tabs being opened
       const newPagePromise = keyboardPage.page.context().waitForEvent('page');
 
@@ -603,7 +597,7 @@ test.describe.serial('Comprehensive Keyboard Shortcuts (ShortcutsMap)', () => {
 
       // Verify the new tab URL contains the notebook ID and paragraph reference
       const newUrl = newPage.url();
-      expect(newUrl).toContain(`/notebook/${notebookId}/paragraph/`);
+      expect(newUrl).toContain(`/notebook/${testNotebook.noteId}/paragraph/`);
       expect(newUrl).toMatch(/\/paragraph\/paragraph_\d+_\d+/);
 
       // Clean up: Close the new tab
