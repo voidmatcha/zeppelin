@@ -31,6 +31,6 @@ module.exports = defineConfig({
         outputFolder: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR || 'playwright-report-production-route'
       }
     ],
-    ['./e2e/reporter.coverage.ts']
+    ['./e2e/reporter.coverage.ts', { outputPath: 'playwright-coverage-production-route' }]
   ]
 });

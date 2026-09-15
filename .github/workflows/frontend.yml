@@ -157,6 +157,7 @@ jobs:
             zeppelin-web-angular/playwright-report-revision/
             zeppelin-web-angular/playwright-report-react-revision/
             zeppelin-web-angular/playwright-report-production-route/
+            zeppelin-web-angular/playwright-coverage-production-route/
           retention-days: 3
       - name: Print Zeppelin logs
         if: always()
