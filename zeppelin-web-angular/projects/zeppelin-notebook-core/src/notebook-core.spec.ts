@@ -500,6 +500,44 @@ describe('notebook core runtime spike', () => {
     expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
   });
 
+  it('commits the latest requested draft after an earlier save is confirmed', () => {
+    const dispatchCommand = vi.fn(() => true);
+    const runtime = createNotebookCore({ noteId: 'note-a', revisionId: null, dispatchCommand });
+    runtime.apply({ type: 'load-started' });
+    runtime.apply({
+      type: 'note-loaded',
+      noteId: 'note-a',
+      revisionId: null,
+      title: 'Note A',
+      paragraphs: [{ id: 'p-1', text: '%md saved', status: 'READY' }]
+    });
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v1', source: 'local' });
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(true);
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v2', source: 'local' });
+
+    expect(runtime.port.dispatch({ type: 'commit-paragraph', paragraphId: 'p-1' })).toBe(false);
+    expect(dispatchCommand).toHaveBeenCalledTimes(1);
+
+    expect(
+      runtime.apply({
+        type: 'note-loaded',
+        noteId: 'note-b',
+        revisionId: null,
+        title: 'Note B',
+        paragraphs: [{ id: 'p-2', text: '%md stale', status: 'READY' }]
+      })
+    ).toBe(false);
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v1', source: 'server' });
+
+    expect(dispatchCommand).toHaveBeenCalledTimes(2);
+    expect(dispatchCommand).toHaveBeenLastCalledWith({ type: 'commit-paragraph', paragraphId: 'p-1' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md v2', isDirty: true });
+
+    runtime.apply({ type: 'paragraph-updated', paragraphId: 'p-1', text: '%md v2', source: 'server' });
+    expect(runtime.port.getSnapshot().paragraphs[0]).toMatchObject({ text: '%md v2', isDirty: false });
+  });
+
   it('restores the prior status when the host rejects a Core run request', () => {
     const runtime = createNotebookCore({ noteId: 'note-a', dispatchCommand: () => false });
     runtime.apply({ type: 'load-started' });

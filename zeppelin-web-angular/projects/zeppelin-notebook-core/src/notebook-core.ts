@@ -742,14 +742,31 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
   let state = initialState(route);
   let snapshot = toSnapshot(state);
   const listeners = new Set<NotebookCoreSnapshotListener>();
+  const queuedSaveRequests = new Set<string>();
+  let dispatchQueuedSave: NotebookCoreCommandHandler = () => false;
   const apply = (event: NotebookCoreEvent): boolean => {
     const nextState = reduceState(state, event);
     if (nextState === state) {
       return false;
     }
+    if (event.type === 'route-changed' || event.type === 'load-started' || event.type === 'note-loaded') {
+      queuedSaveRequests.clear();
+    } else if (event.type === 'paragraph-removed') {
+      queuedSaveRequests.delete(event.paragraphId);
+    }
     state = nextState;
     snapshot = toSnapshot(state);
     listeners.forEach(listener => listener());
+    if (
+      event.type === 'paragraph-updated' &&
+      event.source === 'server' &&
+      queuedSaveRequests.delete(event.paragraphId)
+    ) {
+      const paragraph = state.paragraphsById[event.paragraphId];
+      if (paragraph && !paragraph.savePending && paragraph.snapshot.text !== paragraph.savedText) {
+        dispatchQueuedSave({ type: 'commit-paragraph', paragraphId: event.paragraphId });
+      }
+    }
     return true;
   };
   const port: NotebookCorePort = Object.freeze({
@@ -777,6 +794,14 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
           ? ({ type: 'paragraph-save-cancelled', paragraphId: command.paragraphId } as const)
           : ({ type: 'paragraph-run-rejected', paragraphId: command.paragraphId } as const);
       if (!apply(requestedEvent)) {
+        const paragraph = state.paragraphsById[command.paragraphId];
+        if (
+          command.type === 'commit-paragraph' &&
+          paragraph?.savePending &&
+          paragraph.snapshot.text !== paragraph.savedText
+        ) {
+          queuedSaveRequests.add(command.paragraphId);
+        }
         return false;
       }
       let dispatched = false;
@@ -792,6 +817,7 @@ export const createNotebookCore = (route: NotebookCoreInitialRoute = {}): Notebo
       return dispatched;
     }
   });
+  dispatchQueuedSave = port.dispatch;
 
   return Object.freeze({
     port,
