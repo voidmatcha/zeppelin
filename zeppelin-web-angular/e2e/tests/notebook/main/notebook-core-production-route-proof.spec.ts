@@ -593,6 +593,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       commitProbe.releaseHeldResponse(firstCommit.msgId);
       await waitForBrowserObservedParagraphResponseAfterFrame(page, firstCommit.msgId);
       await expectMonacoText(editor, latestText);
+      commitProbe.releaseQueuedResponses();
 
       const [, latestCommit] = await commitProbe.waitForCommitCount(2);
       expect(latestCommit.data.paragraph).toBe(latestText);
