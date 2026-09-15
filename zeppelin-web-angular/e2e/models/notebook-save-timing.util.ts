@@ -125,44 +125,180 @@ export class CommitParagraphSocketProbe {
   }
 }
 
+const browserParagraphReceiptProbeRegistrations = new WeakMap<Page, Promise<void>>();
+
 export const installBrowserParagraphReceiptProbe = async (page: Page): Promise<void> => {
-  await page.addInitScript(() => {
+  const install = () => {
+    type CommitReceipt = { id: string; noteId: string; msgId: string; text: string };
+    type ProbeState = {
+      acknowledgedCommitMsgIds: string[];
+      commits: CommitReceipt[];
+      observedSockets: WeakSet<WebSocket>;
+      paragraphMsgIdsObservedAfterFrame: string[];
+    };
+    type ProbeWindow = Window & { __zeppelinParagraphReceiptProbe?: ProbeState };
+    const probeWindow = window as ProbeWindow;
+    if (probeWindow.__zeppelinParagraphReceiptProbe) {
+      return;
+    }
+
     const paragraphMsgIdsObservedAfterFrame: string[] = [];
+    const state: ProbeState = {
+      acknowledgedCommitMsgIds: [],
+      commits: [],
+      observedSockets: new WeakSet<WebSocket>(),
+      paragraphMsgIdsObservedAfterFrame
+    };
+    probeWindow.__zeppelinParagraphReceiptProbe = state;
     Object.defineProperty(window, '__zeppelinParagraphMsgIdsObservedAfterFrame', {
       configurable: true,
       get: () => paragraphMsgIdsObservedAfterFrame
     });
 
-    const parseBrowserSocketMessage = (data: unknown): { op?: string; msgId?: string } | null => {
+    const parseBrowserSocketMessage = (
+      data: unknown
+    ): { op?: string; msgId?: string; data?: { id?: string; noteId?: string; paragraph?: unknown } } | null => {
       if (typeof data !== 'string') {
         return null;
       }
       try {
-        return JSON.parse(data) as { op?: string; msgId?: string };
+        return JSON.parse(data) as {
+          op?: string;
+          msgId?: string;
+          data?: { id?: string; noteId?: string; paragraph?: unknown };
+        };
       } catch {
         return null;
       }
     };
 
+    const observeSocket = (socket: WebSocket): void => {
+      if (state.observedSockets.has(socket)) {
+        return;
+      }
+      state.observedSockets.add(socket);
+      socket.addEventListener('message', event => {
+        const message = parseBrowserSocketMessage(event.data);
+        if (message?.op !== 'PARAGRAPH' || typeof message.msgId !== 'string') {
+          return;
+        }
+        const paragraph = message.data?.paragraph;
+        const commit = state.commits.find(candidate => candidate.msgId === message.msgId);
+        const acknowledgesCommit =
+          commit !== undefined &&
+          typeof paragraph === 'object' &&
+          paragraph !== null &&
+          (paragraph as { id?: unknown }).id === commit.id &&
+          (paragraph as { text?: unknown }).text === commit.text;
+        requestAnimationFrame(() => {
+          paragraphMsgIdsObservedAfterFrame.push(message.msgId!);
+          if (acknowledgesCommit) {
+            state.acknowledgedCommitMsgIds.push(message.msgId!);
+          }
+        });
+      });
+    };
+
     const NativeWebSocket = window.WebSocket;
+    const nativeSend = NativeWebSocket.prototype.send;
+    NativeWebSocket.prototype.send = function (data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+      observeSocket(this);
+      const message = parseBrowserSocketMessage(data);
+      if (
+        message?.op === 'COMMIT_PARAGRAPH' &&
+        typeof message.msgId === 'string' &&
+        typeof message.data?.id === 'string' &&
+        typeof message.data.noteId === 'string' &&
+        typeof message.data.paragraph === 'string'
+      ) {
+        state.commits.push({
+          id: message.data.id,
+          noteId: message.data.noteId,
+          msgId: message.msgId,
+          text: message.data.paragraph
+        });
+      }
+      nativeSend.call(this, data);
+    };
     class ProbedWebSocket extends NativeWebSocket {
       constructor(url: string | URL, protocols?: string | string[]) {
         super(url, protocols);
-        this.addEventListener('message', event => {
-          const message = parseBrowserSocketMessage(event.data);
-          if (message?.op !== 'PARAGRAPH' || typeof message.msgId !== 'string') {
-            return;
-          }
-          const msgId = message.msgId;
-          requestAnimationFrame(() => {
-            paragraphMsgIdsObservedAfterFrame.push(msgId);
-          });
-        });
+        observeSocket(this);
       }
     }
     window.WebSocket = ProbedWebSocket;
-  });
+  };
+  let registration = browserParagraphReceiptProbeRegistrations.get(page);
+  if (!registration) {
+    registration = page.addInitScript(install);
+    browserParagraphReceiptProbeRegistrations.set(page, registration);
+  }
+  await registration;
+  await page.evaluate(install);
 };
+
+export const hasBrowserPendingParagraphCommit = async (
+  page: Page,
+  noteId: string,
+  paragraphId: string
+): Promise<boolean> =>
+  page.evaluate(
+    ({ expectedNoteId, expectedParagraphId }) => {
+      const state = (
+        window as Window & {
+          __zeppelinParagraphReceiptProbe?: {
+            acknowledgedCommitMsgIds: string[];
+            commits: Array<{ id: string; noteId: string; msgId: string }>;
+          };
+        }
+      ).__zeppelinParagraphReceiptProbe;
+      if (!state) {
+        return false;
+      }
+      return state.commits.some(
+        commit =>
+          commit.noteId === expectedNoteId &&
+          commit.id === expectedParagraphId &&
+          !state.acknowledgedCommitMsgIds.includes(commit.msgId)
+      );
+    },
+    { expectedNoteId: noteId, expectedParagraphId: paragraphId }
+  );
+
+export const getBrowserCommitReceiptStatus = async (
+  page: Page,
+  noteId: string,
+  paragraphId: string,
+  text: string
+): Promise<'acknowledged' | 'missing' | 'pending'> =>
+  page.evaluate(
+    ({ expectedNoteId, expectedParagraphId, expectedText }) => {
+      const state = (
+        window as Window & {
+          __zeppelinParagraphReceiptProbe?: {
+            acknowledgedCommitMsgIds: string[];
+            commits: Array<{ id: string; noteId: string; msgId: string; text: string }>;
+          };
+        }
+      ).__zeppelinParagraphReceiptProbe;
+      if (!state) {
+        return 'missing';
+      }
+      const commit = [...state.commits]
+        .reverse()
+        .find(
+          candidate =>
+            candidate.noteId === expectedNoteId &&
+            candidate.id === expectedParagraphId &&
+            candidate.text === expectedText
+        );
+      if (!commit) {
+        return 'missing';
+      }
+      return state.acknowledgedCommitMsgIds.includes(commit.msgId) ? 'acknowledged' : 'pending';
+    },
+    { expectedNoteId: noteId, expectedParagraphId: paragraphId, expectedText: text }
+  );
 
 export const installCommitParagraphProbe = async (page: Page): Promise<CommitParagraphSocketProbe> => {
   const probe = new CommitParagraphSocketProbe();

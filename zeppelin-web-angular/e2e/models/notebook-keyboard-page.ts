@@ -15,6 +15,7 @@ import { navigateToNotebookWithFallback } from '../utils';
 import { ShortcutsMap } from '../../src/app/key-binding/shortcuts-map';
 import { ParagraphActions } from '../../src/app/key-binding/paragraph-actions';
 import { BasePage } from './base-page';
+import { hasBrowserPendingParagraphCommit, installBrowserParagraphReceiptProbe } from './notebook-save-timing.util';
 
 const PARAGRAPH_RESULT_SELECTOR = '[data-testid="paragraph-result"]';
 
@@ -40,7 +41,6 @@ export class NotebookKeyboardPage extends BasePage {
   readonly searchDialog: Locator;
   readonly modal: Locator;
   readonly okButtons: Locator;
-
   constructor(page: Page) {
     super(page);
     this.codeEditor = page.locator('.monaco-editor .monaco-mouse-cursor-text');
@@ -75,6 +75,7 @@ export class NotebookKeyboardPage extends BasePage {
       throw new Error('noteId is undefined or null. Cannot navigate to notebook.');
     }
 
+    await installBrowserParagraphReceiptProbe(this.page);
     await navigateToNotebookWithFallback(this.page, noteId);
 
     // Verify we're actually on a notebook page before checking for paragraphs
@@ -85,6 +86,7 @@ export class NotebookKeyboardPage extends BasePage {
   }
 
   async tryFocusCodeEditor(paragraphIndex: number = 0): Promise<void> {
+    await installBrowserParagraphReceiptProbe(this.page);
     if (this.page.isClosed()) {
       console.warn('Cannot focus code editor: page is closed');
       return;
@@ -133,6 +135,7 @@ export class NotebookKeyboardPage extends BasePage {
   }
 
   async typeInEditor(text: string): Promise<void> {
+    await installBrowserParagraphReceiptProbe(this.page);
     await this.page.keyboard.type(text);
   }
 
@@ -402,6 +405,7 @@ export class NotebookKeyboardPage extends BasePage {
   }
 
   async setCodeEditorContent(content: string, paragraphIndex: number = 0): Promise<void> {
+    await installBrowserParagraphReceiptProbe(this.page);
     if (this.page.isClosed()) {
       console.warn('Cannot set code editor content: page is closed');
       return;
@@ -465,7 +469,8 @@ export class NotebookKeyboardPage extends BasePage {
             body?: { paragraphs?: Array<{ id?: string; text?: string }> };
           };
           const savedText = json.body?.paragraphs?.find(candidate => candidate.id === paragraphId)?.text ?? '';
-          return savedText.replace(/\r\n?/g, '\n') === currentText;
+          const hasPendingCommit = await hasBrowserPendingParagraphCommit(this.page, noteId, paragraphId);
+          return !hasPendingCommit && savedText.replace(/\r\n?/g, '\n') === currentText;
         },
         { timeout: 15000 }
       )
