@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { expect, Locator, Page, test } from '@playwright/test';
+import { expect, Locator, Page, test, WebSocketRoute } from '@playwright/test';
 
 import { LoginPage } from '../../../models/login-page';
 import { NotebookKeyboardPage } from '../../../models/notebook-keyboard-page';
@@ -99,7 +99,12 @@ const replaceMonacoText = async (page: Page, editor: Locator, text: string): Pro
 
   await expectMonacoText(editor, '');
   await editor.focus();
-  await page.keyboard.insertText(text);
+  const lines = text.split('\n');
+  await page.keyboard.insertText(lines[0]);
+  for (const line of lines.slice(1)) {
+    await page.keyboard.press('Enter');
+    await page.keyboard.insertText(line);
+  }
   await expectMonacoText(editor, text);
 };
 
@@ -166,6 +171,44 @@ const observeSentMessages = (page: Page): SentOperation[] => {
 };
 
 type ReceivedOperation = Readonly<{ op: string; msgId?: string; data: unknown }>;
+
+class AppendOutputDropProbe {
+  private dropped = 0;
+
+  constructor(private readonly marker: string) {}
+
+  handleServerMessage(socket: WebSocketRoute, message: string | Buffer): void {
+    try {
+      const parsed = JSON.parse(message.toString()) as { op?: unknown; data?: { data?: unknown } };
+      if (
+        this.dropped === 0 &&
+        parsed.op === 'PARAGRAPH_APPEND_OUTPUT' &&
+        typeof parsed.data?.data === 'string' &&
+        parsed.data.data.includes(this.marker)
+      ) {
+        this.dropped += 1;
+        return;
+      }
+    } catch {
+      // Non-JSON development-server frames are unrelated to Zeppelin operations.
+    }
+    socket.send(message);
+  }
+
+  droppedCount(): number {
+    return this.dropped;
+  }
+}
+
+const installAppendOutputDropProbe = async (page: Page, marker: string): Promise<AppendOutputDropProbe> => {
+  const probe = new AppendOutputDropProbe(marker);
+  await page.routeWebSocket(/\/ws(\?|$)/, socket => {
+    const server = socket.connectToServer();
+    socket.onMessage(message => server.send(message));
+    server.onMessage(message => probe.handleServerMessage(socket, message));
+  });
+  return probe;
+};
 
 const observeReceivedOperations = (page: Page): ReceivedOperation[] => {
   const operations: ReceivedOperation[] = [];
@@ -494,14 +537,16 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const sentOperations = observeSentOperations(page);
     const receivedOperations = observeReceivedOperations(page);
     const socketLifecycle = observeZeppelinSocketLifecycle(page);
-    await page.goto('/#/');
-    await waitForZeppelinReady(page);
-    await performLoginIfRequired(page);
 
     const stamp = Date.now();
     const marker = `react_output_recovery_${stamp}`;
     const markerFirst = `${marker}_first`;
     const markerSecond = `${marker}_second`;
+    const appendDropProbe = await installAppendOutputDropProbe(page, markerFirst);
+    await page.goto('/#/');
+    await waitForZeppelinReady(page);
+    await performLoginIfRequired(page);
+
     const code = `%python\nimport time\nprint("${markerFirst}")\ntime.sleep(5)\nprint("${markerSecond}")`;
     let noteId: string | undefined;
 
@@ -518,7 +563,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
       await reactNotebook.getByRole('button', { name: 'Run', exact: true }).click();
-      await expect(paragraphResult).toContainText(markerFirst, { timeout: coldInterpreterExecutionTimeout });
+      await expect.poll(() => appendDropProbe.droppedCount(), { timeout: coldInterpreterExecutionTimeout }).toBe(1);
+      await expect(paragraphResult).not.toContainText(markerFirst);
 
       const snapshotCountBeforeOffline = receivedOperations.filter(
         operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT'
@@ -552,6 +598,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
           outputSequence: expect.any(Number)
         }
       });
+      await expect(paragraphResult).toContainText(markerFirst);
       await expect(paragraphResult).toContainText(markerSecond, { timeout: coldInterpreterExecutionTimeout });
     } finally {
       await context.setOffline(false);
