@@ -104,7 +104,7 @@ test.describe('Notebook Paragraph Functionality', () => {
           page,
           testNotebook.noteId,
           testNotebook.paragraphId,
-          '%sh\necho first; sleep 3; echo second; sleep 5; echo third'
+          '%sh\necho first; sleep 15; echo second; sleep 20; echo third'
         );
         await page.reload();
         await expect(paragraphPage.paragraphContainer).toBeVisible({ timeout: 30000 });
@@ -117,9 +117,9 @@ test.describe('Notebook Paragraph Functionality', () => {
       await test.step('Then output accumulates before the paragraph finishes', async () => {
         await expect(paragraphPage.resultDisplay).toContainText('first', { timeout: 30000 });
         await expect(paragraphPage.status).toHaveText('RUNNING');
-        await expect(paragraphPage.resultDisplay).toContainText(/first\s+second/, { timeout: 10000 });
+        await expect(paragraphPage.resultDisplay).toContainText(/first\s+second/, { timeout: 30000 });
         await expect(paragraphPage.status).toHaveText('RUNNING');
-        await expect(paragraphPage.resultDisplay).toContainText(/first\s+second\s+third/, { timeout: 10000 });
+        await expect(paragraphPage.resultDisplay).toContainText(/first\s+second\s+third/, { timeout: 30000 });
         await expect(paragraphPage.status).toHaveText('FINISHED');
         await expect(paragraphPage.resultDisplay).toHaveText('first\nsecond\nthird\n');
       });
