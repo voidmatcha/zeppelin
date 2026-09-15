@@ -476,6 +476,22 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: updatedText, isDirty: false });
   });
 
+  it('keeps an inbound collaboration patch dirty when it merges into a local draft', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    const localText = '%python\nprint("local")';
+    const mergedText = '%python\nprint("local and peer")';
+    const diffMatchPatch = new DiffMatchPatch();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', localText);
+
+    const patch = diffMatchPatch.patch_toText(diffMatchPatch.patch_make(localText, mergedText));
+    expect(adapter.acceptParagraphPatch('paragraph-1', patch)).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({ text: mergedText, isDirty: true });
+  });
+
   it('rejects an inbound collaboration patch for an unknown paragraph', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();

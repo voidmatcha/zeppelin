@@ -53,7 +53,7 @@ export type NotebookCoreEvent =
       status?: NotebookParagraphSnapshot['status'];
       language?: string;
       resultConfigs?: NotebookParagraphResultConfigs;
-      source?: 'local' | 'server';
+      source?: 'local' | 'server' | 'collaboration';
     }>
   | Readonly<{ type: 'paragraph-progressed'; paragraphId: string; progress: number }>
   | Readonly<{
@@ -426,15 +426,24 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
         return state;
       }
       const { snapshot: currentSnapshot } = current;
-      const isServerTextUpdate = event.source === 'server' && event.text !== undefined;
-      const serverText = isServerTextUpdate ? event.text : current.savedText;
+      const isCollaborationTextUpdate = event.source === 'collaboration' && event.text !== undefined;
+      const isServerTextUpdate =
+        (event.source === 'server' || event.source === 'collaboration') && event.text !== undefined;
+      const hadLocalDraft = currentSnapshot.text !== current.savedText;
+      const serverText =
+        isCollaborationTextUpdate && hadLocalDraft
+          ? current.savedText
+          : isServerTextUpdate
+            ? event.text
+            : current.savedText;
       const paragraph = {
         ...current,
         snapshot: freezeParagraphSnapshot(
           {
             id: currentSnapshot.id,
-            text:
-              isServerTextUpdate && currentSnapshot.text !== current.savedText
+            text: isCollaborationTextUpdate
+              ? event.text
+              : isServerTextUpdate && currentSnapshot.text !== current.savedText
                 ? currentSnapshot.text
                 : (event.text ?? currentSnapshot.text),
             status: event.status ?? currentSnapshot.status,
@@ -446,7 +455,7 @@ const reduceState = (state: NotebookCoreState, event: NotebookCoreEvent): Notebo
           serverText
         ),
         savedText: serverText,
-        savePending: isServerTextUpdate ? false : current.savePending,
+        savePending: isCollaborationTextUpdate ? current.savePending : isServerTextUpdate ? false : current.savePending,
         pendingRunStatus: event.status !== undefined && event.status !== 'PENDING' ? null : current.pendingRunStatus,
         outputSequence: event.status === 'PENDING' ? null : current.outputSequence
       };

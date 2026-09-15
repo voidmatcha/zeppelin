@@ -255,7 +255,7 @@ export class NotebookCoreRouteAdapter {
       if (!applied.every(Boolean)) {
         return false;
       }
-      this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'server' });
+      this.runtime.apply({ type: 'paragraph-updated', paragraphId, text, source: 'collaboration' });
       return true;
     } catch {
       return false;
