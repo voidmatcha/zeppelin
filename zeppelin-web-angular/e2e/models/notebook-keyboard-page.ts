@@ -454,7 +454,7 @@ export class NotebookKeyboardPage extends BasePage {
     await expect
       .poll(
         async () => {
-          const currentText = (await this.readEditorText(paragraph)).replace(/\s+/g, '');
+          const currentText = await this.readEditorText(paragraph);
           const noteResponse = await this.page.request.get(`/api/notebook/${noteId}`, { failOnStatusCode: false });
           if (!noteResponse.ok()) {
             throw new Error(
@@ -465,7 +465,7 @@ export class NotebookKeyboardPage extends BasePage {
             body?: { paragraphs?: Array<{ id?: string; text?: string }> };
           };
           const savedText = json.body?.paragraphs?.find(candidate => candidate.id === paragraphId)?.text ?? '';
-          return savedText.replace(/\s+/g, '') === currentText;
+          return savedText.replace(/\r\n?/g, '\n') === currentText;
         },
         { timeout: 15000 }
       )
@@ -480,10 +480,8 @@ export class NotebookKeyboardPage extends BasePage {
     }
 
     // The PUT broadcasts the paragraph; wait for the flush to render the exact content.
-    const expected = content.replace(/\s+/g, '');
-    await expect
-      .poll(async () => (await this.readEditorText(paragraph)).replace(/\s+/g, ''), { timeout: 15000 })
-      .toBe(expected);
+    const expected = content.replace(/\r\n?/g, '\n');
+    await expect.poll(async () => this.readEditorText(paragraph), { timeout: 15000 }).toBe(expected);
   }
 
   private async resolveParagraphId(noteId: string, paragraphIndex: number): Promise<string> {
