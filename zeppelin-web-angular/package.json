@@ -32,6 +32,7 @@
     "test:shell": "vitest run --config vitest.shell.config.mts",
     "test:eslint-rules": "node --test eslint-rules/*.test.js",
     "e2e": "playwright test",
+    "e2e:production-route": "playwright test --config playwright.production-route.config.js",
     "check:core-contract-fixtures": "node --test e2e/core-contract/capture-build-manifest.test.mjs e2e/core-contract/notebook-transport-fixture.test.mjs e2e/core-contract/execution-fixtures.test.mjs e2e/core-contract/notebook-lifecycle-fixture.test.mjs e2e/core-contract/auth-error-contract.test.mjs e2e/core-contract/playwright-runner.test.mjs",
     "check:core-contract-auth": "cross-env ZEPPELIN_RUN_AUTH_SETUP_TEST=1 node --test --test-name-pattern='live anonymous setup' e2e/core-contract/playwright-runner.test.mjs",
     "check:core-contract-server": "node --test e2e/core-contract/capture-server.test.mjs",

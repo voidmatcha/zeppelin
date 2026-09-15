@@ -20,7 +20,12 @@ process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || defaultBase
 module.exports = defineConfig({
   ...baseConfig,
   // Classic, core-contract, and performance specs have their own runners.
-  testIgnore: [/tests\/classic\/.*\.spec\.ts/, /core-contract\/.*\.test\.mjs/, /performance\/.*\.spec\.ts/],
+  testIgnore: [
+    /tests\/classic\/.*\.spec\.ts/,
+    /core-contract\/.*\.test\.mjs/,
+    /performance\/.*\.spec\.ts/,
+    /notebook-core-production-route-proof\.spec\.ts/
+  ],
   // Live captures run only through playwright.core-contract.config.js.
   grepInvert: /@live/,
   reporter: [
