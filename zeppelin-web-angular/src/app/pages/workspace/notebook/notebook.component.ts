@@ -273,7 +273,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   @MessageListener(OP.PARAGRAPH)
   updateCoreParagraph(data: MessageReceiveDataTypeMap[OP.PARAGRAPH]) {
     if (this.notebookCoreRouteAdapter.acceptParagraphUpdated(data.paragraph)) {
-      this.syncParagraphTextFromCore(data.paragraph.id);
+      this.syncParagraphViewFromCore(data.paragraph);
     }
   }
 
@@ -337,6 +337,18 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
       return;
     }
     this.note.paragraphs[index] = { ...this.note.paragraphs[index], text: coreParagraph.text };
+    this.cdr.markForCheck();
+  }
+
+  private syncParagraphViewFromCore(serverParagraph: LoadedParagraph): void {
+    const coreParagraph = this.notebookCoreRouteAdapter.port
+      .getSnapshot()
+      .paragraphs.find(paragraph => paragraph.id === serverParagraph.id);
+    const index = this.note?.paragraphs.findIndex(paragraph => paragraph.id === serverParagraph.id) ?? -1;
+    if (!coreParagraph || !this.note || index < 0) {
+      return;
+    }
+    this.note.paragraphs[index] = { ...serverParagraph, text: coreParagraph.text };
     this.cdr.markForCheck();
   }
 

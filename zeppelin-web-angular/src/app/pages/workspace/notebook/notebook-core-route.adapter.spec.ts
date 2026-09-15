@@ -56,6 +56,66 @@ describe('NotebookCoreRouteAdapter command boundary', () => {
     );
   });
 
+  it('reports accepted server paragraph updates for host projection', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+
+    expect(adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: '%python\nserver()' })).toBe(true);
+    expect(adapter.port.getSnapshot().paragraphs[0].text).toBe('%python\nserver()');
+  });
+
+  it('preserves the latest local draft when a terminal server update arrives', () => {
+    const adapter = new NotebookCoreRouteAdapter({ getParagraphOutput: vi.fn() } as unknown as MessageService);
+    const note = createNote('RUNNING');
+    const finalResult = { code: 'SUCCESS', msg: [{ type: 'TEXT', data: 'complete' }] };
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', '%python\nlocal draft');
+    adapter.acceptParagraphUpdated({
+      ...note.paragraphs[0],
+      text: '%python\nserver edit',
+      status: 'FINISHED',
+      results: finalResult,
+      config: { ...note.paragraphs[0].config, results: { '0': { graph: { mode: 'table' } } } }
+    });
+
+    expect(adapter.port.getSnapshot().paragraphs[0]).toMatchObject({
+      text: '%python\nlocal draft',
+      status: 'FINISHED',
+      resultConfigs: { '0': { graph: { mode: 'table' } } },
+      isDirty: true
+    });
+  });
+
+  it('preserves a local draft when a paragraph update is followed by an insert', () => {
+    const adapter = new NotebookCoreRouteAdapter({} as MessageService);
+    const note = createNote();
+    const draft = '%python\nlocal draft';
+
+    adapter.enterRoute(note.id, null);
+    adapter.acceptNote(note, null);
+    adapter.acceptParagraphText('paragraph-1', draft);
+    adapter.acceptParagraphUpdated({ ...note.paragraphs[0], text: '%python\nstale server text' });
+
+    const paragraphs = adapter.acceptParagraphAdded(
+      {
+        ...note.paragraphs[0],
+        id: 'paragraph-2',
+        text: '%python'
+      },
+      0
+    );
+
+    expect(paragraphs?.map(paragraph => [paragraph.id, paragraph.text])).toEqual([
+      ['paragraph-2', '%python'],
+      ['paragraph-1', draft]
+    ]);
+  });
+
   it('clears the current snapshot before requesting a reconnect snapshot', () => {
     const adapter = new NotebookCoreRouteAdapter({} as MessageService);
     const note = createNote();

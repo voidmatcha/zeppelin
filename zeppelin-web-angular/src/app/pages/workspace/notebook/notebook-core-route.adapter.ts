@@ -216,10 +216,12 @@ export class NotebookCoreRouteAdapter {
       resultConfigs: paragraph.config?.results,
       source: 'server'
     });
-    return (
-      this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraph.id)?.text !==
-      (paragraph.text ?? '')
-    );
+    const coreParagraph = this.port.getSnapshot().paragraphs.find(candidate => candidate.id === paragraph.id);
+    if (!coreParagraph) {
+      return false;
+    }
+    this.paragraphViewsById.set(paragraph.id, { ...paragraph, text: coreParagraph.text });
+    return true;
   }
 
   acceptParagraphText(paragraphId: string, text: string): void {
