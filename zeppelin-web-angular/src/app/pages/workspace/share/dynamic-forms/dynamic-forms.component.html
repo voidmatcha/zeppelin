@@ -37,7 +37,12 @@
               />
             }
             @case (formType.Select) {
-              <nz-select [nzDisabled]="disable" [(ngModel)]="paramDefs[form.name]" (ngModelChange)="onFormChange()">
+              <nz-select
+                [nzDisabled]="disable"
+                [compareWith]="compareDynamicFormValues"
+                [(ngModel)]="paramDefs[form.name]"
+                (ngModelChange)="onFormChange()"
+              >
                 @for (opt of form.options; track opt) {
                   <nz-option [nzLabel]="getDynamicFormsOptionLabel(opt)" [nzValue]="opt.value"></nz-option>
                 }

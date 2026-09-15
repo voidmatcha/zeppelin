@@ -73,4 +73,11 @@ describe('NotebookParagraphDynamicFormsComponent', () => {
     component.checkboxChange([1, 2], 'choices');
     expect(component.paramDefs.choices).toEqual([0, objectValue]);
   });
+
+  it('matches structurally equal select option values', () => {
+    const component = new NotebookParagraphDynamicFormsComponent();
+
+    expect(component.compareDynamicFormValues({ id: 'choice' }, { id: 'choice' })).toBe(true);
+    expect(component.compareDynamicFormValues({ id: 'choice' }, { id: 'other' })).toBe(false);
+  });
 });
