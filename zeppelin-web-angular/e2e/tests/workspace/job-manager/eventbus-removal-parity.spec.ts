@@ -128,6 +128,7 @@ const verifyRemovalParity = async (
   observerCredentials: TestCredentials | undefined,
   observerOwnsNotes: boolean
 ): Promise<{ ownerRemovalCount: number; observerRemovalCount: number }> => {
+  const ownerRecorder = await JobManagerMessageRecorder.install(ownerPage);
   await expectServerEventBusMode(ownerPage);
   const targetNote = await createNote(ownerPage, 'target');
   const barrierNote = await createNote(ownerPage, 'barrier');
@@ -140,7 +141,6 @@ const verifyRemovalParity = async (
       await login(observerPage, observerCredentials);
     }
 
-    const ownerRecorder = await JobManagerMessageRecorder.install(ownerPage);
     const ownerJobManager = new JobManagerPage(ownerPage);
     const observerJobManager = new JobManagerPage(observerPage);
 
