@@ -79,6 +79,10 @@ export class NotebookVisualizationPage extends BasePage {
     return this.pivotAvailableFields.getByText(name, { exact: true });
   }
 
+  selectedPivotValue(name: string): Locator {
+    return this.pivotValues.locator('.field-item').filter({ hasText: name });
+  }
+
   availableScatterField(name: string): Locator {
     return this.scatterAvailableFields.getByText(name, { exact: true });
   }
