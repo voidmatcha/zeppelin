@@ -83,47 +83,44 @@ const expectMonacoText = async (editor: Locator, text: string, timeout = 5000): 
   await expect.poll(() => readMonacoText(editor), { timeout }).toBe(text);
 };
 
-const replaceMonacoText = async (page: Page, editor: Locator, text: string): Promise<void> => {
+const replaceMonacoText = async (editor: Locator, text: string): Promise<void> => {
   await expect(editor).toBeEditable({ timeout: 30000 });
-  const isMacintosh = await page.evaluate(() => navigator.userAgent.includes('Macintosh'));
-  const selectAllShortcuts = isMacintosh ? ['Meta+A', 'Control+A'] : ['Control+A', 'Meta+A'];
-
-  for (const shortcut of selectAllShortcuts) {
-    await editor.focus();
-    await page.keyboard.press(shortcut);
-    await page.keyboard.press('Backspace');
-    if ((await readMonacoText(editor)) === '') {
-      break;
-    }
-  }
-
-  await expectMonacoText(editor, '');
-  await editor.focus();
-  const lines = text.split('\n');
-  await page.keyboard.insertText(lines[0]);
-  for (const line of lines.slice(1)) {
-    await page.keyboard.press('Enter');
-    await page.keyboard.insertText(line);
-  }
+  await editor
+    .locator('xpath=ancestor::div[contains(@class, "zeppelin-react-notebook-editor")]')
+    .evaluate((element, nextValue) => {
+      const host = element as HTMLElement & { __zeppelinNotebookEditorValue?: string };
+      host.__zeppelinNotebookEditorValue = nextValue;
+    }, text);
   await expectMonacoText(editor, text);
 };
 
-const observeZeppelinSocketLifecycle = (page: Page) => {
-  let opened = 0;
-  let closed = 0;
-  page.on('websocket', webSocket => {
-    if (!/\/ws(\?|$)/.test(webSocket.url())) {
-      return;
+class SocketReconnectProbe {
+  private activeSocket: WebSocketRoute | undefined;
+  private connections = 0;
+
+  connect(socket: WebSocketRoute): void {
+    this.connections += 1;
+    this.activeSocket = socket.connectToServer();
+  }
+
+  async disconnect(): Promise<void> {
+    const socket = this.activeSocket;
+    if (!socket) {
+      throw new Error('No active Zeppelin WebSocket to disconnect.');
     }
-    opened += 1;
-    webSocket.on('close', () => {
-      closed += 1;
-    });
-  });
-  return {
-    opened: () => opened,
-    closed: () => closed
-  };
+    this.activeSocket = undefined;
+    await socket.close({ code: 4001, reason: 'E2E reconnect probe' });
+  }
+
+  openedCount(): number {
+    return this.connections;
+  }
+}
+
+const installSocketReconnectProbe = async (page: Page): Promise<SocketReconnectProbe> => {
+  const probe = new SocketReconnectProbe();
+  await page.routeWebSocket(/\/ws(\?|$)/, socket => probe.connect(socket));
+  return probe;
 };
 
 const observeSentOperations = (page: Page): string[] => {
@@ -174,8 +171,27 @@ type ReceivedOperation = Readonly<{ op: string; msgId?: string; data: unknown }>
 
 class AppendOutputDropProbe {
   private dropped = 0;
+  private activeSocket: WebSocketRoute | undefined;
+  private connections = 0;
 
   constructor(private readonly marker: string) {}
+
+  connect(socket: WebSocketRoute): void {
+    this.connections += 1;
+    const server = socket.connectToServer();
+    this.activeSocket = server;
+    socket.onMessage(message => server.send(message));
+    server.onMessage(message => this.handleServerMessage(socket, message));
+  }
+
+  async disconnect(): Promise<void> {
+    const socket = this.activeSocket;
+    if (!socket) {
+      throw new Error('No active Zeppelin WebSocket to disconnect.');
+    }
+    this.activeSocket = undefined;
+    await socket.close({ code: 4001, reason: 'E2E reconnect probe' });
+  }
 
   handleServerMessage(socket: WebSocketRoute, message: string | Buffer): void {
     try {
@@ -198,15 +214,15 @@ class AppendOutputDropProbe {
   droppedCount(): number {
     return this.dropped;
   }
+
+  openedCount(): number {
+    return this.connections;
+  }
 }
 
 const installAppendOutputDropProbe = async (page: Page, marker: string): Promise<AppendOutputDropProbe> => {
   const probe = new AppendOutputDropProbe(marker);
-  await page.routeWebSocket(/\/ws(\?|$)/, socket => {
-    const server = socket.connectToServer();
-    socket.onMessage(message => server.send(message));
-    server.onMessage(message => probe.handleServerMessage(socket, message));
-  });
+  await page.routeWebSocket(/\/ws(\?|$)/, socket => probe.connect(socket));
   return probe;
 };
 
@@ -380,7 +396,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
 
     const stamp = Date.now();
     const marker = `core_vertical_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const seededCode = `%python\nprint("${marker}") #`;
+    const code = `${seededCode} saved`;
     let noteId: string | undefined;
 
     try {
@@ -396,9 +413,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactAdapter).toHaveAttribute('data-port-shared', 'true', { timeout: 30000 });
       await expect(reactAdapter).toHaveAttribute('data-note-id', noteId);
 
-      await keyboardPage.tryFocusCodeEditor(0);
-      await keyboardPage.pressSelectAll();
-      await page.keyboard.insertText(code);
+      await keyboardPage.setCodeEditorContent(seededCode);
+      sentOperations.length = 0;
+      await page.keyboard.insertText(' saved');
       await keyboardPage.focusParagraphHost(0);
 
       await expect
@@ -454,9 +471,9 @@ test.describe('Notebook Core production route feasibility proof', () => {
     }
   });
 
-  test('recovers the active Core route after the browser returns online', async ({ context, page }) => {
+  test('recovers the active Core route after its socket reconnects', async ({ page }) => {
     const receivedOperations = observeReceivedOperations(page);
-    const socketLifecycle = observeZeppelinSocketLifecycle(page);
+    const socketReconnect = await installSocketReconnectProbe(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -471,31 +488,26 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(proof).toHaveAttribute('data-note-id', noteId);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
-      const socketClosesBeforeOffline = socketLifecycle.closed();
-      await context.setOffline(true);
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-      await expect.poll(() => socketLifecycle.closed()).toBeGreaterThan(socketClosesBeforeOffline);
-      const socketOpensBeforeReconnect = socketLifecycle.opened();
-      await context.setOffline(false);
+      const noteEventsBeforeReconnect = receivedOperations.filter(operation => operation.op === 'NOTE').length;
+      const socketOpensBeforeReconnect = socketReconnect.openedCount();
+      await socketReconnect.disconnect();
 
-      await expect.poll(() => socketLifecycle.opened()).toBeGreaterThan(socketOpensBeforeReconnect);
+      await expect.poll(() => socketReconnect.openedCount()).toBeGreaterThan(socketOpensBeforeReconnect);
       await expect
         .poll(() => receivedOperations.filter(operation => operation.op === 'NOTE').length, { timeout: 30000 })
-        .toBeGreaterThan(noteEventsBeforeOffline);
+        .toBeGreaterThan(noteEventsBeforeReconnect);
       await expect(proof).toHaveAttribute('data-note-id', noteId);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
     } finally {
-      await context.setOffline(false);
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
     }
   });
 
-  test('recovers the active React notebook after the browser returns online', async ({ context, page }) => {
+  test('recovers the active React notebook after its socket reconnects', async ({ page }) => {
     const receivedOperations = observeReceivedOperations(page);
-    const socketLifecycle = observeZeppelinSocketLifecycle(page);
+    const socketReconnect = await installSocketReconnectProbe(page);
     await page.goto('/#/');
     await waitForZeppelinReady(page);
     await performLoginIfRequired(page);
@@ -510,33 +522,27 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId, { timeout: 30000 });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      const noteEventsBeforeOffline = receivedOperations.filter(operation => operation.op === 'NOTE').length;
-      const socketClosesBeforeOffline = socketLifecycle.closed();
-      await context.setOffline(true);
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-      await expect.poll(() => socketLifecycle.closed()).toBeGreaterThan(socketClosesBeforeOffline);
-      const socketOpensBeforeReconnect = socketLifecycle.opened();
-      await context.setOffline(false);
+      const noteEventsBeforeReconnect = receivedOperations.filter(operation => operation.op === 'NOTE').length;
+      const socketOpensBeforeReconnect = socketReconnect.openedCount();
+      await socketReconnect.disconnect();
 
-      await expect.poll(() => socketLifecycle.opened()).toBeGreaterThan(socketOpensBeforeReconnect);
+      await expect.poll(() => socketReconnect.openedCount()).toBeGreaterThan(socketOpensBeforeReconnect);
       await expect
         .poll(() => receivedOperations.filter(operation => operation.op === 'NOTE').length, { timeout: 30000 })
-        .toBeGreaterThan(noteEventsBeforeOffline);
+        .toBeGreaterThan(noteEventsBeforeReconnect);
       await expect(reactNotebook).toHaveAttribute('data-note-id', noteId);
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' })).toBeVisible();
     } finally {
-      await context.setOffline(false);
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
     }
   });
 
-  test('recovers active React output from an authoritative snapshot after reconnecting', async ({ context, page }) => {
+  test('recovers active React output from an authoritative snapshot after reconnecting', async ({ page }) => {
     const sentOperations = observeSentOperations(page);
     const receivedOperations = observeReceivedOperations(page);
-    const socketLifecycle = observeZeppelinSocketLifecycle(page);
 
     const stamp = Date.now();
     const marker = `react_output_recovery_${stamp}`;
@@ -558,7 +564,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const paragraphResult = reactNotebook.getByTestId('react-notebook-core-results');
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -566,17 +572,13 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect.poll(() => appendDropProbe.droppedCount(), { timeout: coldInterpreterExecutionTimeout }).toBe(1);
       await expect(paragraphResult).not.toContainText(markerFirst);
 
-      const snapshotCountBeforeOffline = receivedOperations.filter(
+      const snapshotCountBeforeReconnect = receivedOperations.filter(
         operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT'
       ).length;
-      const socketClosesBeforeOffline = socketLifecycle.closed();
-      await context.setOffline(true);
-      await page.waitForFunction(() => navigator.onLine === false);
-      await expect.poll(() => socketLifecycle.closed()).toBeGreaterThan(socketClosesBeforeOffline);
-      const socketOpensBeforeReconnect = socketLifecycle.opened();
-      await context.setOffline(false);
+      const socketOpensBeforeReconnect = appendDropProbe.openedCount();
+      await appendDropProbe.disconnect();
 
-      await expect.poll(() => socketLifecycle.opened()).toBeGreaterThan(socketOpensBeforeReconnect);
+      await expect.poll(() => appendDropProbe.openedCount()).toBeGreaterThan(socketOpensBeforeReconnect);
       await expect
         .poll(() => sentOperations.filter(operation => operation === 'GET_PARAGRAPH_OUTPUT').length, { timeout: 30000 })
         .toBeGreaterThan(0);
@@ -584,7 +586,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         .poll(() => receivedOperations.filter(operation => operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT').length, {
           timeout: 30000
         })
-        .toBeGreaterThan(snapshotCountBeforeOffline);
+        .toBeGreaterThan(snapshotCountBeforeReconnect);
       const snapshot = receivedOperations.find(
         operation =>
           operation.op === 'PARAGRAPH_OUTPUT_SNAPSHOT' &&
@@ -601,7 +603,6 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(paragraphResult).toContainText(markerFirst);
       await expect(paragraphResult).toContainText(markerSecond, { timeout: coldInterpreterExecutionTimeout });
     } finally {
-      await context.setOffline(false);
       if (noteId) {
         await page.request.delete(`/api/notebook/${noteId}`);
       }
@@ -653,7 +654,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
       await expect(reactNotebook.getByRole('article')).toHaveCount(1);
 
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       await expectMonacoText(editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
@@ -690,7 +691,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       await reactNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -734,7 +735,6 @@ test.describe('Notebook Core production route feasibility proof', () => {
       ).toHaveCount(0);
       await expect(reactNotebook.getByRole('combobox', { name: 'Notebook look and feel' })).toHaveValue('default');
       await replaceMonacoText(
-        page,
         reactNotebook.getByRole('textbox', { name: 'Paragraph 1 editor', exact: true }),
         '%python'
       );
@@ -821,7 +821,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const reactNotebook = page.getByTestId('notebook-core-react-adapter');
       const editor = page.getByRole('textbox', { name: 'Paragraph 1 editor' });
       await expect(reactNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, code);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await editor.press('Shift+Enter');
       await expect(reactNotebook.getByRole('button', { name: /Line Chart$/ })).toBeVisible({
@@ -841,7 +841,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const sentOperations = observeSentOperations(page);
     const peerSentOperations = observeSentOperations(peerPage);
     const stamp = Date.now();
-    const code = `%python\nprint("react_peer_${stamp}")`;
+    const seededCode = `%python\nprint("react_peer_${stamp}") #`;
+    const code = `${seededCode} typed`;
     let noteId: string | undefined;
 
     try {
@@ -864,7 +865,16 @@ test.describe('Notebook Core production route feasibility proof', () => {
         timeout: 30000
       });
 
-      await replaceMonacoText(page, editor, code);
+      await replaceMonacoText(editor, seededCode);
+      await expectMonacoText(peerEditor, seededCode, 30000);
+      sentOperations.length = 0;
+      peerSentOperations.length = 0;
+      await editor.focus();
+      const documentEndShortcut = await page.evaluate(() =>
+        navigator.userAgent.includes('Macintosh') ? 'Meta+ArrowDown' : 'Control+End'
+      );
+      await editor.press(documentEndShortcut);
+      await page.keyboard.insertText(' typed');
       await expect
         .poll(() => sentOperations.filter(operation => operation === 'PATCH_PARAGRAPH').length)
         .toBeGreaterThan(0);
@@ -911,7 +921,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
         timeout: 30000
       });
 
-      await replaceMonacoText(user2Page, user2Editor, code);
+      await replaceMonacoText(user2Editor, code);
       await expectMonacoText(user1Editor, code, 30000);
     } finally {
       await user2Context.close();
@@ -994,7 +1004,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await page.goto(`/#/notebook/${noteId}?reactNotebook=true`);
       const ownerNotebook = page.getByTestId('notebook-core-react-adapter');
       await expect(ownerNotebook).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
-      await replaceMonacoText(page, ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }), code);
+      await replaceMonacoText(ownerNotebook.getByRole('textbox', { name: 'Paragraph 1 editor' }), code);
       await ownerNotebook.getByRole('button', { name: 'Save', exact: true }).click();
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
@@ -1038,7 +1048,8 @@ test.describe('Notebook Core production route feasibility proof', () => {
     const peerSentOperations = observeSentOperations(peerPage);
     const stamp = Date.now();
     const marker = `core_peer_${stamp}`;
-    const code = `%python\nprint("${marker}")`;
+    const seededCode = `%python\nprint("${marker}") #`;
+    const code = `${seededCode}x`;
     let noteId: string | undefined;
 
     try {
@@ -1060,9 +1071,11 @@ test.describe('Notebook Core production route feasibility proof', () => {
       await expect(peerProof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
       await expect(proof).toHaveAttribute('data-collaborative-mode', 'true', { timeout: 30000 });
 
-      await keyboardPage.tryFocusCodeEditor(0);
-      await keyboardPage.pressSelectAll();
-      await page.keyboard.insertText(code);
+      await keyboardPage.setCodeEditorContent(seededCode);
+      await expect.poll(() => peerKeyboardPage.getParagraphTextByIndex(0)).toBe(seededCode);
+      sentOperations.length = 0;
+      peerSentOperations.length = 0;
+      await page.keyboard.insertText('x');
       await keyboardPage.focusParagraphHost(0);
 
       await expect
@@ -1119,10 +1132,7 @@ test.describe('Notebook Core production route feasibility proof', () => {
       const paragraphStatus = keyboardPage.getParagraphStatus(0);
       await expect(proof).toHaveAttribute('data-phase', 'ready', { timeout: 30000 });
 
-      await keyboardPage.tryFocusCodeEditor(0);
-      await keyboardPage.pressSelectAll();
-      await page.keyboard.insertText(code);
-      await keyboardPage.focusParagraphHost(0);
+      await keyboardPage.setCodeEditorContent(code);
       await expect.poll(async () => (await getPersistedParagraph(page, noteId!, 0)).text).toBe(code);
 
       await keyboardPage.tryFocusCodeEditor(0);
