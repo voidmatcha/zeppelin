@@ -367,15 +367,14 @@
           {
             "path": "zeppelin-web-angular/e2e/tests/notebook/paragraph/paragraph-functionality.spec.ts",
             "tag": "@NB-PARITY-021"
+          },
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/paragraph/visualization-rendering.spec.ts",
+            "tag": "@NB-PARITY-021"
           }
         ],
         "issues": ["ZEPPELIN-6514", "ZEPPELIN-6516"],
-        "uncoveredOutcomes": [
-          "NB-PARITY-021-OUTCOME-002",
-          "NB-PARITY-021-OUTCOME-003",
-          "NB-PARITY-021-OUTCOME-004",
-          "NB-PARITY-021-OUTCOME-005"
-        ]
+        "uncoveredOutcomes": ["NB-PARITY-021-OUTCOME-002", "NB-PARITY-021-OUTCOME-005"]
       },
       "implementationEvidence": [
         {

@@ -167,7 +167,7 @@ test.describe('Notebook Visualization Rendering', () => {
     });
   });
 
-  test('updates pivot and x-axis settings', async ({ page }, testInfo) => {
+  test('updates pivot and x-axis settings', { tag: '@NB-PARITY-021' }, async ({ page }, testInfo) => {
     addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.PIVOT_SETTING, testInfo);
     addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.X_AXIS_SETTING, testInfo);
 
@@ -186,9 +186,20 @@ test.describe('Notebook Visualization Rendering', () => {
       await visualizationPage.dragField(visualizationPage.availablePivotField('profit'), visualizationPage.pivotValues);
     });
 
-    await test.step('Then the selected pivot fields are displayed', async () => {
+    await test.step('Then the selected pivot fields are displayed and persisted', async () => {
       await expect(visualizationPage.pivotKeys.getByText('cost', { exact: true })).toBeVisible();
       await expect(visualizationPage.pivotValues.getByText('profit', { exact: true })).toBeVisible();
+      await waitForSavedGraph(page, noteId, paragraphId, graph => {
+        const keyNames = graph.keys
+          ?.map(field => field.name)
+          .sort()
+          .join(',');
+        const valueNames = graph.values
+          ?.map(field => field.name)
+          .sort()
+          .join(',');
+        return keyNames === 'city,cost' && valueNames === 'profit,sales';
+      });
     });
 
     await test.step('When rotating the x-axis labels', async () => {
@@ -219,7 +230,7 @@ test.describe('Notebook Visualization Rendering', () => {
     });
   });
 
-  test('updates scatter axis settings', async ({ page }, testInfo) => {
+  test('updates scatter axis settings', { tag: '@NB-PARITY-021' }, async ({ page }, testInfo) => {
     addPageAnnotation(PAGES.VISUALIZATIONS.COMMON.SCATTER_SETTING, testInfo);
 
     await test.step('Given the scatter chart settings are open', async () => {
