@@ -209,7 +209,7 @@ test.describe('Notebook Visualization Rendering', () => {
     });
 
     await test.step('Then the x-axis setting retains the entered degree', async () => {
-      await expect(visualizationPage.xAxisRotate.locator('input[type="radio"]')).toBeChecked();
+      await expect(visualizationPage.xAxisRotateInput).toBeChecked();
       await expect(visualizationPage.xAxisDegree).toHaveValue('30');
       await waitForSavedGraph(page, noteId, paragraphId, graph => {
         const keyNames = graph.keys

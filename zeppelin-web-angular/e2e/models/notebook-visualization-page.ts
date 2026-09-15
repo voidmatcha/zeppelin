@@ -41,6 +41,7 @@ export class NotebookVisualizationPage extends BasePage {
   readonly scatterYAxis: Locator;
   readonly xAxisSetting: Locator;
   readonly xAxisRotate: Locator;
+  readonly xAxisRotateInput: Locator;
   readonly xAxisDegree: Locator;
   private readonly resultDisplay: Locator;
 
@@ -71,7 +72,12 @@ export class NotebookVisualizationPage extends BasePage {
     this.scatterXAxis = this.scatterSetting.getByTestId('scatter-x-axis');
     this.scatterYAxis = this.scatterSetting.getByTestId('scatter-y-axis');
     this.xAxisSetting = this.resultDisplay.locator('zeppelin-visualization-x-axis-setting');
-    this.xAxisRotate = this.xAxisSetting.getByTestId('x-axis-label-mode').getByText('Rotate', { exact: true });
+    const xAxisLabelMode = this.xAxisSetting.getByTestId('x-axis-label-mode');
+    this.xAxisRotate = xAxisLabelMode.getByText('Rotate', { exact: true });
+    this.xAxisRotateInput = xAxisLabelMode.getByRole('radio', {
+      name: 'Rotate',
+      exact: true
+    });
     this.xAxisDegree = this.xAxisSetting.getByPlaceholder('degree');
   }
 
