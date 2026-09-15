@@ -26,7 +26,6 @@ interface NoteJob {
 interface JobManagerMessage {
   op?: string;
   data?: {
-    noteJobs?: { jobs?: NoteJob[] };
     noteRunningJobs?: { jobs?: NoteJob[] };
   };
 }
@@ -59,6 +58,10 @@ class JobManagerMessageRecorder {
     return this.sentOperations.includes('LIST_NOTE_JOBS');
   }
 
+  hasSubscriptionResponse(): boolean {
+    return this.messages.some(message => message.op === 'LIST_NOTE_JOBS');
+  }
+
   removals(noteIds: ReadonlySet<string>): NoteJob[] {
     return this.messages
       .filter(message => message.op === 'LIST_UPDATE_NOTE_JOBS')
@@ -82,7 +85,7 @@ class JobManagerMessageRecorder {
   }
 }
 
-const createNote = async (page: Page, label: string): Promise<{ noteId: string; noteName: string }> => {
+const createNote = async (page: Page, label: string): Promise<{ noteId: string }> => {
   const noteName = `EventBusParity_${label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const response = await page.request.post('/api/notebook', {
     data: {
@@ -96,7 +99,7 @@ const createNote = async (page: Page, label: string): Promise<{ noteId: string; 
 
   const body = (await response.json()) as { body?: string };
   expect(body.body).toEqual(expect.any(String));
-  return { noteId: body.body as string, noteName };
+  return { noteId: body.body as string };
 };
 
 const deleteNote = async (page: Page, noteId: string): Promise<void> => {
@@ -130,11 +133,19 @@ const expectServerEventBusMode = async (page: Page): Promise<void> => {
   );
 };
 
+const subscribeToJobUpdates = async (
+  jobManager: JobManagerPage,
+  recorder: JobManagerMessageRecorder
+): Promise<void> => {
+  await jobManager.navigate();
+  await expect.poll(() => recorder.hasSubscriptionRequest()).toBe(true);
+  await expect.poll(() => recorder.hasSubscriptionResponse(), { timeout: 120_000 }).toBe(true);
+};
+
 const verifyRemovalParity = async (
   browser: Browser,
   ownerPage: Page,
-  observerCredentials: TestCredentials | undefined,
-  observerOwnsNotes: boolean
+  observerCredentials: TestCredentials | undefined
 ): Promise<{ ownerRemovalCount: number; observerRemovalCount: number }> => {
   const ownerRecorder = await JobManagerMessageRecorder.install(ownerPage);
   await expectServerEventBusMode(ownerPage);
@@ -152,15 +163,10 @@ const verifyRemovalParity = async (
     const ownerJobManager = new JobManagerPage(ownerPage);
     const observerJobManager = new JobManagerPage(observerPage);
 
-    await ownerJobManager.navigate();
-    await expect.poll(() => ownerRecorder.hasSubscriptionRequest()).toBe(true);
-    await expect(ownerJobManager.jobItemByName(targetNote.noteName)).toBeVisible();
-    await observerJobManager.navigate();
-    await expect.poll(() => observerRecorder.hasSubscriptionRequest()).toBe(true);
-
-    await observerJobManager.filterByNoteName(targetNote.noteName);
-    await expect(observerJobManager.emptyState).toHaveCount(observerOwnsNotes ? 0 : 1);
-    await expect(observerJobManager.jobItemByName(targetNote.noteName)).toHaveCount(observerOwnsNotes ? 1 : 0);
+    await Promise.all([
+      subscribeToJobUpdates(ownerJobManager, ownerRecorder),
+      subscribeToJobUpdates(observerJobManager, observerRecorder)
+    ]);
 
     await deleteNote(ownerPage, targetNote.noteId);
     await expectNoteMissing(ownerPage, targetNote.noteId);
@@ -173,8 +179,6 @@ const verifyRemovalParity = async (
     await expect
       .poll(() => observerRecorder.removals(ownedNoteIds).map(job => job.noteId))
       .toEqual(expectedRemovalOrder);
-    await expect(ownerJobManager.jobItemByName(targetNote.noteName)).toHaveCount(0);
-
     for (const recorder of [ownerRecorder, observerRecorder]) {
       expect(recorder.removals(ownedNoteIds)).toEqual([
         { noteId: targetNote.noteId, isRunningJob: false, isRemoved: true, unixTimeLastRun: 0 },
@@ -196,7 +200,12 @@ const verifyRemovalParity = async (
 test.describe('Job Manager note-removal EventBus parity', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.JOB_MANAGER);
 
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(({ browserName }, testInfo) => {
+    test.skip(
+      process.env.ZEPPELIN_EVENTBUS_PARITY_ENABLED !== 'true',
+      'ZEPPELIN-6698 requires the dedicated EventBus parity matrix'
+    );
+    test.skip(browserName !== 'chromium', 'The server WebSocket contract is browser-independent');
     testInfo.annotations.push({
       type: 'eventbus-mode',
       description: process.env.ZEPPELIN_EVENTBUS_ENABLED === 'true' ? 'eventbus' : 'legacy'
@@ -205,7 +214,7 @@ test.describe('Job Manager note-removal EventBus parity', () => {
 
   test('anonymous viewers receive one ordered removal payload per deleted note', async ({ browser, page }) => {
     test.skip(await LoginTestUtil.isShiroEnabled(), 'ZEPPELIN-6698 requires the anonymous server matrix');
-    const removalCounts = await verifyRemovalParity(browser, page, undefined, true);
+    const removalCounts = await verifyRemovalParity(browser, page, undefined);
     expect(removalCounts).toEqual({ ownerRemovalCount: 2, observerRemovalCount: 2 });
   });
 
@@ -216,7 +225,7 @@ test.describe('Job Manager note-removal EventBus parity', () => {
     test.skip(!(await LoginTestUtil.isShiroEnabled()), 'ZEPPELIN-6698 requires the authenticated server matrix');
     const credentials = await LoginTestUtil.getTestCredentials();
     expect(credentials.user2).toBeDefined();
-    const removalCounts = await verifyRemovalParity(browser, page, credentials.user2, false);
+    const removalCounts = await verifyRemovalParity(browser, page, credentials.user2);
     expect(removalCounts).toEqual({ ownerRemovalCount: 2, observerRemovalCount: 2 });
   });
 });

@@ -49,14 +49,42 @@ jobs:
     env:
       # Use VFS storage instead of Git to avoid Git-related issues in CI
       ZEPPELIN_NOTEBOOK_STORAGE: org.apache.zeppelin.notebook.repo.VFSNotebookRepo
-      ZEPPELIN_JOBMANAGER_ENABLE: 'true'
+      ZEPPELIN_JOBMANAGER_ENABLE: ${{ matrix.suite == 'eventbus-parity' }}
       ZEPPELIN_EVENTBUS_ENABLED: ${{ matrix.eventbus == 'eventbus' }}
     strategy:
       fail-fast: false
       matrix:
-        mode: [anonymous, auth]
-        eventbus: [legacy, eventbus]
-        python: [ 3.9 ]
+        include:
+          - mode: anonymous
+            eventbus: legacy
+            suite: full
+            e2e_command: e2e
+            python: 3.9
+          - mode: auth
+            eventbus: legacy
+            suite: full
+            e2e_command: e2e
+            python: 3.9
+          - mode: anonymous
+            eventbus: legacy
+            suite: eventbus-parity
+            e2e_command: e2e:eventbus-removal-parity
+            python: 3.9
+          - mode: auth
+            eventbus: legacy
+            suite: eventbus-parity
+            e2e_command: e2e:eventbus-removal-parity
+            python: 3.9
+          - mode: anonymous
+            eventbus: eventbus
+            suite: eventbus-parity
+            e2e_command: e2e:eventbus-removal-parity
+            python: 3.9
+          - mode: auth
+            eventbus: eventbus
+            suite: eventbus-parity
+            e2e_command: e2e:eventbus-removal-parity
+            python: 3.9
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -99,16 +127,16 @@ jobs:
       - name: Install application
         run: ./mvnw clean install -DskipTests -am -pl python,zeppelin-jupyter-interpreter,zeppelin-web,zeppelin-web-angular -Pweb-classic ${MAVEN_ARGS}
       - name: Check websocket operation contract
-        if: matrix.mode == 'anonymous'
+        if: matrix.mode == 'anonymous' && matrix.suite == 'full'
         working-directory: zeppelin-web-angular
         run: ./node/npm run check:websocket-contract
       - name: Check notebook parity scenarios
-        if: matrix.mode == 'anonymous'
+        if: matrix.mode == 'anonymous' && matrix.suite == 'full'
         working-directory: zeppelin-web-angular
         run: ./node/npm run check:notebook-parity-scenarios
       # Keeps the Karma coverage previously run by the removed zeppelin-web e2e job
       - name: Run zeppelin-web unit tests
-        if: matrix.mode == 'anonymous'
+        if: matrix.mode == 'anonymous' && matrix.suite == 'full'
         run: ./mvnw test -pl zeppelin-web -Pweb-classic,web-unit-test ${MAVEN_ARGS}
       - name: Setup Zeppelin Server (Shiro.ini)
         run: |
@@ -124,8 +152,9 @@ jobs:
           echo "Created test notebook directory: $ZEPPELIN_E2E_TEST_NOTEBOOK_DIR"
       - name: Run headless E2E test with Maven
         # Classic UI e2e runs only on the anonymous leg, like the legacy Protractor suite
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./mvnw verify -pl zeppelin-web-angular -Pweb-e2e -Dweb.e2e.classic.disabled=${{ matrix.mode != 'anonymous' || matrix.eventbus != 'legacy' }} ${MAVEN_ARGS}
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./mvnw verify -pl zeppelin-web-angular -Pweb-e2e -Dweb.e2e.command=${{ matrix.e2e_command }} -Dweb.e2e.classic.disabled=${{ matrix.mode != 'anonymous' || matrix.suite != 'full' }} ${MAVEN_ARGS}
       - name: Run revision isolation E2E test with Git storage
+        if: matrix.suite == 'full'
         env:
           CI: 'true'
           ZEPPELIN_NOTEBOOK_STORAGE: org.apache.zeppelin.notebook.repo.GitNotebookRepo
@@ -149,7 +178,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: playwright-report-${{ matrix.mode }}-${{ matrix.eventbus }}
+          name: playwright-report-${{ matrix.mode }}-${{ matrix.eventbus }}-${{ matrix.suite }}
           path: |
             zeppelin-web-angular/playwright-report/
             zeppelin-web-angular/playwright-report-classic/
