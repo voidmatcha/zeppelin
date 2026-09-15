@@ -18,6 +18,7 @@ package org.apache.zeppelin.socket;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -30,6 +31,14 @@ import static org.mockito.Mockito.when;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import org.apache.zeppelin.common.Message;
 import org.apache.zeppelin.conf.ZeppelinConfiguration;
 import org.apache.zeppelin.interpreter.InterpreterResult;
 import org.apache.zeppelin.interpreter.InterpreterResultMessage;
@@ -72,6 +81,46 @@ class NotebookServerStreamingScopeTest {
     server.onOutputUpdated("note", "para", 0, InterpreterResult.Type.TEXT, "update");
 
     verify(connections, times(2)).broadcast(eq("note"), any());
+  }
+
+  @Test
+  void sharedNoteSerializesOutputMutationAndBroadcast() throws Exception {
+    CountDownLatch firstBroadcastStarted = new CountDownLatch(1);
+    CountDownLatch releaseFirstBroadcast = new CountDownLatch(1);
+    CountDownLatch secondOutputStarted = new CountDownLatch(1);
+    List<Message> messages = new CopyOnWriteArrayList<>();
+    doAnswer(invocation -> {
+      messages.add(invocation.getArgument(1));
+      if (messages.size() == 1) {
+        firstBroadcastStarted.countDown();
+        assertTrue(releaseFirstBroadcast.await(5, TimeUnit.SECONDS));
+      }
+      return null;
+    }).when(connections).broadcast(eq("note"), any());
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<?> first = executor.submit(() -> server.onOutputAppend("note", "para", 0, "first"));
+      assertTrue(firstBroadcastStarted.await(5, TimeUnit.SECONDS));
+      Future<?> second = executor.submit(() -> {
+        secondOutputStarted.countDown();
+        server.onOutputUpdated("note", "para", 0, InterpreterResult.Type.TEXT, "second");
+      });
+
+      assertTrue(secondOutputStarted.await(5, TimeUnit.SECONDS));
+      assertThrows(TimeoutException.class, () -> second.get(200, TimeUnit.MILLISECONDS));
+      releaseFirstBroadcast.countDown();
+      first.get(5, TimeUnit.SECONDS);
+      second.get(5, TimeUnit.SECONDS);
+    } finally {
+      releaseFirstBroadcast.countDown();
+      executor.shutdownNow();
+    }
+
+    assertEquals(2, messages.size());
+    assertEquals(1L, messages.get(0).get("outputSequence"));
+    assertEquals(2L, messages.get(1).get("outputSequence"));
+    assertEquals("second", note.getParagraph("para").getOutputSnapshot().get(0).getData());
   }
 
   @Test
