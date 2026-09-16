@@ -17,11 +17,13 @@ import { BasePage } from './base-page';
 export class JobManagerPage extends BasePage {
   readonly searchInput: Locator;
   readonly jobItems: Locator;
+  readonly emptyState: Locator;
 
   constructor(page: Page) {
     super(page);
     this.searchInput = page.locator('input[placeholder="Search jobs..."]');
     this.jobItems = page.locator('zeppelin-job-manager-job');
+    this.emptyState = page.getByText('No Job found', { exact: true });
   }
 
   async navigate(): Promise<void> {

@@ -141,6 +141,32 @@ jobs:
           "$zeppelin_daemon" start
           cd zeppelin-web-angular
           xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./node/npm run e2e -- tests/notebook/revision/revision-isolation.spec.ts --output=test-results-revision --reporter=github,html
+      - name: Run EventBus note-removal parity E2E test
+        env:
+          CI: 'true'
+          ZEPPELIN_JOBMANAGER_ENABLE: 'true'
+        run: |
+          parity_notebook_dir="$(mktemp -d "${RUNNER_TEMP}/zeppelin-eventbus-parity-notebooks.XXXXXX")"
+          zeppelin_daemon="${GITHUB_WORKSPACE}/bin/zeppelin-daemon.sh"
+          cleanup() {
+            "$zeppelin_daemon" stop || true
+            rm -rf -- "$parity_notebook_dir"
+          }
+          trap cleanup EXIT
+          export ZEPPELIN_NOTEBOOK_DIR="$parity_notebook_dir"
+          # This step owns notebook cleanup instead of Playwright's global directory reset.
+          unset ZEPPELIN_E2E_TEST_NOTEBOOK_DIR
+          cd zeppelin-web-angular
+          status=0
+          # A fresh daemon per mode keeps each run free of full-suite load and of the other mode's state.
+          for eventbus_enabled in false true; do
+            export ZEPPELIN_EVENTBUS_ENABLED="$eventbus_enabled"
+            "$zeppelin_daemon" start
+            PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-report-eventbus-parity-${eventbus_enabled}" \
+              xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./node/npm run e2e:eventbus-removal-parity -- --output="test-results-eventbus-parity-${eventbus_enabled}" --reporter=github,html || status=1
+            "$zeppelin_daemon" stop
+          done
+          exit "$status"
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v6
         if: always()
@@ -150,6 +176,8 @@ jobs:
             zeppelin-web-angular/playwright-report/
             zeppelin-web-angular/playwright-report-classic/
             zeppelin-web-angular/playwright-report-revision/
+            zeppelin-web-angular/playwright-report-eventbus-parity-false/
+            zeppelin-web-angular/playwright-report-eventbus-parity-true/
           retention-days: 3
       - name: Print Zeppelin logs
         if: always()
