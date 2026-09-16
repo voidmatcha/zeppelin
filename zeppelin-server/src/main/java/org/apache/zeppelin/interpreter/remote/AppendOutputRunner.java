@@ -38,10 +38,6 @@ public class AppendOutputRunner {
     this.listener = listener;
   }
 
-  public void run(List<AppendOutputBuffer> batch) {
-    run(batch, () -> true);
-  }
-
   /** Stops between append groups when delivery is disallowed; an active callback may finish. */
   void run(List<AppendOutputBuffer> batch, BooleanSupplier mayDeliver) {
     if (batch.isEmpty()) {

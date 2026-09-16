@@ -46,12 +46,12 @@ class AppendOutputRunnerTest {
     batch.add(new AppendOutputBuffer("note", "para", 0, "a"));
     batch.add(new AppendOutputBuffer("note", "para", 0, "b"));
     verifyNoInteractions(listener);
-    runner.run(batch);
+    runner.run(batch, () -> true);
     batch.clear();
     batch.add(new AppendOutputBuffer("note", "para", 0, "c"));
-    runner.run(batch);
+    runner.run(batch, () -> true);
     batch.clear();
-    runner.run(batch);
+    runner.run(batch, () -> true);
     InOrder order = inOrder(listener);
     order.verify(listener).onOutputAppend("note", "para", 0, "ab");
     order.verify(listener).onOutputAppend("note", "para", 0, "c");
@@ -68,7 +68,7 @@ class AppendOutputRunnerTest {
     batch.add(new AppendOutputBuffer("note:1", "p:1", 1, "third"));
     batch.add(new AppendOutputBuffer("note:2", "p:1", 1, "fourth"));
     batch.add(new AppendOutputBuffer("note:1", "p:1", 0, "fifth"));
-    runner.run(batch);
+    runner.run(batch, () -> true);
     InOrder order = inOrder(listener);
     order.verify(listener).onOutputAppend("note:1", "p:1", 0, "first");
     order.verify(listener).onOutputAppend("note:1", "p:2", 0, "second");
@@ -87,7 +87,7 @@ class AppendOutputRunnerTest {
     List<AppendOutputBuffer> batch = new ArrayList<>();
     batch.add(new AppendOutputBuffer("note", "gone", 0, "bad"));
     batch.add(new AppendOutputBuffer("note", "present", 0, "good"));
-    runner.run(batch);
+    runner.run(batch, () -> true);
     InOrder order = inOrder(listener);
     order.verify(listener).onOutputAppend("note", "gone", 0, "bad");
     order.verify(listener).onOutputAppend("note", "present", 0, "good");
@@ -110,7 +110,7 @@ class AppendOutputRunnerTest {
       expected.append(token);
       batch.add(new AppendOutputBuffer("note", "para", 0, token));
     }
-    runner.run(batch);
+    runner.run(batch, () -> true);
     assertEquals(List.of(expected.toString()), received);
   }
 
@@ -149,7 +149,7 @@ class AppendOutputRunnerTest {
     logger.setAdditivity(false);
     logger.addAppender(appender);
     try {
-      runner.run(batch);
+      runner.run(batch, () -> true);
       assertEquals(size > 100000 ? List.of(
           "Processing size for buffered append-output is high: " + size + " characters.")
           : List.of(), sizeWarnings);
@@ -172,7 +172,7 @@ class AppendOutputRunnerTest {
     batch.clear();
     verifyNoInteractions(listener);
     batch.add(new AppendOutputBuffer("note", "para", 0, "new"));
-    runner.run(batch);
+    runner.run(batch, () -> true);
     InOrder order = inOrder(listener);
     order.verify(listener).onOutputAppend("note", "para", 0, "new");
     order.verifyNoMoreInteractions();
