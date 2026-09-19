@@ -126,10 +126,11 @@ function getZeppelinVersion(){
     if [[ -d "${ZEPPELIN_HOME}/zeppelin-server/target/classes" ]]; then
       ZEPPELIN_CLASSPATH+=":${ZEPPELIN_HOME}/zeppelin-server/target/classes"
     fi
+    addJarInDir "${ZEPPELIN_HOME}/lib"
     addJarInDir "${ZEPPELIN_HOME}/zeppelin-server/target/lib"
     CLASSPATH+=":${ZEPPELIN_CLASSPATH}"
     $ZEPPELIN_RUNNER -cp "${CLASSPATH}" "${ZEPPELIN_COMMANDLINE_MAIN}" -v
-    exit 0
+    exit $?
 }
 
 # Text encoding for
