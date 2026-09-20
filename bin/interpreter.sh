@@ -22,6 +22,7 @@ bin="$(cd "${bin}">/dev/null; pwd)"
 
 function usage() {
     echo "usage) $0 -p <port> -r <intp_port> -d <interpreter dir to load> -l <local interpreter repo dir to load> -g <interpreter group name>"
+    echo "usage) $0 -v"
 }
 
 function downloadInterpreterLibraries() {
@@ -58,7 +59,7 @@ if [ -f /proc/self/cgroup ] && [ -n "$(command -v getent)" ]; then
     fi
 fi
 
-while getopts "hc:p:r:i:d:l:v:u:g:" o; do
+while getopts "hc:p:r:i:d:l:vu:g:" o; do
     case ${o} in
         h)
             usage
