@@ -232,7 +232,7 @@ class NoteTest {
   }
 
   @Test
-  void userNoteKeepsEveryPersistedField() throws IllegalAccessException {
+  void userNoteKeepsEveryNoteLevelField() throws IllegalAccessException {
     Note note = personalizedNote();
 
     Note userNote = note.getUserNote("user1");
@@ -260,7 +260,9 @@ class NoteTest {
     note.getInfo().put("info_1", "value_1");
     note.getNoteParams().put("param_1", "value_1");
     note.getNoteForms().put("form_1", new TextBox("name", "default_name"));
-    note.addNewParagraph(AuthenticationInfo.ANONYMOUS);
+    Paragraph paragraph = note.addNewParagraph(AuthenticationInfo.ANONYMOUS);
+    note.getAngularObjects().put("group_1", Arrays.asList(
+        new AngularObject<>("name_1", "value_1", note.getId(), paragraph.getId(), null)));
     return note;
   }
 }
