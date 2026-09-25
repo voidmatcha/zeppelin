@@ -94,15 +94,15 @@
     </fileSet>
     <fileSet>
       <outputDirectory>/lib/node_modules/zeppelin-vis</outputDirectory>
-      <directory>../zeppelin-web/src/app/visualization</directory>
+      <directory>../zeppelin-helium/zeppelin-vis</directory>
     </fileSet>
     <fileSet>
       <outputDirectory>/lib/node_modules/zeppelin-tabledata</outputDirectory>
-      <directory>../zeppelin-web/src/app/tabledata</directory>
+      <directory>../zeppelin-helium/zeppelin-tabledata</directory>
     </fileSet>
     <fileSet>
       <outputDirectory>/lib/node_modules/zeppelin-spell</outputDirectory>
-      <directory>../zeppelin-web/src/app/spell</directory>
+      <directory>../zeppelin-helium/zeppelin-spell</directory>
     </fileSet>
   </fileSets>
 </assembly>

@@ -12,7 +12,7 @@
 
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { Subject } from 'rxjs';
-import { debounceTime } from 'rxjs/operators';
+import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
@@ -23,9 +23,11 @@ import {
   InterpreterRepository,
   InterpreterSettingRequest
 } from '@zeppelin/interfaces';
-import { InterpreterService } from '@zeppelin/services';
+import { OP } from '@zeppelin/sdk';
+import { InterpreterService, MessageService } from '@zeppelin/services';
 
 import { InterpreterCreateRepositoryModalComponent } from './create-repository-modal/create-repository-modal.component';
+import { isInterpreterInstallMessageFor, parseInterpreterInstallRequest } from './interpreter-install';
 
 @Component({
   selector: 'zeppelin-interpreter',
@@ -35,9 +37,17 @@ import { InterpreterCreateRepositoryModalComponent } from './create-repository-m
   standalone: false
 })
 export class InterpreterComponent implements OnInit, OnDestroy {
+  private readonly destroy$ = new Subject<void>();
   searchInterpreter = '';
   search$: Subject<string> | null = new Subject<string>();
   showRepository = false;
+  showInstall = false;
+  installName = '';
+  installArtifact = '';
+  installingName: string | null = null;
+  installStatus = '';
+  installStatusType: 'info' | 'success' | 'error' = 'info';
+  installFormError = '';
   showCreateSetting = false;
   propertyTypes: InterpreterPropertyTypes[] = [];
   interpreterSettings: Interpreter[] = [];
@@ -64,6 +74,52 @@ export class InterpreterComponent implements OnInit, OnDestroy {
 
   triggerRepository(): void {
     this.showRepository = !this.showRepository;
+    this.cdr.markForCheck();
+  }
+
+  requestInterpreterInstall(): void {
+    const request = parseInterpreterInstallRequest(this.installName, this.installArtifact);
+    if (!request) {
+      this.installFormError = 'Enter a simple interpreter name and a groupId:artifactId:version Maven coordinate.';
+      this.cdr.markForCheck();
+      return;
+    }
+    if (this.installingName) {
+      return;
+    }
+    this.installFormError = '';
+    this.nzModalService.confirm({
+      nzTitle: `Install ${request.name}?`,
+      nzContent: `Download ${request.artifact} to the Zeppelin server?`,
+      nzOnOk: () => {
+        this.installingName = request.name;
+        this.installStatus = `Starting installation of ${request.name}...`;
+        this.installStatusType = 'info';
+        this.cdr.markForCheck();
+        this.interpreterService.installInterpreter(request.name, request.artifact).subscribe({
+          error: error => {
+            this.installStatus = error?.error?.message || error?.message || 'Could not start interpreter installation.';
+            this.installStatusType = 'error';
+            this.installingName = null;
+            this.cdr.markForCheck();
+          }
+        });
+      }
+    });
+  }
+
+  private onInterpreterInstallMessage(result: 'Starting' | 'Succeed' | 'Failed', message: string): void {
+    if (!this.installingName || !isInterpreterInstallMessageFor(message, this.installingName)) {
+      return;
+    }
+    this.installStatus = message;
+    this.installStatusType = result === 'Failed' ? 'error' : result === 'Succeed' ? 'success' : 'info';
+    if (result !== 'Starting') {
+      this.installingName = null;
+      if (result === 'Succeed') {
+        this.getAvailableInterpreters();
+      }
+    }
     this.cdr.markForCheck();
   }
 
@@ -178,6 +234,7 @@ export class InterpreterComponent implements OnInit, OnDestroy {
 
   constructor(
     private interpreterService: InterpreterService,
+    private messageService: MessageService,
     private cdr: ChangeDetectorRef,
     private nzModalService: NzModalService,
     private nzMessageService: NzMessageService
@@ -190,9 +247,19 @@ export class InterpreterComponent implements OnInit, OnDestroy {
     this.getRepositories();
 
     this.search$!.pipe(debounceTime(150)).subscribe(value => this.filterInterpreters(value));
+    this.messageService
+      .receive(OP.INTERPRETER_INSTALL_STARTED)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => this.onInterpreterInstallMessage(data.result, data.message));
+    this.messageService
+      .receive(OP.INTERPRETER_INSTALL_RESULT)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(data => this.onInterpreterInstallMessage(data.result, data.message));
   }
 
   ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
     this.search$?.complete();
     this.search$ = null;
   }

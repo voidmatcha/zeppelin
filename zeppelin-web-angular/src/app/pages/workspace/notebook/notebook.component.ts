@@ -50,6 +50,7 @@ import {
 } from '@zeppelin/services';
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
+import { NotebookSearchMatch, NotebookSearchSession } from './notebook-search';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
 
 @Component({
@@ -63,6 +64,7 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
   @ViewChildren(NotebookParagraphComponent) listOfNotebookParagraphComponent!: QueryList<NotebookParagraphComponent>;
   private destroy$ = new Subject<void>();
   private searchTerm = '';
+  private readonly searchSession = new NotebookSearchSession();
   note?: Exclude<Note['note'], undefined>;
   permissions?: Permissions;
   selectId: string | null = null;
@@ -278,7 +280,77 @@ export class NotebookComponent extends MessageListenersManager implements OnInit
 
   onParagraphSearch(term: string) {
     this.searchTerm = term || '';
+    this.searchSession.setTerm(this.searchTerm);
     this.highlightSearchTerm();
+  }
+
+  findNotebookMatch(term: string, direction: -1 | 1) {
+    this.searchSession.setTerm(term);
+    const match = this.searchSession.next(this.searchParagraphs(), direction);
+    if (match) {
+      this.focusSearchMatch(term, match);
+    }
+  }
+
+  replaceNotebookMatch(term: string, replacement: string) {
+    if (!this.note || this.revisionView || this.viewOnly || this.noteStatusService.isNoteParagraphRunning(this.note)) {
+      return;
+    }
+    this.searchSession.setTerm(term);
+    const result = this.searchSession.replaceCurrent(this.searchParagraphs(), replacement);
+    if (!result) {
+      return;
+    }
+    const paragraph = this.listOfNotebookParagraphComponent
+      ?.toArray()
+      .find(component => component.paragraph.id === result.paragraphId);
+    if (!paragraph) {
+      return;
+    }
+    if (result.text !== paragraph.paragraph.text) {
+      paragraph.textChanged(result.text);
+      paragraph.saveParagraph();
+    }
+    if (result.nextMatch) {
+      this.focusSearchMatch(term, result.nextMatch);
+    }
+  }
+
+  replaceAllNotebookMatches(term: string, replacement: string) {
+    if (
+      !term ||
+      !this.note ||
+      this.revisionView ||
+      this.viewOnly ||
+      this.noteStatusService.isNoteParagraphRunning(this.note)
+    ) {
+      return;
+    }
+    this.searchSession.setTerm(term);
+    const changed = this.searchSession.replaceAll(this.searchParagraphs(), replacement);
+    const components = this.listOfNotebookParagraphComponent?.toArray() || [];
+    for (const update of changed) {
+      const paragraph = components.find(component => component.paragraph.id === update.id);
+      if (paragraph) {
+        paragraph.textChanged(update.text);
+        paragraph.saveParagraph();
+      }
+    }
+    this.highlightSearchTerm();
+  }
+
+  private searchParagraphs(): Array<{ id: string; text: string }> {
+    return this.note?.paragraphs.map(paragraph => ({ id: paragraph.id, text: paragraph.text || '' })) || [];
+  }
+
+  private focusSearchMatch(term: string, match: NotebookSearchMatch): void {
+    this.selectId = match.paragraphId;
+    this.scrolledId = match.paragraphId;
+    this.listOfNotebookParagraphComponent
+      ?.toArray()
+      .find(paragraph => paragraph.paragraph.id === match.paragraphId)
+      ?.focusSearchMatch(term, match.offset);
+    this.cdr.markForCheck();
   }
 
   saveParagraph(id: string) {

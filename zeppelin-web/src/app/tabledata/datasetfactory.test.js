@@ -12,10 +12,10 @@
  * limitations under the License.
  */
 
-import NetworkData from './networkdata.js';
-import TableData from './tabledata.js';
-import {DatasetType} from './dataset.js';
-import DatasetFactory from './datasetfactory.js';
+import NetworkData from 'zeppelin-tabledata/networkdata.js';
+import TableData from 'zeppelin-tabledata/tabledata.js';
+import {DatasetType} from 'zeppelin-tabledata/dataset.js';
+import DatasetFactory from 'zeppelin-tabledata/datasetfactory.js';
 
 describe('DatasetFactory build', function() {
   let df;

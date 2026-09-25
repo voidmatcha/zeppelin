@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-import * as Util from './advanced-transformation-util.js';
+import * as Util from 'zeppelin-tabledata/advanced-transformation-util.js';
 
 /* eslint-disable max-len */
 const MockParameter = {

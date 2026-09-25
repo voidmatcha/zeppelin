@@ -62,6 +62,9 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
   @Output() readonly editorHideChange = new EventEmitter<boolean>();
   @Output() readonly tableHideChange = new EventEmitter<boolean>();
   @Output() readonly handleSearch = new EventEmitter<string>();
+  @Output() readonly findMatch = new EventEmitter<{ term: string; direction: -1 | 1 }>();
+  @Output() readonly replaceMatch = new EventEmitter<{ term: string; replacement: string }>();
+  @Output() readonly replaceAllMatches = new EventEmitter<{ term: string; replacement: string }>();
   @ViewChild('searchInput', { static: false }) searchInputRef?: ElementRef<HTMLInputElement>;
   lfOption: Array<'report' | 'default' | 'simple'> = ['default', 'simple', 'report'];
   isRevisionSupported: boolean = false;
@@ -247,18 +250,24 @@ export class NotebookActionBarComponent extends MessageListenersManager implemen
     }
   }
 
-  // TODO: Implement logic to find the previous search match in the notebook editor
-  onFindPrevClick(_searchText: string) {}
+  onFindPrevClick(searchText: string) {
+    this.findMatch.emit({ term: searchText, direction: -1 });
+  }
 
-  // TODO: Implement logic to find the next search match in the notebook editor
-  onFindNextClick(_searchText: string) {}
+  onFindNextClick(searchText: string) {
+    this.findMatch.emit({ term: searchText, direction: 1 });
+  }
 
-  // TODO: Implement logic to replace the current search match with the replacement text
-  onReplaceClick(_searchText: string, _replaceText: string) {}
+  onReplaceClick(searchText: string, replaceText: string) {
+    if (!this.viewOnly && !this.revisionView && !this.isNoteParagraphRunning) {
+      this.replaceMatch.emit({ term: searchText, replacement: replaceText });
+    }
+  }
 
-  // TODO: Implement logic to replace all search matches with the replacement text
-  onReplaceAllClick(searchText: string, _replaceText: string) {
-    this.handleSearch.emit(searchText);
+  onReplaceAllClick(searchText: string, replaceText: string) {
+    if (!this.viewOnly && !this.revisionView && !this.isNoteParagraphRunning) {
+      this.replaceAllMatches.emit({ term: searchText, replacement: replaceText });
+    }
   }
 
   openSearchMenu() {

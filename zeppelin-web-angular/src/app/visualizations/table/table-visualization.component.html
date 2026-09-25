@@ -53,9 +53,9 @@
 >
   <thead>
     <tr>
-      @for (col of columns; track col) {
+      @for (col of columns; track col; let columnIndex = $index) {
         <th nzWidth="200px" nzShowSort nzCustomFilter (nzSortOrderChange)="onSortChange(col, $event)">
-          {{ col }}
+          {{ tableData?.displayColumns?.[columnIndex] ?? col }}
           <i
             #dropdown="nzDropdown"
             nz-icon

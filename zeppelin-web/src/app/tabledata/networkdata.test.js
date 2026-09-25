@@ -12,8 +12,8 @@
  * limitations under the License.
  */
 
-import NetworkData from './networkdata.js';
-import {DatasetType} from './dataset.js';
+import NetworkData from 'zeppelin-tabledata/networkdata.js';
+import {DatasetType} from 'zeppelin-tabledata/dataset.js';
 
 describe('NetworkData build', function() {
   let nd;

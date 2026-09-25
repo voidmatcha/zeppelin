@@ -18,6 +18,7 @@ import { DataSet } from './data-set';
 
 export class TableData extends DataSet {
   columns: string[] = [];
+  displayColumns: string[] = [];
   // eslint-disable-next-line
   rows: any[] = [];
 
@@ -27,10 +28,31 @@ export class TableData extends DataSet {
       return;
     }
     const ds = new AntvDataSet();
-    const dv = ds.createView().source(data, {
-      type: 'tsv'
+    let dv = ds.createView().source(data, { type: 'tsv' });
+    const displayColumns: string[] = dv.origin?.columns || [];
+    const reservedNames = new Set(displayColumns);
+    const usedNames = new Set<string>();
+    const columns = displayColumns.map(name => {
+      let key = name;
+      let suffix = 2;
+      while (usedNames.has(key)) {
+        key = `${name} (${suffix++})`;
+        while (reservedNames.has(key)) {
+          key = `${name} (${suffix++})`;
+        }
+      }
+      usedNames.add(key);
+      return key;
     });
+    if (columns.some((name, index) => name !== displayColumns[index])) {
+      const firstLineEnd = data.indexOf('\n');
+      const escapeHeader = (name: string) => (/[\t"\r\n]/.test(name) ? `"${name.replace(/"/g, '""')}"` : name);
+      const uniqueHeader = columns.map(escapeHeader).join('\t');
+      const source = uniqueHeader + (firstLineEnd === -1 ? '' : data.slice(firstLineEnd));
+      dv = ds.createView().source(source, { type: 'tsv' });
+    }
     this.columns = dv.origin && dv.origin.columns ? dv.origin.columns : [];
+    this.displayColumns = displayColumns;
     this.rows = dv.rows || [];
   }
 }

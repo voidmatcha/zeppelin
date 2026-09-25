@@ -57,6 +57,10 @@ export class InterpreterService extends BaseRest {
     return this.http.get<InterpreterMap>(this.restUrl`/interpreter`);
   }
 
+  installInterpreter(name: string, artifact: string) {
+    return this.http.post(this.restUrl`/interpreter/install`, { name, artifact });
+  }
+
   getAvailableInterpreterPropertyTypes() {
     return this.http.get<InterpreterPropertyTypes[]>(this.restUrl`/interpreter/property/types`);
   }

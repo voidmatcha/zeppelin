@@ -151,6 +151,7 @@ export class NotebookParagraphComponent
   private searchTerm = '';
 
   private mode: Mode = 'command';
+  private runRequest = 0;
   waitConfirmFromEdit = false;
   notebookParagraphCodeEditorComponent?: NotebookParagraphCodeEditorComponent;
 
@@ -187,6 +188,10 @@ export class NotebookParagraphComponent
   highlightMatches(searchText: string) {
     this.searchTerm = searchText;
     this.notebookParagraphCodeEditorComponent?.highlightMatches(searchText);
+  }
+
+  focusSearchMatch(searchText: string, offset: number) {
+    this.notebookParagraphCodeEditorComponent?.focusSearchMatch(searchText, offset);
   }
 
   textChanged(text: string) {
@@ -400,12 +405,31 @@ export class NotebookParagraphComponent
     this.editorSetting.isOutputHidden = this.paragraph.config.editorSetting.editOnDblClick;
   }
 
-  runParagraph(paragraphText?: string, propagated: boolean = false) {
+  async runParagraph(paragraphText?: string, propagated: boolean = false) {
     const text = paragraphText || this.paragraph.text;
     if (text && !this.isParagraphRunning) {
+      const request = ++this.runRequest;
+      const paragraph = this.paragraph;
+      const noteId = this.note.id;
       const magic = SpellResult.extractMagic(text);
+      let hasSpell = false;
+      if (magic) {
+        try {
+          hasSpell = await this.heliumService.hasSpell(magic);
+        } catch (error) {
+          console.error('Failed to initialize Helium packages', error);
+        }
+      }
+      if (
+        request !== this.runRequest ||
+        this.isParagraphRunning ||
+        this.paragraph !== paragraph ||
+        this.note.id !== noteId
+      ) {
+        return;
+      }
 
-      if (magic && this.heliumService.getSpellByMagic(magic)) {
+      if (magic && hasSpell) {
         this.runParagraphUsingSpell(text, magic, propagated);
         this.runParagraphAfter(text);
       } else {
@@ -598,7 +622,7 @@ export class NotebookParagraphComponent
     cdr: ChangeDetectorRef,
     ngZService: NgZService
   ) {
-    super(messageService, noteStatusService, ngZService, cdr);
+    super(messageService, noteStatusService, ngZService, cdr, heliumService);
     this.keyBinderService = new KeyBinder(this.destroy$, this.host, this.shortcutService);
   }
 
@@ -788,6 +812,7 @@ export class NotebookParagraphComponent
   }
 
   ngOnDestroy(): void {
+    this.runRequest++;
     super.ngOnDestroy();
     this.destroy$.next();
     this.destroy$.complete();

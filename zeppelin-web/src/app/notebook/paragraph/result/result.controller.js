@@ -14,21 +14,21 @@
 
 import moment from 'moment';
 
-import DatasetFactory from '../../../tabledata/datasetfactory';
-import TableVisualization from '../../../visualization/builtins/visualization-table';
-import BarchartVisualization from '../../../visualization/builtins/visualization-barchart';
-import PiechartVisualization from '../../../visualization/builtins/visualization-piechart';
-import AreachartVisualization from '../../../visualization/builtins/visualization-areachart';
-import LinechartVisualization from '../../../visualization/builtins/visualization-linechart';
-import ScatterchartVisualization from '../../../visualization/builtins/visualization-scatterchart';
-import NetworkVisualization from '../../../visualization/builtins/visualization-d3network';
-import {DefaultDisplayType, SpellResult} from '../../../spell';
+import DatasetFactory from 'zeppelin-tabledata/datasetfactory';
+import TableVisualization from 'zeppelin-vis/builtins/visualization-table';
+import BarchartVisualization from 'zeppelin-vis/builtins/visualization-barchart';
+import PiechartVisualization from 'zeppelin-vis/builtins/visualization-piechart';
+import AreachartVisualization from 'zeppelin-vis/builtins/visualization-areachart';
+import LinechartVisualization from 'zeppelin-vis/builtins/visualization-linechart';
+import ScatterchartVisualization from 'zeppelin-vis/builtins/visualization-scatterchart';
+import NetworkVisualization from 'zeppelin-vis/builtins/visualization-d3network';
+import {DefaultDisplayType, SpellResult} from 'zeppelin-spell';
 import {ParagraphStatus} from '../paragraph.status';
 import Result from './result';
 
 const AnsiUp = require('ansi_up');
 const AnsiUpConverter = new AnsiUp.default; // eslint-disable-line new-parens,new-cap
-const TableGridFilterTemplate = require('../../../visualization/builtins/visualization-table-grid-filter.html');
+const TableGridFilterTemplate = require('zeppelin-vis/builtins/visualization-table-grid-filter.html');
 
 angular.module('zeppelinWebApp').controller('ResultCtrl', ResultCtrl);
 

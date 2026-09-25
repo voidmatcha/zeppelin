@@ -25,7 +25,7 @@ export class TableDataAdapterService {
    */
   convertToClassicFormat(modernTableData: TableData): Omit<HeliumClassicTableData, 'loadParagraphResult' | 'refresh'> {
     const classicColumns: HeliumClassicTableData['columns'] = modernTableData.columns.map((columnName, index) => ({
-      name: columnName,
+      name: modernTableData.displayColumns[index] ?? columnName,
       index,
       aggr: 'sum' // Default aggregation
     }));

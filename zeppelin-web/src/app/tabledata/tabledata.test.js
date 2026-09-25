@@ -12,8 +12,8 @@
  * limitations under the License.
  */
 
-import TableData from './tabledata.js';
-import PivotTransformation from './pivot.js';
+import TableData from 'zeppelin-tabledata/tabledata.js';
+import PivotTransformation from 'zeppelin-tabledata/pivot.js';
 
 describe('TableData build', function() {
   let td;

@@ -19,6 +19,7 @@ package org.apache.zeppelin.helium;
 import static org.apache.zeppelin.helium.HeliumBundleFactory.HELIUM_LOCAL_REPO;
 import static org.apache.zeppelin.helium.HeliumPackage.newHeliumPackage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,14 +32,19 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.LinkedList;
 import java.util.List;
+import org.apache.commons.io.FileUtils;
 import org.apache.zeppelin.conf.ZeppelinConfiguration;
 import org.apache.zeppelin.conf.ZeppelinConfiguration.ConfVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class HeliumBundleFactoryTest {
   private HeliumBundleFactory hbf;
   private File nodeInstallationDir;
+
+  @TempDir
+  File temporaryHome;
 
   @BeforeEach
   public void setUp() throws InstallationException, TaskRunnerException, IOException {
@@ -118,6 +124,55 @@ class HeliumBundleFactoryTest {
             "fa fa-coffee");
     File bundle = hbf.buildPackage(pkg, true, true);
     assertTrue(bundle.isFile());
+  }
+
+  @Test
+  void bundleExampleVisualizationAndSpellWithoutClassicUi() throws IOException {
+    File repositoryRoot = new File("../").getCanonicalFile();
+    FileUtils.copyDirectory(
+        new File(repositoryRoot, "zeppelin-helium"),
+        new File(temporaryHome, "zeppelin-helium"));
+
+    ZeppelinConfiguration zConf = ZeppelinConfiguration.load();
+    zConf.setProperty(ConfVars.ZEPPELIN_HOME.getVarName(), temporaryHome.getAbsolutePath());
+    zConf.setProperty(
+        ConfVars.ZEPPELIN_DEP_LOCALREPO.getVarName(),
+        new File(repositoryRoot, "local-repo").getAbsolutePath());
+    HeliumBundleFactory classicFreeFactory = new HeliumBundleFactory(zConf);
+
+    assertFalse(new File(temporaryHome, "zeppelin-web").exists());
+
+    HeliumPackage visualization =
+        newHeliumPackage(
+            HeliumType.VISUALIZATION,
+            "classic-free-horizontalbar",
+            "classic-free-horizontalbar",
+            new File(repositoryRoot, "zeppelin-examples/zeppelin-example-horizontalbar")
+                .getAbsolutePath(),
+            "",
+            null,
+            "Apache-2.0",
+            "");
+    File visualizationBundle = classicFreeFactory.buildPackage(visualization, true, true);
+
+    HeliumPackage spell =
+        newHeliumPackage(
+            HeliumType.SPELL,
+            "classic-free-echo-spell",
+            "classic-free-echo-spell",
+            new File(repositoryRoot, "zeppelin-examples/zeppelin-example-spell-echo")
+                .getAbsolutePath(),
+            "",
+            null,
+            "Apache-2.0",
+            "");
+    File spellBundle = classicFreeFactory.buildPackage(spell, true, true);
+
+    assertTrue(visualizationBundle.isFile());
+    assertTrue(visualizationBundle.length() > 0);
+    assertTrue(spellBundle.isFile());
+    assertTrue(spellBundle.length() > 0);
+    assertFalse(new File(temporaryHome, "zeppelin-web").exists());
   }
 
   // TODO(zjffdu) Ignore flaky test, enable it later after fixing this flaky test

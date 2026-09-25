@@ -33,10 +33,17 @@ import { VisualizationModule } from '@zeppelin/visualizations';
 
 import { NotebookParagraphDynamicFormsComponent } from './dynamic-forms/dynamic-forms.component';
 import { NotebookParagraphResultComponent } from './result/result.component';
+import { HeliumApplicationsComponent } from './helium-application/helium-applications.component';
+import { HeliumApplicationOutputComponent } from './helium-application/helium-application-output.component';
 
 @NgModule({
-  exports: [NotebookParagraphResultComponent, NotebookParagraphDynamicFormsComponent],
-  declarations: [NotebookParagraphResultComponent, NotebookParagraphDynamicFormsComponent],
+  exports: [NotebookParagraphResultComponent, NotebookParagraphDynamicFormsComponent, HeliumApplicationsComponent],
+  declarations: [
+    NotebookParagraphResultComponent,
+    NotebookParagraphDynamicFormsComponent,
+    HeliumApplicationsComponent,
+    HeliumApplicationOutputComponent
+  ],
   imports: [
     CommonModule,
     ShareModule,

@@ -34,6 +34,7 @@ import { VisualizationPivotSettingComponent } from './common/pivot-setting/pivot
 import { VisualizationScatterSettingComponent } from './common/scatter-setting/scatter-setting.component';
 import { VisualizationXAxisSettingComponent } from './common/x-axis-setting/x-axis-setting.component';
 import { LineChartVisualizationComponent } from './line-chart/line-chart-visualization.component';
+import { NetworkVisualizationComponent } from './network/network-visualization.component';
 import { PieChartVisualizationComponent } from './pie-chart/pie-chart-visualization.component';
 import { ScatterChartVisualizationComponent } from './scatter-chart/scatter-chart-visualization.component';
 import { TableVisualizationComponent } from './table/table-visualization.component';
@@ -44,7 +45,8 @@ const VisualizationComponents = [
   BarChartVisualizationComponent,
   LineChartVisualizationComponent,
   PieChartVisualizationComponent,
-  ScatterChartVisualizationComponent
+  ScatterChartVisualizationComponent,
+  NetworkVisualizationComponent
 ];
 
 @NgModule({

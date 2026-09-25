@@ -33,6 +33,7 @@ import { isNil } from 'lodash';
 import { NzModalService } from 'ng-zorro-antd/modal';
 import { NotebookParagraphResultComponent } from '../../share/result/result.component';
 import { ReactHostCallbacks, ReactProps } from '../../../../share/react-mount';
+import { HeliumApplicationService } from '../../../../services/helium-application.service';
 
 @Component({
   selector: 'zeppelin-publish-paragraph',
@@ -50,9 +51,11 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
   useReact = false;
   // Separate from useReact (which is re-derived from the URL) so a failed remote stays degraded.
   reactFailed = false;
+  reactApplicationFallback = false;
   isLoading = true;
   error: string | null = null;
   reactProps: ReactProps & ReactHostCallbacks = {};
+  private runRequest = 0;
 
   @ViewChild('codePreviewModal', { static: true }) codePreviewModal!: TemplateRef<void>;
   @ViewChildren(NotebookParagraphResultComponent)
@@ -66,6 +69,7 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
     public messageService: MessageService,
     private activatedRoute: ActivatedRoute,
     private heliumService: HeliumService,
+    private heliumApplicationService: HeliumApplicationService,
     private router: Router,
     private nzModalService: NzModalService,
     private reactFeature: ReactFeatureService,
@@ -73,7 +77,10 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
     ngZService: NgZService,
     cdr: ChangeDetectorRef
   ) {
-    super(messageService, noteStatusService, ngZService, cdr);
+    super(messageService, noteStatusService, ngZService, cdr, heliumService);
+    this.__zeppelinMessageListeners$__?.add(
+      this.heliumApplicationService.changes.subscribe(() => this.handleApplicationCacheChange())
+    );
     this.activatedRoute.queryParamMap.subscribe(params => {
       this.useReact = this.reactFeature.isEnabled('publishedParagraph', params);
     });
@@ -82,8 +89,12 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
       if (typeof params.noteId !== 'string') {
         throw new Error(`noteId path parameter should be string, but got ${typeof params.noteId} instead.`);
       }
+      this.runRequest++;
       this.noteId = params.noteId;
       this.paragraphId = params.paragraphId!;
+      this.reactFailed = false;
+      this.reactApplicationFallback = false;
+      this.error = null;
       this.setParagraphSnapshot(undefined);
       this.messageService.getNote(params.noteId);
     });
@@ -95,10 +106,11 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
     if (!isNil(note) && note.id === this.noteId) {
       this.setParagraphSnapshot(note.paragraphs.find(p => p.id === this.paragraphId));
       if (this.paragraph) {
+        this.reactApplicationFallback = this.hasApplications(this.paragraph);
         if (!this.paragraph.results) {
           this.showRunConfirmationModal();
         }
-        if (this.useReact && !this.reactFailed) {
+        if (this.useReact && !this.reactFailed && !this.reactApplicationFallback) {
           this.reactProps = this.buildReactProps(this.paragraph);
           this.isLoading = false;
           this.cdr.markForCheck();
@@ -140,14 +152,35 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
     // noop
   }
 
-  runParagraph(): void {
+  async runParagraph(): Promise<void> {
     if (!this.paragraph) {
       throw new Error('paragraph is not defined');
     }
     const text = this.paragraph.text;
     if (text && !this.isParagraphRunning) {
+      const request = ++this.runRequest;
+      const paragraph = this.paragraph;
+      const noteId = this.noteId;
+      const paragraphId = this.paragraphId;
       const magic = SpellResult.extractMagic(this.paragraph.text);
-      if (magic && this.heliumService.getSpellByMagic(magic)) {
+      let hasSpell = false;
+      if (magic) {
+        try {
+          hasSpell = await this.heliumService.hasSpell(magic);
+        } catch (error) {
+          console.error('Failed to initialize Helium packages', error);
+        }
+      }
+      if (
+        request !== this.runRequest ||
+        this.isParagraphRunning ||
+        this.paragraph !== paragraph ||
+        this.noteId !== noteId ||
+        this.paragraphId !== paragraphId
+      ) {
+        return;
+      }
+      if (magic && hasSpell) {
         this.runParagraphUsingSpell(text, magic, false);
       } else {
         this.runParagraphUsingBackendInterpreter(text);
@@ -156,7 +189,7 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
   }
 
   updateParagraphResult(resultIndex: number, config: ParagraphConfigResult, result: ParagraphIResultsMsgItem): void {
-    if (this.useReact && !this.reactFailed && this.paragraph) {
+    if (this.useReact && !this.reactFailed && !this.reactApplicationFallback && this.paragraph) {
       this.reactProps = this.buildReactProps(this.paragraph);
       this.cdr.markForCheck();
       return;
@@ -167,11 +200,16 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
     }
   }
 
+  override ngOnDestroy(): void {
+    this.runRequest++;
+    super.ngOnDestroy();
+  }
+
   updateParagraphObjectWhenUpdated(newPara: ParagraphItem): void {
     super.updateParagraphObjectWhenUpdated(newPara);
     // A run pushes OP.PARAGRAPH, not OP.NOTE, so getNote does not rebuild the props.
     // Do it here, once the base class has merged the new results into this.paragraph.
-    if (this.useReact && !this.reactFailed && this.paragraph) {
+    if (this.useReact && !this.reactFailed && !this.reactApplicationFallback && this.paragraph) {
       this.reactProps = this.buildReactProps(this.paragraph);
       this.cdr.markForCheck();
     }
@@ -225,6 +263,31 @@ export class PublishedParagraphComponent extends ParagraphBase implements Publis
         this.degradeToAngular(paragraph);
       }
     };
+  }
+
+  private hasApplications(paragraph: ParagraphItem): boolean {
+    return (
+      (Array.isArray(paragraph.apps) && paragraph.apps.length > 0) ||
+      (!!this.noteId && this.heliumApplicationService.apps(this.noteId, paragraph.id).length > 0)
+    );
+  }
+
+  private handleApplicationCacheChange(): void {
+    if (!this.paragraph) {
+      return;
+    }
+    const shouldFallback = this.hasApplications(this.paragraph);
+    if (shouldFallback === this.reactApplicationFallback) {
+      return;
+    }
+    this.reactApplicationFallback = shouldFallback;
+    if (shouldFallback) {
+      this.originalText = this.paragraph.text;
+      this.initializeDefault(this.paragraph.config, this.paragraph.settings);
+    } else if (this.useReact && !this.reactFailed) {
+      this.reactProps = this.buildReactProps(this.paragraph);
+    }
+    this.cdr.markForCheck();
   }
 
   private degradeToAngular(paragraph: ParagraphItem): void {

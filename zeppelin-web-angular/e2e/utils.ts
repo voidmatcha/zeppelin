@@ -65,7 +65,9 @@ export const PAGES = {
     NOTEBOOK_PARAGRAPH_PROGRESS: 'src/app/pages/workspace/notebook/paragraph/progress/progress.component',
     PUBLISHED_PARAGRAPH: 'src/app/pages/workspace/published/paragraph/paragraph.component',
     SHARE_DYNAMIC_FORMS: 'src/app/pages/workspace/share/dynamic-forms/dynamic-forms.component',
-    SHARE_RESULT: 'src/app/pages/workspace/share/result/result.component'
+    SHARE_RESULT: 'src/app/pages/workspace/share/result/result.component',
+    HELIUM_APPLICATIONS: 'src/app/pages/workspace/share/helium-application/helium-applications.component',
+    HELIUM_APPLICATION_OUTPUT: 'src/app/pages/workspace/share/helium-application/helium-application-output.component'
   },
 
   // Share
@@ -88,6 +90,7 @@ export const PAGES = {
     AREA_CHART: 'src/app/visualizations/area-chart/area-chart-visualization.component',
     BAR_CHART: 'src/app/visualizations/bar-chart/bar-chart-visualization.component',
     LINE_CHART: 'src/app/visualizations/line-chart/line-chart-visualization.component',
+    NETWORK: 'src/app/visualizations/network/network-visualization.component',
     PIE_CHART: 'src/app/visualizations/pie-chart/pie-chart-visualization.component',
     SCATTER_CHART: 'src/app/visualizations/scatter-chart/scatter-chart-visualization.component',
     TABLE: 'src/app/visualizations/table/table-visualization.component',

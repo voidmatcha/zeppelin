@@ -19,6 +19,7 @@ import { takeUntil } from 'rxjs/operators';
 import { HeliumService, MessageService } from '@zeppelin/services';
 import { setTheme } from '@zeppelin/visualizations';
 import { NzMessageService } from 'ng-zorro-antd/message';
+import { HeliumApplicationService } from '../../services/helium-application.service';
 
 @Component({
   selector: 'zeppelin-workspace',
@@ -36,7 +37,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     public messageService: MessageService,
     private cdr: ChangeDetectorRef,
     private nzMessageService: NzMessageService,
-    private heliumService: HeliumService
+    private heliumService: HeliumService,
+    private heliumApplicationService: HeliumApplicationService
   ) {}
 
   onActivate(component: unknown) {
@@ -72,10 +74,12 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   ngOnInit() {
     setTheme();
     this.setUpWebsocketReconnectMessage();
-    this.heliumService.initPackages();
+    this.heliumService.initPackages().catch(error => console.error('Failed to initialize Helium packages', error));
+    this.heliumApplicationService.start();
   }
 
   ngOnDestroy(): void {
+    this.heliumApplicationService.stop();
     this.destroy$.next();
     this.destroy$.complete();
   }

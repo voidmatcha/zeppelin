@@ -120,7 +120,7 @@ public class HeliumApplicationFactory implements ApplicationEventListener, NoteE
     private void load(RemoteInterpreterProcess intpProcess, ApplicationState appState)
         throws Exception {
 
-      synchronized (appState) {
+      synchronized (appState.getOperationLock()) {
         if (appState.getStatus() == ApplicationState.Status.LOADED) {
           // already loaded
           return;
@@ -203,7 +203,7 @@ public class HeliumApplicationFactory implements ApplicationEventListener, NoteE
     }
 
     private void unload(final ApplicationState appsToUnload) throws ApplicationException {
-      synchronized (appsToUnload) {
+      synchronized (appsToUnload.getOperationLock()) {
         if (appsToUnload.getStatus() != ApplicationState.Status.LOADED) {
           throw new ApplicationException(
               "Can't unload application status " + appsToUnload.getStatus());
@@ -278,7 +278,7 @@ public class HeliumApplicationFactory implements ApplicationEventListener, NoteE
     }
 
     private void run(final ApplicationState app) throws ApplicationException {
-      synchronized (app) {
+      synchronized (app.getOperationLock()) {
         if (app.getStatus() != ApplicationState.Status.LOADED) {
           throw new ApplicationException(
               "Can't run application status " + app.getStatus());

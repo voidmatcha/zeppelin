@@ -144,3 +144,30 @@ describe('Message.receive', () => {
     expect(listener).toHaveBeenCalledWith(data);
   });
 });
+
+describe('Message.paragraphExecutedBySpell', () => {
+  it('sends interpreter result messages using the server data field', () => {
+    const message = new Message();
+    const send = vi.spyOn(message, 'send').mockImplementation(() => {});
+
+    message.paragraphExecutedBySpell(
+      'paragraph-1',
+      'title',
+      '%echo hello',
+      [{ type: 'TEXT', data: 'hello' }],
+      'FINISHED',
+      '',
+      {},
+      {},
+      '2026-09-24T00:00:00.000Z',
+      '2026-09-24T00:00:01.000Z'
+    );
+
+    expect(send).toHaveBeenCalledWith(
+      OP.PARAGRAPH_EXECUTED_BY_SPELL,
+      expect.objectContaining({
+        results: { code: 'FINISHED', msg: [{ type: 'TEXT', data: 'hello' }] }
+      })
+    );
+  });
+});

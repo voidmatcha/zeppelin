@@ -114,6 +114,17 @@ module.exports = function makeWebpackConfig () {
     chunkFilename: isProd ? '[name].[hash].js' : '[name].bundle.js'
   };
 
+  // Helium framework packages are UI-independent. Keep Classic imports on the
+  // canonical sources instead of the compatibility copies under src/app.
+  config.resolve = {
+    modules: [path.resolve(__dirname, 'node_modules'), 'node_modules'],
+    alias: {
+      'zeppelin-tabledata': path.resolve(__dirname, '../zeppelin-helium/zeppelin-tabledata'),
+      'zeppelin-vis': path.resolve(__dirname, '../zeppelin-helium/zeppelin-vis'),
+      'zeppelin-spell': path.resolve(__dirname, '../zeppelin-helium/zeppelin-spell'),
+    },
+  };
+
   /**
    * Devtool
    * Reference: http://webpack.github.io/docs/configuration.html#devtool

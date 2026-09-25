@@ -12,6 +12,12 @@
 
 import { AuthInfo, ErrorInfo } from './message-common.interface';
 import {
+  HeliumApplicationAppendOutput,
+  HeliumApplicationLoad,
+  HeliumApplicationStatusChange,
+  HeliumApplicationUpdateOutput
+} from './message-helium.interface';
+import {
   CheckpointNote,
   CloneNote,
   CollaborativeModeStatus,
@@ -91,6 +97,10 @@ import { OP } from './message-operator.interface';
 export type MessageDataTypeMap = MessageSendDataTypeMap | MessageReceiveDataTypeMap;
 
 export interface MessageReceiveDataTypeMap {
+  [OP.APP_LOAD]: HeliumApplicationLoad;
+  [OP.APP_APPEND_OUTPUT]: HeliumApplicationAppendOutput;
+  [OP.APP_UPDATE_OUTPUT]: HeliumApplicationUpdateOutput;
+  [OP.APP_STATUS_CHANGE]: HeliumApplicationStatusChange;
   [OP.COMPLETION_LIST]: CompletionReceived;
   [OP.NOTES_INFO]: NotesInfo;
   [OP.NOTE]: Note;
@@ -100,6 +110,8 @@ export interface MessageReceiveDataTypeMap {
   [OP.LIST_UPDATE_NOTE_JOBS]: ListUpdateNoteJobs;
   [OP.JOB_MANAGER_DISABLED]: JobManagerDisabled;
   [OP.INTERPRETER_SETTINGS]: InterpreterSetting;
+  [OP.INTERPRETER_INSTALL_STARTED]: { result: 'Starting'; message: string };
+  [OP.INTERPRETER_INSTALL_RESULT]: { result: 'Succeed' | 'Failed'; message: string };
   [OP.LIST_REVISION_HISTORY]: ListRevision;
   [OP.INTERPRETER_BINDINGS]: InterpreterBindings;
   [OP.COLLABORATIVE_MODE_STATUS]: CollaborativeModeStatus;
@@ -110,6 +122,7 @@ export interface MessageReceiveDataTypeMap {
   [OP.IMPORT_NOTE]: ImportNoteReceived;
   [OP.SAVE_NOTE_FORMS]: SaveNoteFormsSend;
   [OP.PARAGRAPH]: UpdateParagraph;
+  [OP.RUN_PARAGRAPH_USING_SPELL]: UpdateParagraph;
   [OP.PARAGRAPH_APPEND_OUTPUT]: ParagraphAppendOutput;
   [OP.PARAGRAPH_UPDATE_OUTPUT]: ParagraphUpdateOutput;
   [OP.PATCH_PARAGRAPH]: PatchParagraphSend;

@@ -406,6 +406,13 @@ export class ClassicVisualizationService {
     });
   }
 
+  destroyInstancesForParagraph(paragraphId: string, forceCleanBootstrap = false): void {
+    const prefix = `p${paragraphId}_`;
+    Array.from(this.activeInstanceInfos.keys())
+      .filter(elementId => elementId.startsWith(prefix))
+      .forEach(elementId => this.destroyInstance(elementId, forceCleanBootstrap));
+  }
+
   private getClassicVizConfig(graph: GraphConfig) {
     const mode = graph.mode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

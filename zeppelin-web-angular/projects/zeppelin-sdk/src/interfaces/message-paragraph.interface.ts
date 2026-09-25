@@ -59,6 +59,7 @@ export interface ParagraphConfigResults {
 
 export interface ParagraphConfigResult {
   graph: GraphConfig;
+  helium?: { activeApp?: string };
 }
 
 export interface ParagraphConfig {
@@ -206,7 +207,7 @@ export interface AngularObjectUpdated {
   noteId: string;
   paragraphId: string;
   name: string;
-  value: string;
+  value: unknown;
   interpreterGroupId: string;
 }
 
@@ -297,7 +298,7 @@ export interface ParagraphExecutedBySpell {
     code: string;
     msg: Array<{
       type: string;
-      serializedData: string;
+      data: string;
     }>;
   };
   status: string;

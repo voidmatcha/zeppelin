@@ -14,7 +14,7 @@ import { GraphConfig, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import * as angular from 'angular';
 import * as JQuery from 'jquery';
 
-export type HeliumType = 'VISUALIZATION';
+export type HeliumType = 'VISUALIZATION' | 'SPELL';
 
 enum HeliumPackageType {
   Visualization
@@ -47,6 +47,51 @@ export interface HeliumBundle {
 export interface HeliumVisualizationBundle extends HeliumBundle {
   type: 'VISUALIZATION';
   class: HeliumClassicVisualizationConstructor;
+}
+
+export interface HeliumSpellDataWithType {
+  data: unknown;
+  type: string;
+  magic?: string;
+  text?: string;
+}
+
+export type HeliumSpellElementCallback = (targetElementId: string) => void;
+
+export interface HeliumSpellResultItem {
+  data: string | HeliumSpellElementCallback;
+  type: string;
+  magic?: string;
+  text?: string;
+}
+
+export interface HeliumSpellResult {
+  getAllParsedDataWithTypes(
+    availableDisplays: Record<string, HeliumSpell>,
+    magic?: string,
+    textWithoutMagic?: string
+  ): Promise<HeliumSpellDataWithType[]>;
+}
+
+export interface HeliumSpell {
+  getMagic(): string;
+  interpret(paragraphText: string, config: Record<string, unknown>): HeliumSpellResult;
+}
+
+export interface HeliumSpellBundle extends HeliumBundle {
+  type: 'SPELL';
+  class: new () => HeliumSpell;
+}
+
+export interface HeliumSpellConfigField {
+  type?: string;
+  description?: string;
+  defaultValue?: unknown;
+}
+
+export interface HeliumSpellConfigResponse {
+  confSpec?: Record<string, HeliumSpellConfigField>;
+  confPersisted?: Record<string, unknown>;
 }
 
 /**

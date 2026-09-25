@@ -122,18 +122,17 @@ public class HeliumBundleFactory {
 
     this.gson = new Gson();
 
-    File zeppelinWebPath = new File(zConf.getAbsoluteDir("zeppelin-web"));
-    if (!zeppelinWebPath.isDirectory()) {
-      this.tabledataModulePath =
-          new File(zConf.getAbsoluteDir("lib/node_modules/zeppelin-tabledata"));
-      this.visualizationModulePath = new File(zConf.getAbsoluteDir("lib/node_modules/zeppelin-vis"));
-      this.spellModulePath = new File(zConf.getAbsoluteDir("lib/node_modules/zeppelin-spell"));
-    } else {
-      this.tabledataModulePath = new File(zConf.getAbsoluteDir("zeppelin-web/src/app/tabledata"));
-      this.visualizationModulePath =
-          new File(zConf.getAbsoluteDir("zeppelin-web/src/app/visualization"));
-      this.spellModulePath = new File(zConf.getAbsoluteDir("zeppelin-web/src/app/spell"));
+    this.tabledataModulePath = resolveFrameworkModulePath(zConf, "zeppelin-tabledata");
+    this.visualizationModulePath = resolveFrameworkModulePath(zConf, "zeppelin-vis");
+    this.spellModulePath = resolveFrameworkModulePath(zConf, "zeppelin-spell");
+  }
+
+  static File resolveFrameworkModulePath(ZeppelinConfiguration zConf, String moduleName) {
+    File sourceModule = new File(zConf.getAbsoluteDir("zeppelin-helium/" + moduleName));
+    if (sourceModule.isDirectory()) {
+      return sourceModule;
     }
+    return new File(zConf.getAbsoluteDir("lib/node_modules/" + moduleName));
   }
 
   void installNodeAndNpm() throws TaskRunnerException {

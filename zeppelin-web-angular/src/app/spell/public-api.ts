@@ -10,4 +10,5 @@
  * limitations under the License.
  */
 
+export * from './spell-execution';
 export * from './spell-result';

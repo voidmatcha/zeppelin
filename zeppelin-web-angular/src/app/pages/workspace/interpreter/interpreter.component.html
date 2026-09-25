@@ -26,6 +26,10 @@
   </nz-input-group>
   <ng-template #prefixSearch><i nz-icon nzType="search" nzTheme="outline"></i></ng-template>
   <ng-template #headerExtra>
+    <button nz-button [nzType]="showInstall ? 'primary' : 'default'" (click)="showInstall = !showInstall">
+      <i nz-icon nzType="download" nzTheme="outline"></i>
+      Install
+    </button>
     <button
       class="repository-trigger"
       nz-button
@@ -57,6 +61,38 @@
       </nz-tag>
     </div>
   </div>
+  @if (showInstall) {
+    <div class="collapse-content install-interpreter">
+      <nz-divider nzType="horizontal"></nz-divider>
+      <h2>Install an interpreter</h2>
+      <p>Download a Maven artifact to this Zeppelin server. Server administrator access is required.</p>
+      <form (ngSubmit)="requestInterpreterInstall()">
+        <label for="install-interpreter-name">Interpreter name</label>
+        <input
+          id="install-interpreter-name"
+          name="installInterpreterName"
+          nz-input
+          [(ngModel)]="installName"
+          placeholder="e.g. zeppelin-example"
+        />
+        <label for="install-interpreter-artifact">Maven artifact</label>
+        <input
+          id="install-interpreter-artifact"
+          name="installInterpreterArtifact"
+          nz-input
+          [(ngModel)]="installArtifact"
+          placeholder="groupId:artifactId:version"
+        />
+        <button nz-button nzType="primary" type="submit" [disabled]="!!installingName">Install</button>
+      </form>
+      @if (installFormError) {
+        <nz-alert nzType="error" [nzMessage]="installFormError" nzShowIcon></nz-alert>
+      }
+      @if (installStatus) {
+        <nz-alert [nzType]="installStatusType" [nzMessage]="installStatus" nzShowIcon></nz-alert>
+      }
+    </div>
+  }
 </zeppelin-page-header>
 <div class="content">
   @if (!showCreateSetting) {

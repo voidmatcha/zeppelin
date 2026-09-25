@@ -25,14 +25,21 @@ import {
   ParagraphItem,
   ParagraphIResultsMsgItem
 } from '@zeppelin/sdk';
+import { HeliumSpellResultItem } from '@zeppelin/interfaces';
 
 import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 import { isEmpty, isEqual } from 'lodash';
 
+import { createPropagableSpellResults } from '../../spell/spell-execution';
+import { SpellResult } from '../../spell/spell-result';
 import { MessageListener, MessageListenersManager } from '../message-listener/message-listener';
 import { AngularContextManager } from './angular-context-manager';
 import { NoteStatus } from './note-status';
 import { ParagraphOutputState } from './paragraph-output-state';
+
+interface SpellExecutor {
+  executeSpell(magic: string, textWithoutMagic: string): Promise<HeliumSpellResultItem[]>;
+}
 
 export const ParagraphStatus = {
   READY: 'READY',
@@ -63,12 +70,14 @@ export abstract class ParagraphBase extends MessageListenersManager {
     forms: {}
   };
   private readonly outputState = new ParagraphOutputState();
+  private remoteSpellExecutionKey?: string;
 
   constructor(
     public messageService: Message,
     protected noteStatusService: NoteStatus,
     protected angularContextManager: AngularContextManager,
-    protected cdr: ChangeDetectorRef
+    protected cdr: ChangeDetectorRef,
+    protected spellService: SpellExecutor
   ) {
     super(messageService);
   }
@@ -186,6 +195,46 @@ export abstract class ParagraphBase extends MessageListenersManager {
       });
       this.cdr.markForCheck();
     }
+  }
+
+  @MessageListener(OP.RUN_PARAGRAPH_USING_SPELL)
+  runParagraphUsingSpellFromRemote(data: MessageReceiveDataTypeMap[OP.RUN_PARAGRAPH_USING_SPELL]) {
+    const oldPara = this.paragraph;
+    const newPara = data.paragraph;
+    if (!oldPara || !this.currentNoteId || this.revisionView || newPara.id !== oldPara.id) {
+      return;
+    }
+    if (!this.isUpdateRequired(oldPara, newPara)) {
+      return;
+    }
+
+    const executionKey = JSON.stringify([
+      newPara.id,
+      newPara.dateStarted ?? '',
+      newPara.dateFinished ?? '',
+      newPara.dateUpdated ?? '',
+      newPara.text
+    ]);
+    if (executionKey === this.remoteSpellExecutionKey) {
+      return;
+    }
+    this.remoteSpellExecutionKey = executionKey;
+
+    const magic = SpellResult.extractMagic(newPara.text);
+    this.updateParagraph(oldPara, newPara, () => undefined);
+    if (!magic) {
+      const errorMessage = 'Received a collaborative Helium Spell execution without a valid magic prefix.';
+      oldPara.status = ParagraphStatus.ERROR;
+      oldPara.errorMessage = errorMessage;
+      oldPara.results = { code: ParagraphStatus.ERROR, msg: [] };
+      this.results = [];
+      this.outputState.reset([], true);
+      this.isParagraphRunning = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    void this.runParagraphUsingSpell(newPara.text, magic, true);
   }
 
   abstract updateParagraphResult(
@@ -413,8 +462,77 @@ export abstract class ParagraphBase extends MessageListenersManager {
     }
   }
 
-  runParagraphUsingSpell(_paragraphText: string, _magic: string, _propagated: boolean) {
-    // TODO(hsuanxyz)
+  async runParagraphUsingSpell(paragraphText: string, magic: string, propagated: boolean) {
+    if (!this.paragraph) {
+      throw new Error('paragraph is not defined');
+    }
+
+    const paragraph = this.paragraph;
+    const textWithoutMagic = paragraphText.slice(paragraphText.indexOf(magic) + magic.length).replace(/^\s+/, '');
+    paragraph.status = ParagraphStatus.RUNNING;
+    paragraph.errorMessage = '';
+    paragraph.results = { code: ParagraphStatus.RUNNING, msg: [] };
+    this.results = [];
+    this.configs = {};
+    this.isParagraphRunning = true;
+    if (!propagated) {
+      paragraph.dateStarted = new Date().toISOString();
+    }
+    this.cdr.markForCheck();
+
+    try {
+      const results = await this.spellService.executeSpell(magic, textWithoutMagic);
+      if (this.paragraph !== paragraph) {
+        return;
+      }
+      const propagableResults = createPropagableSpellResults(results);
+      paragraph.status = ParagraphStatus.FINISHED;
+      paragraph.results = { code: ParagraphStatus.FINISHED, msg: propagableResults };
+      paragraph.config.tableHide = false;
+      this.results = results as ParagraphIResultsMsgItem[];
+      this.outputState.reset(propagableResults, true);
+      if (!propagated) {
+        paragraph.dateFinished = new Date().toISOString();
+        this.propagateSpellResult(paragraphText, propagableResults, '');
+      }
+    } catch (error) {
+      if (this.paragraph !== paragraph) {
+        return;
+      }
+      const errorMessage = error instanceof Error ? error.stack || error.message : String(error);
+      paragraph.status = ParagraphStatus.ERROR;
+      paragraph.errorMessage = errorMessage;
+      paragraph.results = { code: ParagraphStatus.ERROR, msg: [] };
+      this.results = [];
+      this.outputState.reset([], true);
+      if (!propagated) {
+        paragraph.dateFinished = new Date().toISOString();
+        this.propagateSpellResult(paragraphText, [], errorMessage);
+      }
+    } finally {
+      if (this.paragraph === paragraph) {
+        this.isParagraphRunning = false;
+        this.cdr.markForCheck();
+      }
+    }
+  }
+
+  private propagateSpellResult(paragraphText: string, results: ParagraphIResultsMsgItem[], errorMessage: string): void {
+    if (!this.paragraph) {
+      return;
+    }
+    this.messageService.paragraphExecutedBySpell(
+      this.paragraph.id,
+      this.paragraph.title || '',
+      paragraphText,
+      results,
+      this.paragraph.status,
+      errorMessage,
+      this.paragraph.config,
+      this.paragraph.settings.params,
+      this.paragraph.dateStarted || new Date().toISOString(),
+      this.paragraph.dateFinished || new Date().toISOString()
+    );
   }
 
   runParagraphUsingBackendInterpreter(paragraphText: string) {

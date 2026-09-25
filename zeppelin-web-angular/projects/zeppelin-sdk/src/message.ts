@@ -329,7 +329,7 @@ export class Message {
     noteId: string,
     paragraphId: string,
     name: string,
-    value: string,
+    value: unknown,
     interpreterGroupId: string
   ): void {
     this.send<OP.ANGULAR_OBJECT_UPDATED>(OP.ANGULAR_OBJECT_UPDATED, {
@@ -382,8 +382,7 @@ export class Message {
       results: {
         code: paragraphStatus,
         msg: paragraphResultsMsg.map(dataWithType => {
-          const serializedData = dataWithType.data;
-          return { type: dataWithType.type, serializedData };
+          return { type: dataWithType.type, data: dataWithType.data };
         })
       },
       status: paragraphStatus,

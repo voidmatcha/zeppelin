@@ -1,0 +1,75 @@
+<!--
+~ Licensed to the Apache Software Foundation (ASF) under one or more
+~ contributor license agreements.  See the NOTICE file distributed with
+~ this work for additional information regarding copyright ownership.
+~ The ASF licenses this file to You under the Apache License, Version 2.0
+~ (the "License"); you may not use this file except in compliance with
+~ the License.  You may obtain a copy of the License at
+~
+~    http://www.apache.org/licenses/LICENSE-2.0
+~
+~ Unless required by applicable law or agreed to in writing, software
+~ distributed under the License is distributed on an "AS IS" BASIS,
+~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+~ See the License for the specific language governing permissions and
+~ limitations under the License.
+-->
+
+@if (error) {
+  <div class="network-error" role="alert">{{ error }}</div>
+} @else if (graph) {
+  @if (graph.nodes.length === 0) {
+    <div class="network-empty">The network result contains no nodes.</div>
+  } @else {
+    <svg class="network-canvas" viewBox="0 0 900 420" role="img" aria-label="Network visualization">
+      <defs>
+        <marker
+          [attr.id]="markerId"
+          viewBox="0 -5 10 10"
+          refX="21"
+          refY="0"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto"
+        >
+          <path d="M0,-5L10,0L0,5"></path>
+        </marker>
+      </defs>
+      @for (edge of graph.edges; track $index) {
+        <g class="network-edge" tabindex="0" (click)="selectEdge(edge)" (keydown.enter)="selectEdge(edge)">
+          <path [attr.d]="edge.path" [attr.marker-end]="graph.directed ? 'url(#' + markerId + ')' : null"></path>
+          @if (edge.label) {
+            <text
+              [attr.x]="(edge.sourceNode.x + edge.targetNode.x) / 2"
+              [attr.y]="(edge.sourceNode.y + edge.targetNode.y) / 2 - 6"
+            >
+              {{ edge.label }}
+            </text>
+          }
+        </g>
+      }
+      @for (node of graph.nodes; track node.id) {
+        <g
+          class="network-node"
+          tabindex="0"
+          [attr.transform]="'translate(' + node.x + ',' + node.y + ')'"
+          (click)="selectNode(node)"
+          (keydown.enter)="selectNode(node)"
+        >
+          <circle r="10" [attr.fill]="node.color"></circle>
+          <text x="15" y="4">{{ node.displayLabel }}</text>
+        </g>
+      }
+    </svg>
+    @if (selectedDetails.length) {
+      <dl class="network-details" aria-label="Selected network entity details">
+        @for (detail of selectedDetails; track detail[0]) {
+          <div>
+            <dt>{{ detail[0] }}</dt>
+            <dd>{{ detail[1] }}</dd>
+          </div>
+        }
+      </dl>
+    }
+  }
+}

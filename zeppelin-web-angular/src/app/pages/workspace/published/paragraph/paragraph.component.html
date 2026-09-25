@@ -9,12 +9,12 @@
 ~ See the License for the specific language governing permissions and
 ~ limitations under the License.
 -->
-@if (useReact && !reactFailed) {
+@if (useReact && !reactFailed && !reactApplicationFallback) {
   @if (paragraph) {
     <div [zeppelin-react-mount]="'./PublishedParagraph'" [reactProps]="reactProps"></div>
   }
 }
-@if (!useReact || reactFailed) {
+@if (!useReact || reactFailed || reactApplicationFallback) {
   <div>
     @if (paragraph) {
       <zeppelin-notebook-paragraph-dynamic-forms
@@ -28,6 +28,7 @@
     @if (paragraph) {
       @for (result of results; track trackByIndexFn(i); let i = $index) {
         <zeppelin-notebook-paragraph-result
+          [hidden]="!!applications.activeApp && i === applications.resultIndex"
           [id]="paragraph.id"
           [published]="true"
           [currentCol]="paragraph.config.colWidth"
@@ -36,6 +37,14 @@
           data-testid="paragraph-result"
         ></zeppelin-notebook-paragraph-result>
       }
+      <zeppelin-helium-applications
+        #applications
+        [noteId]="noteId || ''"
+        [paragraph]="paragraph"
+        [status]="paragraph.status"
+        [config]="paragraph.config"
+        [readOnly]="true"
+      ></zeppelin-helium-applications>
     }
   </div>
 }

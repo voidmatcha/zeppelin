@@ -37,6 +37,37 @@
       margin-bottom: 10px;
     }
   }
+
+  .install-interpreter {
+    form {
+      display: grid;
+      grid-template-columns: max-content minmax(200px, 1fr);
+      gap: 8px 12px;
+      align-items: center;
+      max-width: 680px;
+      margin-bottom: 12px;
+    }
+
+    button[type='submit'] {
+      grid-column: 2;
+      justify-self: start;
+    }
+
+    nz-alert {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 600px) {
+      form {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      button[type='submit'] {
+        grid-column: 1;
+      }
+    }
+  }
 });
 
 :host-context(.light) {

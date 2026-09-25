@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-import {SpellResult} from '../../spell';
+import {SpellResult} from 'zeppelin-spell';
 import {isParagraphRunning, ParagraphStatus} from './paragraph.status';
 
 import moment from 'moment';

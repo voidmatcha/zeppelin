@@ -16,12 +16,15 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  ElementRef,
   EventEmitter,
   Injector,
   Input,
+  OnChanges,
   OnDestroy,
   OnInit,
   Output,
+  SimpleChanges,
   ViewChild,
   ViewContainerRef
 } from '@angular/core';
@@ -49,6 +52,7 @@ import {
 import {
   HeliumClassicVisualization,
   HeliumClassicVisualizationConstructor,
+  HeliumSpellResultItem,
   HeliumVisualizationBundle
 } from '@zeppelin/interfaces';
 import {
@@ -79,6 +83,7 @@ interface ClassicVisualizationItem extends VisualizationItem {
   icon: SafeHtml;
   Class: HeliumClassicVisualizationConstructor;
   instance: HeliumClassicVisualization | undefined;
+  creationPending: boolean;
 }
 
 interface ModernVisualizationItem extends VisualizationItem {
@@ -89,6 +94,10 @@ interface ModernVisualizationItem extends VisualizationItem {
 }
 
 type VisualizationItemType = ClassicVisualizationItem | ModernVisualizationItem;
+type RenderableResult = ParagraphIResultsMsgItem | HeliumSpellResultItem;
+
+const MAX_CUSTOM_DISPLAY_DEPTH = 8;
+let spellElementSequence = 0;
 
 @Component({
   selector: 'zeppelin-notebook-paragraph-result',
@@ -97,16 +106,18 @@ type VisualizationItemType = ClassicVisualizationItem | ModernVisualizationItem;
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false
 })
-export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, OnDestroy {
-  @Input() result!: ParagraphIResultsMsgItem;
+export class NotebookParagraphResultComponent implements OnInit, OnChanges, AfterViewInit, OnDestroy {
+  @Input() result!: RenderableResult;
   @Input() config?: ParagraphConfigResult;
   @Input() id!: string;
   @Input() published = false;
   @Input() currentCol?: number = 12;
   @Input() isPending!: boolean;
+  @Input() customDisplayPath: string[] = [];
   @Output() readonly configChange = new EventEmitter<ParagraphConfigResult>();
   @Output() readonly sizeChange = new EventEmitter<NzResizeEvent>();
   @ViewChild(CdkPortalOutlet, { static: false }) portalOutlet!: CdkPortalOutlet;
+  @ViewChild('spellElement', { static: false }) spellElement?: ElementRef<HTMLElement>;
 
   private destroy$ = new Subject<void>();
   datasetType = DatasetType;
@@ -116,6 +127,13 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   imgData: string | SafeUrl = '';
   tableData = new TableData();
   frontEndError?: string;
+  customDisplayResults: HeliumSpellResultItem[] = [];
+  spellElementId = '';
+  private renderGeneration = 0;
+  private destroyed = false;
+  private viewInitialized = false;
+  private lastRenderedResult?: RenderableResult;
+  private lastRenderedConfig?: ParagraphConfigResult;
   visualizations: VisualizationItemType[] = [
     {
       id: 'table',
@@ -185,6 +203,7 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   ) {}
 
   ngOnInit() {
+    this.spellElementId = `p${this.id}_spell_${spellElementSequence++}_elem`;
     this.ngZService
       .contextChanged()
       .pipe(takeUntil(this.destroy$))
@@ -226,7 +245,8 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
             Class: bundle.class,
             changeSubscription: null,
             isClassic,
-            instance: undefined
+            instance: undefined,
+            creationPending: false
           });
         }
       }
@@ -251,8 +271,11 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
         const currentVisualization = this.visualizations.find(v => v.id === currentMode);
         if (currentVisualization && currentVisualization.isClassic) {
           // Trigger re-rendering for the specific classic visualization that just loaded
+          const scheduledGeneration = this.renderGeneration;
           setTimeout(() => {
-            this.renderDefaultDisplay();
+            if (!this.destroyed && this.viewInitialized && scheduledGeneration === this.renderGeneration) {
+              this.renderDefaultDisplay();
+            }
           }, 0);
         }
       }
@@ -262,7 +285,11 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   exportFile(type: 'csv' | 'tsv'): void {
     if (this.tableData && this.tableData.rows) {
       const wb = utils.book_new();
-      const ws = utils.json_to_sheet(this.tableData.rows);
+      const { columns, displayColumns, rows } = this.tableData;
+      const ws = utils.aoa_to_sheet([
+        columns.map((column, index) => displayColumns[index] ?? column),
+        ...rows.map(row => columns.map(column => row[column]))
+      ]);
       utils.book_append_sheet(wb, ws, 'Sheet1');
       writeFile(wb, `export.${type}`, {
         bookType: 'csv',
@@ -276,13 +303,13 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
       return;
     }
     const delimiter = type === 'tsv' ? '\t' : ',';
-    const { columns, rows } = this.tableData;
+    const { columns, displayColumns, rows } = this.tableData;
     const escape = (value: unknown): string => {
       const str = String(value ?? '');
       return str.includes(delimiter) || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
     };
     const lines = [
-      columns.map(escape).join(delimiter),
+      columns.map((column, index) => escape(displayColumns[index] ?? column)).join(delimiter),
       ...rows.map(row => columns.map(col => escape(row[col])).join(delimiter))
     ];
     const text = lines.join('\n');
@@ -331,7 +358,17 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   }
 
   renderDefaultDisplay() {
+    this.lastRenderedResult = this.result;
+    this.lastRenderedConfig = this.config;
+    const generation = ++this.renderGeneration;
     this.frontEndError = '';
+    this.customDisplayResults = [];
+    if (this.result.type !== DatasetType.TABLE) {
+      this.destroyVisualizations();
+    }
+    if (this.result.type !== DatasetType.ANGULAR) {
+      this.angularComponent = null;
+    }
     switch (this.result.type) {
       case DatasetType.TABLE:
         this.renderGraph();
@@ -346,15 +383,84 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
         this.renderImg();
         break;
       case DatasetType.ANGULAR:
-        this.renderAngular();
+        this.renderAngular(generation);
+        break;
+      case DatasetType.NETWORK:
+        break;
+      case 'ELEMENT':
+        this.renderSpellElement(generation);
+        break;
+      default:
+        this.renderCustomDisplay(generation);
         break;
     }
     this.cdr.detectChanges();
   }
 
+  private renderSpellElement(generation: number): void {
+    if (typeof this.result.data !== 'function') {
+      this.frontEndError = 'Helium Spell ELEMENT result did not provide a DOM callback.';
+      return;
+    }
+    const callback = this.result.data;
+    queueMicrotask(() => {
+      if (this.destroyed || generation !== this.renderGeneration || !this.spellElement?.nativeElement.isConnected) {
+        return;
+      }
+      try {
+        this.spellElement.nativeElement.replaceChildren();
+        callback(this.spellElementId);
+      } catch (error) {
+        this.frontEndError = error instanceof Error ? error.stack || error.message : String(error);
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  private renderCustomDisplay(generation: number): void {
+    const type = this.result.type;
+    if (!type.startsWith('%')) {
+      this.frontEndError = `Unknown display type: ${type}`;
+      return;
+    }
+    if (this.customDisplayPath.includes(type)) {
+      this.frontEndError = `Helium custom display cycle detected: ${[...this.customDisplayPath, type].join(' -> ')}`;
+      return;
+    }
+    if (this.customDisplayPath.length >= MAX_CUSTOM_DISPLAY_DEPTH) {
+      this.frontEndError = `Helium custom display exceeded the maximum depth of ${MAX_CUSTOM_DISPLAY_DEPTH}.`;
+      return;
+    }
+
+    this.heliumService
+      .executeSpellAsDisplaySystem(type, String(this.result.data ?? ''))
+      .then(results => {
+        if (this.destroyed || generation !== this.renderGeneration) {
+          return;
+        }
+        this.customDisplayResults = results;
+        this.cdr.markForCheck();
+      })
+      .catch(error => {
+        if (this.destroyed || generation !== this.renderGeneration) {
+          return;
+        }
+        this.frontEndError = error instanceof Error ? error.stack || error.message : String(error);
+        this.cdr.markForCheck();
+      });
+  }
+
+  customDisplayChildPath(): string[] {
+    return [...this.customDisplayPath, this.result.type];
+  }
+
+  resultDataAsString(): string {
+    return typeof this.result.data === 'string' ? this.result.data : '';
+  }
+
   renderHTML(): void {
     const div = document.createElement('div');
-    div.innerHTML = this.result.data;
+    div.innerHTML = String(this.result.data);
     const codeEle = div.querySelector('pre code');
     if (codeEle) {
       hljs.highlightBlock(codeEle);
@@ -362,14 +468,20 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
     this.innerHTML = this.sanitizer.bypassSecurityTrustHtml(div.innerHTML);
   }
 
-  renderAngular(): void {
+  renderAngular(generation = ++this.renderGeneration): void {
     this.runtimeCompilerService
-      .createAndCompileTemplate(this.id, this.result.data)
+      .createAndCompileTemplate(this.id, String(this.result.data))
       .then(data => {
+        if (this.destroyed || generation !== this.renderGeneration) {
+          return;
+        }
         this.angularComponent = data;
         this.cdr.markForCheck();
       })
       .catch(error => {
+        if (this.destroyed || generation !== this.renderGeneration) {
+          return;
+        }
         this.angularComponent = null;
         this.frontEndError = error.message;
         this.cdr.markForCheck();
@@ -402,12 +514,12 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
 
   renderText(): void {
     const ansiUp = new AnsiUp();
-    const processedData = this.checkAndReplaceCarriageReturn(this.result.data);
+    const processedData = this.checkAndReplaceCarriageReturn(String(this.result.data));
     this.plainText = this.sanitizer.bypassSecurityTrustHtml(ansiUp.ansi_to_html(processedData));
   }
 
   renderImg(): void {
-    this.imgData = this.sanitizer.bypassSecurityTrustUrl(`data:image/png;base64,${this.result.data}`);
+    this.imgData = this.sanitizer.bypassSecurityTrustUrl(`data:image/png;base64,${String(this.result.data)}`);
   }
 
   setGraphConfig() {
@@ -428,6 +540,9 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   }
 
   getCurrentVisualization() {
+    if (this.result.type !== DatasetType.TABLE) {
+      return null;
+    }
     return this.visualizations.find(v => v.id === this.config?.graph.mode) ?? null;
   }
 
@@ -442,10 +557,15 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
     this.destroyVisualizations(config.graph.mode);
 
     // Load tableData first - this is needed for both classic and modern visualizations
-    this.tableData.loadParagraphResult(this.result);
+    this.tableData.loadParagraphResult(this.result as ParagraphIResultsMsgItem);
 
     if (!visualizationItem.instance) {
       if (visualizationItem.isClassic) {
+        if (visualizationItem.creationPending) {
+          return;
+        }
+        visualizationItem.creationPending = true;
+        const creationGeneration = this.renderGeneration;
         // Classic visualization - delegate to ClassicVisualizationService
         const targetElementId = `p${this.id}_${config.graph.mode}`;
         const emitter = (c: GraphConfig) => {
@@ -459,10 +579,27 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
         this.classicVisualizationService
           .createClassicVisualization(visualizationItem.Class, targetElementId, config.graph, this.tableData, emitter)
           .then(classicInstance => {
+            visualizationItem.creationPending = false;
+            if (
+              this.destroyed ||
+              this.result.type !== DatasetType.TABLE ||
+              this.config?.graph.mode !== visualizationItem.id
+            ) {
+              this.classicVisualizationService.destroyInstance(targetElementId);
+              return;
+            }
             visualizationItem.instance = classicInstance;
+            if (creationGeneration !== this.renderGeneration) {
+              this.classicVisualizationService.updateClassicVisualization(
+                targetElementId,
+                this.config.graph,
+                this.tableData
+              );
+            }
             this.cdr.markForCheck();
           })
           .catch(error => {
+            visualizationItem.creationPending = false;
             console.error('Failed to create classic visualization:', error);
           });
         return; // Exit early for classic visualizations
@@ -585,13 +722,27 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
     this.sizeChange.emit({ width, height, col });
   }
 
+  ngOnChanges(changes: SimpleChanges): void {
+    if (
+      this.viewInitialized &&
+      this.result &&
+      (changes['result'] || changes['config']) &&
+      (this.result !== this.lastRenderedResult || this.config !== this.lastRenderedConfig)
+    ) {
+      this.renderDefaultDisplay();
+    }
+  }
+
   ngAfterViewInit(): void {
+    this.viewInitialized = true;
     this.renderDefaultDisplay();
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
+    this.renderGeneration++;
     this.destroyVisualizations();
-    this.classicVisualizationService.destroyAllInstances(true);
+    this.classicVisualizationService.destroyInstancesForParagraph(this.id, true);
     this.destroy$.next();
     this.destroy$.complete();
   }

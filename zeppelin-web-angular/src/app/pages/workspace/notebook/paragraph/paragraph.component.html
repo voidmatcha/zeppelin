@@ -103,6 +103,7 @@
         ></zeppelin-notebook-paragraph-dynamic-forms>
         @for (result of results; track trackByIndexFn(i); let i = $index) {
           <zeppelin-notebook-paragraph-result
+            [hidden]="!!applications.activeApp && i === applications.resultIndex"
             [id]="paragraph.id"
             [currentCol]="paragraph.config.colWidth"
             [config]="configs[i]"
@@ -114,6 +115,16 @@
           ></zeppelin-notebook-paragraph-result>
         }
       }
+      <zeppelin-helium-applications
+        #applications
+        [hidden]="paragraph.config.tableHide"
+        [noteId]="note.id"
+        [paragraph]="paragraph"
+        [status]="paragraph.status"
+        [config]="paragraph.config"
+        [readOnly]="viewOnly || revisionView"
+        (configChange)="onConfigChange($event, applications.resultIndex)"
+      ></zeppelin-helium-applications>
       @if (shouldUseReactFooter) {
         <div
           data-testid="react-paragraph-footer"

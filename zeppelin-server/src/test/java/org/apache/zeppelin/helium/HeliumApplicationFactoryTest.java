@@ -17,17 +17,24 @@
 package org.apache.zeppelin.helium;
 
 import static org.apache.zeppelin.helium.HeliumPackage.newHeliumPackage;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 
 import org.apache.zeppelin.conf.ZeppelinConfiguration;
 import org.apache.zeppelin.interpreter.AbstractInterpreterTest;
 import org.apache.zeppelin.interpreter.InterpreterException;
 import org.apache.zeppelin.interpreter.InterpreterNotFoundException;
+import org.apache.zeppelin.interpreter.InterpreterResult;
 import org.apache.zeppelin.interpreter.InterpreterSetting;
 import org.apache.zeppelin.notebook.ApplicationState;
 import org.apache.zeppelin.notebook.AuthorizationService;
@@ -55,11 +62,6 @@ class HeliumApplicationFactoryTest extends AbstractInterpreterTest {
   public void setUp() throws Exception {
     super.setUp();
 
-    // set AppEventListener properly
-    for (InterpreterSetting interpreterSetting : interpreterSettingManager.get()) {
-      interpreterSetting.setAppEventListener(heliumAppFactory);
-    }
-
     AuthorizationService authorizationService = mock(AuthorizationService.class);
     notebookRepo = mock(NotebookRepo.class);
     notebook =
@@ -74,6 +76,32 @@ class HeliumApplicationFactoryTest extends AbstractInterpreterTest {
 
     heliumAppFactory = new HeliumApplicationFactory(notebook, null);
 
+    // AbstractInterpreterTest installs a mock listener when it constructs the event server.
+    // Forward remote application events to the factory under test.
+    ApplicationEventListener remoteListener = interpreterSettingManager.getAppEventListener();
+    doAnswer(invocation -> {
+      heliumAppFactory.onOutputAppend(invocation.getArgument(0), invocation.getArgument(1),
+          invocation.getArgument(2), invocation.getArgument(3), invocation.getArgument(4));
+      return null;
+    }).when(remoteListener).onOutputAppend(anyString(), anyString(), anyInt(), anyString(),
+        anyString());
+    doAnswer(invocation -> {
+      heliumAppFactory.onOutputUpdated(invocation.getArgument(0), invocation.getArgument(1),
+          invocation.getArgument(2), invocation.getArgument(3), invocation.getArgument(4),
+          invocation.getArgument(5));
+      return null;
+    }).when(remoteListener).onOutputUpdated(anyString(), anyString(), anyInt(), anyString(),
+        any(InterpreterResult.Type.class), anyString());
+    doAnswer(invocation -> {
+      heliumAppFactory.onStatusChange(invocation.getArgument(0), invocation.getArgument(1),
+          invocation.getArgument(2), invocation.getArgument(3));
+      return null;
+    }).when(remoteListener).onStatusChange(anyString(), anyString(), anyString(), anyString());
+
+    for (InterpreterSetting interpreterSetting : interpreterSettingManager.get()) {
+      interpreterSetting.setAppEventListener(heliumAppFactory);
+    }
+
     notebook.addNotebookEventListener(heliumAppFactory);
 
     anonymous = new AuthenticationInfo("anonymous");
@@ -87,7 +115,6 @@ class HeliumApplicationFactoryTest extends AbstractInterpreterTest {
 
 
   @Test
-  @Disabled
   void testLoadRunUnloadApplication()
       throws IOException, ApplicationException, InterruptedException {
     // given
@@ -119,20 +146,22 @@ class HeliumApplicationFactoryTest extends AbstractInterpreterTest {
     String appId = heliumAppFactory.loadAndRun(pkg1, p1);
     assertEquals(1, p1.getAllApplicationStates().size());
     ApplicationState app = p1.getApplicationState(appId);
-    Thread.sleep(500); // wait for enough time
-
     // then
+    await().atMost(Duration.ofSeconds(15))
+        .until(app::getOutput, output -> "Hello world 1".equals(output));
     assertEquals("Hello world 1", app.getOutput());
 
     // when
     heliumAppFactory.run(p1, appId);
-    Thread.sleep(500); // wait for enough time
-
     // then
+    await().atMost(Duration.ofSeconds(15))
+        .until(app::getOutput, output -> "Hello world 2".equals(output));
     assertEquals("Hello world 2", app.getOutput());
 
     // clean
     heliumAppFactory.unload(p1, appId);
+    await().atMost(Duration.ofSeconds(15))
+        .until(() -> app.getStatus() == ApplicationState.Status.UNLOADED);
     notebook.removeNote(note1.getId(), anonymous);
   }
 

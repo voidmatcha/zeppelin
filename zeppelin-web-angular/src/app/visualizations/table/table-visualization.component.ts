@@ -66,12 +66,11 @@ export class TableVisualizationComponent implements OnInit {
 
   exportFile(type: 'csv' | 'xlsx', all = true) {
     const wb = utils.book_new();
-    let ws: WorkSheet;
-    if (all) {
-      ws = utils.json_to_sheet(this.rows);
-    } else {
-      ws = utils.json_to_sheet([...this.nzTable.data]);
-    }
+    const sourceRows = all ? this.rows : [...this.nzTable.data];
+    const ws: WorkSheet = utils.aoa_to_sheet([
+      this.columns.map((column, index) => this.tableData?.displayColumns[index] ?? column),
+      ...sourceRows.map(row => this.columns.map(column => row[column]))
+    ]);
     utils.book_append_sheet(wb, ws, 'Sheet1');
     writeFile(wb, `export.${type}`);
   }
@@ -84,7 +83,7 @@ export class TableVisualizationComponent implements OnInit {
       return str.includes(delimiter) || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
     };
     const lines = [
-      this.columns.map(escape).join(delimiter),
+      this.columns.map((column, index) => escape(this.tableData?.displayColumns[index] ?? column)).join(delimiter),
       ...sourceRows.map(row => this.columns.map(col => escape(row[col])).join(delimiter))
     ];
     const text = lines.join('\n');

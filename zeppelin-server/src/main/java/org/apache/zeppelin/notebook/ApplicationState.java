@@ -39,6 +39,7 @@ public class ApplicationState {
   String id;   // unique id for this instance. Similar to note id or paragraph id
   HeliumPackage pkg;
   String output;
+  private transient Object operationLock = new Object();
 
   public ApplicationState(String id, HeliumPackage pkg) {
     this.id = id;
@@ -75,6 +76,14 @@ public class ApplicationState {
 
   public String getId() {
     return id;
+  }
+
+  /** Serialize lifecycle RPCs without blocking output callbacks on this state monitor. */
+  public synchronized Object getOperationLock() {
+    if (operationLock == null) {
+      operationLock = new Object();
+    }
+    return operationLock;
   }
 
   public void setStatus(Status status) {

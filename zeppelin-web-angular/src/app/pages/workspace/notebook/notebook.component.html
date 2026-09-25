@@ -25,6 +25,9 @@
       (tableHideChange)="setAllParagraphTableHide($event)"
       (editorHideChange)="setAllParagraphEditorHide($event)"
       (handleSearch)="onParagraphSearch($event)"
+      (findMatch)="findNotebookMatch($event.term, $event.direction)"
+      (replaceMatch)="replaceNotebookMatch($event.term, $event.replacement)"
+      (replaceAllMatches)="replaceAllNotebookMatches($event.term, $event.replacement)"
       #actionBar
     ></zeppelin-notebook-action-bar>
     <div class="flex-container">

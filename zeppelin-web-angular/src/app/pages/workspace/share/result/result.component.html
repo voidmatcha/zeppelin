@@ -103,6 +103,25 @@
     @case (datasetType.IMG) {
       <div class="img"><img [src]="imgData" alt="img" /></div>
     }
+    @case (datasetType.NETWORK) {
+      <zeppelin-visualization-network [data]="resultDataAsString()"></zeppelin-visualization-network>
+    }
+    @case ('ELEMENT') {
+      <div #spellElement [id]="spellElementId" class="resultContained"></div>
+    }
+    @default {
+      @for (customResult of customDisplayResults; track $index; let i = $index) {
+        <zeppelin-notebook-paragraph-result
+          [id]="id + '_custom_' + i"
+          [published]="published"
+          [currentCol]="currentCol"
+          [config]="config"
+          [isPending]="isPending"
+          [customDisplayPath]="customDisplayChildPath()"
+          [result]="customResult"
+        ></zeppelin-notebook-paragraph-result>
+      }
+    }
   }
   @if (frontEndError) {
     <div class="text-plain">

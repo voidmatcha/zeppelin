@@ -401,6 +401,19 @@ export class NotebookParagraphCodeEditorComponent
     this.highlightDecorations = this.editor.deltaDecorations(this.highlightDecorations, newDecorations);
   }
 
+  focusSearchMatch(term: string, offset: number) {
+    const model = this.editor?.getModel();
+    if (!this.editor || !model || model.getValue().slice(offset, offset + term.length) !== term) {
+      return;
+    }
+    const start = model.getPositionAt(offset);
+    const end = model.getPositionAt(offset + term.length);
+    const range = new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column);
+    this.editor.setSelection(range);
+    this.editor.revealRangeInCenter(range);
+    this.editor.focus();
+  }
+
   constructor(
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone,
