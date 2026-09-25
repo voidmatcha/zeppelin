@@ -116,6 +116,7 @@ abstract public class AbstractZeppelinIT {
    */
   private void dismissLoginModal() {
     if (loginModalClosed(MODAL_CLOSE_TIMEOUT_SEC)) {
+      removeOrphanedModalBackdrops();
       return;
     }
     LOGGER.warn("Login modal still displayed after {}s, taking it down from the page",
@@ -129,6 +130,43 @@ abstract public class AbstractZeppelinIT {
     if (!loginModalClosed(MODAL_CLEANUP_TIMEOUT_SEC)) {
       LOGGER.warn("Login modal is still displayed; the next click may be intercepted by it");
     }
+  }
+
+  /**
+   * Removes modal backdrops that no open modal owns.
+   *
+   * <p>Bootstrap 3 removes a fading backdrop through {@code this.$backdrop}. When the login modal
+   * is shown again during that fade, the new backdrop replaces the reference and the old one,
+   * already at opacity 0, is never removed. It stays over the page and intercepts every click.
+   */
+  private void removeOrphanedModalBackdrops() {
+    Object removed = ((JavascriptExecutor) manager.getWebDriver()).executeScript(
+        "var backdrops = document.querySelectorAll('.modal-backdrop');"
+            + "if (backdrops.length === 0 || document.querySelector('.modal.in')) {"
+            + "  return null;"
+            + "}"
+            + "var classes = [];"
+            + "for (var i = 0; i < backdrops.length; i++) {"
+            + "  classes.push(backdrops[i].className);"
+            + "  backdrops[i].parentNode.removeChild(backdrops[i]);"
+            + "}"
+            + "return classes.join(', ');");
+    if (removed != null) {
+      LOGGER.warn("Removed modal backdrops left behind after the login modal closed: {}", removed);
+    }
+  }
+
+  /** Describes the modal elements on the page, for diagnosing an intercepted click. */
+  private String describeModalState() {
+    Object state = ((JavascriptExecutor) manager.getWebDriver()).executeScript(
+        "var modal = document.getElementById('loginModal');"
+            + "var backdrops = document.querySelectorAll('.modal-backdrop');"
+            + "var classes = [];"
+            + "for (var i = 0; i < backdrops.length; i++) { classes.push(backdrops[i].className); }"
+            + "var modalState = modal"
+            + "    ? modal.className + ' display=' + modal.style.display : 'absent';"
+            + "return 'loginModal=' + modalState + ', backdrops=[' + classes.join(', ') + ']';");
+    return String.valueOf(state);
   }
 
   /** Returns true once the login modal is hidden or gone, false if it is still displayed. */
@@ -213,7 +251,8 @@ abstract public class AbstractZeppelinIT {
       // login.controller.js re-opens it one second later, so it can appear between the
       // wait above and this click. An intercepted click never reached the menu, so the
       // dropdown is still closed and opening it again is safe.
-      LOGGER.warn("Navbar user menu click was intercepted, retrying once", e);
+      LOGGER.warn("Navbar user menu click was intercepted ({}), retrying once",
+          describeModalState(), e);
       dismissLoginModal();
       clickableWait(userMenu, MAX_BROWSER_TIMEOUT_SEC).click();
     }
