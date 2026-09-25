@@ -1,0 +1,112 @@
+name: login-backdrop-bench
+
+on:
+  push:
+    branches:
+      - 'bench/login-backdrop-*'
+  workflow_dispatch:
+
+env:
+  MAVEN_OPTS: >-
+      -Xms1024M -Xmx2048M -XX:MaxMetaspaceSize=1024m -XX:-UseGCOverheadLimit
+      -Dhttp.keepAlive=false
+      -Dmaven.wagon.http.pool=false
+      -Dmaven.wagon.http.retryHandler.count=3
+  MAVEN_ARGS: >-
+      -B --no-transfer-progress
+  ZEPPELIN_HELIUM_REGISTRY: helium
+  SPARK_PRINT_LAUNCH_COMMAND: "true"
+  SPARK_LOCAL_IP: 127.0.0.1
+  ZEPPELIN_LOCAL_IP: 127.0.0.1
+  INTERPRETERS: '!hbase,!jdbc,!file,!flink,!cassandra,!elasticsearch,!bigquery,!livy,!groovy,!java,!neo4j,!sparql,!mongodb'
+  RUNS_PER_SHARD: 10
+
+permissions:
+  contents: read
+
+jobs:
+  authentication-it:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Tune Runner VM
+        uses: ./.github/actions/tune-runner-vm
+      - name: Set up JDK 11
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: 11
+      - name: Cache Maven dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/org/apache/zeppelin/
+            ~/.m2/wrapper
+          key: ${{ runner.os }}-${{ runner.arch }}-maven-v2-${{ hashFiles('**/pom.xml', '.mvn/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-maven-v2-
+      - name: Cache npm packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-${{ runner.arch }}-npm-v1-${{ hashFiles('zeppelin-web/package-lock.json', 'zeppelin-web-angular/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-npm-v1-
+      - name: Cache locked Conda packages
+        uses: actions/cache@v5
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-${{ runner.arch }}-conda-python-3.9-v1-${{ hashFiles('testing/locks/python-3.9-linux-64.conda.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-conda-python-3.9-v1-
+      - name: Setup conda environment with python 3.9
+        uses: conda-incubator/setup-miniconda@v4
+        with:
+          activate-environment: python_3
+          environment-file: testing/locks/python-3.9-linux-64.conda.lock
+          channels: conda-forge
+          conda-remove-defaults: true
+          auto-update-conda: false
+          auto-activate: false
+      - name: Install Environment
+        run: |
+          ./mvnw clean install -DskipTests -am -pl zeppelin-integration -Pweb-classic -Pintegration -Pspark-scala-2.12 -Pspark-3.5 -Pweb-dist ${MAVEN_ARGS}
+      - name: Run AuthenticationIT repeatedly
+        run: |
+          mkdir -p bench-logs
+          pass=0
+          fail=0
+          for run in $(seq 1 "$RUNS_PER_SHARD"); do
+            log="bench-logs/shard-${{ matrix.shard }}-run-${run}.log"
+            if xvfb-run --auto-servernum --server-args="-screen 0 1600x1024x16" \
+                ./mvnw verify -DfailIfNoTests=false -Dit.test=AuthenticationIT \
+                -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false \
+                -pl zeppelin-integration \
+                -Pweb-classic -Pintegration -Pspark-scala-2.12 -Pspark-3.5 -Pweb-dist -Pusing-source-tree \
+                ${MAVEN_ARGS} > "$log" 2>&1; then
+              pass=$((pass + 1)); result=pass
+            else
+              fail=$((fail + 1)); result=fail
+            fi
+            intercepted=$(grep -c "Navbar user menu click was intercepted" "$log" || true)
+            removed=$(grep -c "Removed modal backdrops left behind" "$log" || true)
+            echo "run ${run}: ${result} intercepted=${intercepted} removed=${removed}"
+            grep -hE "Tests run:.*AuthenticationIT|Navbar user menu click was intercepted|Removed modal backdrops left behind|<<< (FAILURE|ERROR)" "$log" | cut -c1-400 || true
+          done
+          echo "shard ${{ matrix.shard }}: pass=${pass} fail=${fail}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload bench logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bench-logs-shard-${{ matrix.shard }}
+          path: bench-logs/
+          retention-days: 7
