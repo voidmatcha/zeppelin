@@ -116,7 +116,6 @@ abstract public class AbstractZeppelinIT {
    */
   private void dismissLoginModal() {
     if (loginModalClosed(MODAL_CLOSE_TIMEOUT_SEC)) {
-      removeOrphanedModalBackdrops();
       return;
     }
     LOGGER.warn("Login modal still displayed after {}s, taking it down from the page",
