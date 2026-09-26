@@ -56,8 +56,8 @@ export class NotebookVisualizationPage extends BasePage {
     this.areaChartCanvas = this.resultDisplay.locator('zeppelin-area-chart-visualization canvas');
     this.scatterChartCanvas = this.resultDisplay.locator('zeppelin-scatter-chart-visualization canvas');
     this.settingTrigger = this.resultDisplay.getByText('Setting', { exact: true });
-    this.pivotSetting = this.resultDisplay.locator('zeppelin-visualization-pivot-setting');
-    this.scatterSetting = this.resultDisplay.locator('zeppelin-visualization-scatter-setting');
+    this.pivotSetting = this.resultDisplay.getByTestId('pivot-setting');
+    this.scatterSetting = this.resultDisplay.getByTestId('scatter-setting');
   }
 
   modeRadio(mode: Locator): Locator {
