@@ -92,7 +92,12 @@ import org.apache.zeppelin.search.LuceneSearch;
 import org.apache.zeppelin.search.NoSearchService;
 import org.apache.zeppelin.search.SearchService;
 import org.apache.zeppelin.service.*;
+import org.apache.zeppelin.service.assistant.ChatModel;
+import org.apache.zeppelin.service.assistant.ConversationRepository;
+import org.apache.zeppelin.service.assistant.FileConversationRepository;
+import org.apache.zeppelin.service.assistant.NotebookAssistantService;
 import org.apache.zeppelin.service.AuthenticationService;
+import org.apache.zeppelin.service.assistant.OpenAiChatModel;
 import org.apache.zeppelin.service.auth.AuthenticationServiceFactory;
 import org.apache.zeppelin.socket.ConnectionManager;
 import org.apache.zeppelin.socket.NotebookServer;
@@ -197,6 +202,18 @@ public class ZeppelinServer implements AutoCloseable {
             bindAsContract(HeliumApplicationFactory.class).in(Singleton.class);
             bindAsContract(ConfigurationService.class).in(Singleton.class);
             bindAsContract(NotebookService.class).in(Singleton.class);
+            bind(
+                new FileConversationRepository(
+                    new File(zConf.getNotebookAssistantDir())
+                )
+            ).to(ConversationRepository.class);
+            bind(
+                new OpenAiChatModel(
+                    zConf.getNotebookAssistantBaseUrl(),
+                    zConf.getNotebookAssistantApiKey(),
+                    zConf.getNotebookAssistantModel()
+                )
+            ).to(ChatModel.class);
             bindAsContract(JobManagerService.class).in(Singleton.class);
             bindAsContract(Notebook.class).in(Singleton.class);
             bindAsContract(NotebookServer.class)
@@ -255,6 +272,22 @@ public class ZeppelinServer implements AutoCloseable {
     // Lazy loading will cause paragraph recovery and cron job initialization is delayed.
     Notebook notebook = ServiceLocatorUtilities.getService(
             sharedServiceLocator, Notebook.class.getName());
+
+    NotebookAssistantService assistant = new NotebookAssistantService(
+        zConf.isNotebookAssistantEnabled() &&
+            StringUtils.isNotBlank(zConf.getNotebookAssistantApiKey()),
+        notebook,
+        sharedServiceLocator.getService(ChatModel.class),
+        sharedServiceLocator.getService(NotebookService.class),
+        sharedServiceLocator.getService(AuthorizationService.class),
+        sharedServiceLocator.getService(ConversationRepository.class));
+    ServiceLocatorUtilities.bind(sharedServiceLocator, new AbstractBinder() {
+      @Override
+      protected void configure() {
+        bind(assistant).to(NotebookAssistantService.class);
+      }
+    });
+
     ServiceLocatorUtilities.getService(
       sharedServiceLocator, SearchService.class.getName());
     ServiceLocatorUtilities.getService(
