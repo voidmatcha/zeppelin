@@ -371,6 +371,18 @@ Sources descending by priority:
     <td>Output message from interpreter exceeding the limit will be truncated</td>
   </tr>
   <tr>
+    <td><h6 class="properties">ZEPPELIN_INTERPRETER_OUTPUT_WORKER_COUNT</h6></td>
+    <td><h6 class="properties">zeppelin.interpreter.output.worker.count</h6></td>
+    <td>4</td>
+    <td>Number of workers in each of the server output and checkpoint pools. Each note is processed serially; independent notes may run concurrently, and checkpoint saves do not occupy output workers</td>
+  </tr>
+  <tr>
+    <td><h6 class="properties">ZEPPELIN_INTERPRETER_OUTPUT_EVENTS_PER_BATCH</h6></td>
+    <td><h6 class="properties">zeppelin.interpreter.output.events.per.batch</h6></td>
+    <td>1000</td>
+    <td>Maximum output events processed for one note before yielding to other ready notes. This controls scheduling granularity, not queue capacity or output truncation</td>
+  </tr>
+  <tr>
     <td><h6 class="properties">ZEPPELIN_INTERPRETER_CONNECT_TIMEOUT</h6></td>
     <td><h6 class="properties">zeppelin.interpreter.connect.timeout</h6></td>
     <td>600s</td>

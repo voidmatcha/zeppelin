@@ -20,6 +20,7 @@ package org.apache.zeppelin.interpreter.remote;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -193,6 +194,66 @@ class ParagraphOutputDispatcherTest {
       dispatcher.appendOutput("note", "present", 0, null, "good");
       dispatcher.checkpointOutput("note", "present").get(5, TimeUnit.SECONDS);
       verify(listener).onParagraphOutputAppend("note", "present", 0, null, "good");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"update", "checkpoint"})
+  void appendErrorFailsBatchBoundariesAndKeepsTheWorker(String boundary) throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    StackOverflowError error = new StackOverflowError("append failed");
+    doThrow(error).when(listener).onParagraphOutputAppend("note", "para", 0, null, "bad");
+    // A single worker shows that it survives: otherwise the unrelated note would never progress.
+    try (ParagraphOutputDispatcher dispatcher = new ParagraphOutputDispatcher(listener, 1)) {
+      dispatcher.appendOutput("note", "para", 0, null, "bad");
+      Future<Void> sameBatch = "update".equals(boundary)
+          ? dispatcher.updateOutput("note", "para", 0, null, InterpreterResult.Type.TEXT, "update")
+          : dispatcher.checkpointOutput("note", "para");
+      ExecutionException failure = assertThrows(ExecutionException.class,
+          () -> sameBatch.get(5, TimeUnit.SECONDS));
+      assertSame(error, failure.getCause());
+      if ("checkpoint".equals(boundary)) {
+        verify(listener, never()).checkpointOutput("note", "para");
+      }
+
+      dispatcher.updateOutput("other", "para", 0, null, InterpreterResult.Type.TEXT, "later")
+          .get(5, TimeUnit.SECONDS);
+      verify(listener).onParagraphOutputUpdated(
+          "other", "para", 0, null, InterpreterResult.Type.TEXT, "later");
+    }
+  }
+
+  @Test
+  void appendErrorReschedulesEventsQueuedBehindTheFailedBatch() throws Exception {
+    RemoteInterpreterProcessListener listener = mock(RemoteInterpreterProcessListener.class);
+    CountDownLatch entered = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    doAnswer(call -> {
+      entered.countDown();
+      awaitIgnoringInterrupt(release);
+      return null;
+    }).when(listener).onParagraphOutputAppend("blocker", "para", 0, null, "hold");
+    doThrow(new StackOverflowError("append failed")).when(listener)
+        .onParagraphOutputAppend("note", "para", 0, null, "bad");
+    try (ParagraphOutputDispatcher dispatcher = new ParagraphOutputDispatcher(listener, 1)) {
+      dispatcher.appendOutput("blocker", "para", 0, null, "hold");
+      dispatcher.flush();
+      assertTrue(entered.await(5, TimeUnit.SECONDS));
+
+      // While the only worker is busy, queue a batch that fails at its checkpoint and an update
+      // behind it. The failed batch must hand the update to a worker without waiting for flush().
+      dispatcher.appendOutput("note", "para", 0, null, "bad");
+      Future<Void> checkpoint = dispatcher.checkpointOutput("note", "para");
+      Future<Void> after =
+          dispatcher.updateOutput("note", "para", 0, null, InterpreterResult.Type.TEXT, "after");
+      release.countDown();
+
+      assertThrows(ExecutionException.class, () -> checkpoint.get(5, TimeUnit.SECONDS));
+      after.get(5, TimeUnit.SECONDS);
+      verify(listener).onParagraphOutputUpdated(
+          "note", "para", 0, null, InterpreterResult.Type.TEXT, "after");
+    } finally {
+      release.countDown();
     }
   }
 
