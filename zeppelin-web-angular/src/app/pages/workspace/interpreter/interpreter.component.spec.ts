@@ -13,6 +13,7 @@
 import { ChangeDetectorRef } from '@angular/core';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
+import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Interpreter } from '@zeppelin/interfaces';
@@ -24,14 +25,9 @@ import { InterpreterComponent } from './interpreter.component';
 // interpreter group fits it, so the fixtures stay within that set.
 const NAMES = ['spark', 'spark-sql', 'python', 'jdbc', 'md'];
 
-const createComponent = () => {
+const createComponent = (interpreterService = {} as InterpreterService) => {
   const cdr = { markForCheck: vi.fn() } as unknown as ChangeDetectorRef;
-  const component = new InterpreterComponent(
-    {} as InterpreterService,
-    cdr,
-    {} as NzModalService,
-    {} as NzMessageService
-  );
+  const component = new InterpreterComponent(interpreterService, cdr, {} as NzModalService, {} as NzMessageService);
   component.interpreterSettings = NAMES.map(name => ({ name }) as Interpreter);
   component.filteredInterpreterSettings = component.interpreterSettings;
   return component;
@@ -71,5 +67,21 @@ describe('InterpreterComponent.filterInterpreters', () => {
     component.filterInterpreters('');
 
     expect(filteredNames(component)).toEqual(NAMES);
+  });
+});
+
+describe('InterpreterComponent.getInterpreterSettings', () => {
+  it('applies a query typed before the settings are loaded', () => {
+    const interpreterService = {
+      getInterpretersSetting: () => of(NAMES.map(name => ({ name }) as Interpreter))
+    } as unknown as InterpreterService;
+    const component = createComponent(interpreterService);
+    component.interpreterSettings = [];
+    component.filteredInterpreterSettings = [];
+    component.searchInterpreter = 'spark';
+
+    component.getInterpreterSettings();
+
+    expect(filteredNames(component)).toEqual(['spark', 'spark-sql']);
   });
 });
