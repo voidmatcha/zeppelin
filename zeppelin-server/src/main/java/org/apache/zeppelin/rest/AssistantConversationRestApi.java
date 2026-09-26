@@ -19,7 +19,6 @@ package org.apache.zeppelin.rest;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -29,6 +28,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.apache.zeppelin.annotation.ZeppelinApi;
@@ -79,7 +79,7 @@ public class AssistantConversationRestApi extends AbstractRestApi {
   ) throws IOException {
     String title = Optional.ofNullable(GSON.fromJson(body, CreateConversationRequest.class))
         .map(CreateConversationRequest::getTitle)
-        .orElseThrow(BadRequestException::new);
+        .orElseGet(() -> noteId + " " + Instant.now());
     var conversation = assistantService.createConversation(noteId, title, getServiceContext());
     return new JsonResponse<>(Response.Status.CREATED, "", conversation).build();
   }
