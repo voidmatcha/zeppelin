@@ -154,8 +154,8 @@ export class InterpreterComponent implements OnInit, OnDestroy {
   getInterpreterSettings(): void {
     this.interpreterService.getInterpretersSetting().subscribe(data => {
       this.interpreterSettings = data;
-      this.filteredInterpreterSettings = data;
-      this.cdr.markForCheck();
+      // Keep a query typed before the settings arrived.
+      this.filterInterpreters(this.searchInterpreter);
     });
   }
 
