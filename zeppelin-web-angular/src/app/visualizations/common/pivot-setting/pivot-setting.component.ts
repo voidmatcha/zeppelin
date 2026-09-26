@@ -23,7 +23,8 @@ import { AggregationType } from '../util/aggregation-type';
   templateUrl: './pivot-setting.component.html',
   styleUrls: ['./pivot-setting.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  standalone: false
+  standalone: false,
+  host: { 'data-testid': 'pivot-setting' }
 })
 export class VisualizationPivotSettingComponent implements OnInit {
   @Input() visualization!: Visualization;
