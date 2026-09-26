@@ -840,4 +840,19 @@
   <description>fields to be excluded from being saved in note files, with Paragraph prefix mean the fields in Paragraph, e.g. Paragraph.results</description>
 </property>
 
+<property>
+  <name>zeppelin.notebook.assistant.enable</name>
+  <value>false</value>
+</property>
+
+<property>
+  <name>zeppelin.notebook.assistant.openai.api.key</name>
+  <value></value>
+</property>
+
+<property>
+  <name>zeppelin.notebook.assistant.openai.model</name>
+  <value>gpt-6-luna</value>
+</property>
+
 </configuration>

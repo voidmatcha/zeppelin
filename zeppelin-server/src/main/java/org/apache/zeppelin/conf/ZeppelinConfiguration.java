@@ -884,6 +884,18 @@ public class ZeppelinConfiguration {
     return getBoolean(ConfVars.ZEPPELIN_SEARCH_SEMANTIC_ENABLE);
   }
 
+  public boolean isNotebookAssistantEnabled() {
+    return getBoolean(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_ENABLE);
+  }
+
+  public String getNotebookAssistantApiKey() {
+    return getString(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_API_KEY);
+  }
+
+  public String getNotebookAssistantModel() {
+    return getString(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_MODEL);
+  }
+
   public boolean isOnlyYarnCluster() {
     return getBoolean(ConfVars.ZEPPELIN_SPARK_ONLY_YARN_CLUSTER);
   }
@@ -1187,7 +1199,10 @@ public class ZeppelinConfiguration {
     ZEPPELIN_SPARK_ONLY_YARN_CLUSTER("zeppelin.spark.only_yarn_cluster", false),
     ZEPPELIN_SESSION_CHECK_INTERVAL("zeppelin.session.check_interval", 60 * 10 * 1000),
     ZEPPELIN_NOTE_CACHE_THRESHOLD("zeppelin.note.cache.threshold", 50),
-    ZEPPELIN_NOTE_FILE_EXCLUDE_FIELDS("zeppelin.note.file.exclude.fields", "");
+    ZEPPELIN_NOTE_FILE_EXCLUDE_FIELDS("zeppelin.note.file.exclude.fields", ""),
+    ZEPPELIN_NOTEBOOK_ASSISTANT_ENABLE("zeppelin.notebook.assistant.enable", false),
+    ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_API_KEY("zeppelin.notebook.assistant.openai.api.key", ""),
+    ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_MODEL("zeppelin.notebook.assistant.openai.model", "");
 
     private String varName;
     private Class<?> varClass;
