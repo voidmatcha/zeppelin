@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "runId": "613e6427-5e90-4a9e-8b7e-35035b40e2fb",
+  "generatedAt": "2026-09-29T04:40:27.571Z",
+  "dryRun": false,
+  "zeppelinCommit": "7f7b995c35978c4a3ef3df31ec8faf206ce179f9",
+  "workingTreeDirty": false,
+  "os": {
+    "platform": "darwin",
+    "release": "25.5.0"
+  },
+  "cpuModel": "Apple M1 Pro",
+  "memoryBytes": 34359738368,
+  "browserVersion": "140.0.7339.186",
+  "nodeVersion": "v22.21.1",
+  "buildCommand": "npm run build",
+  "fixture": {
+    "path": "e2e/fixtures/performance/notebook-route-100-paragraphs.json",
+    "sha256": "7f94de1f9a7e529c7baf473a8bba9ab017f410c896f21bd8357922b63bd81fde"
+  },
+  "baseURL": "http://localhost:18080",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "runsPerCache": 10,
+  "warmPrimingNavigations": 1,
+  "percentileMethod": "nearest-rank",
+  "bundles": {
+    "angularEntryChunks": [
+      {
+        "path": "dist/zeppelin/polyfills.ff67e561b2f2bf75.js",
+        "rawBytes": 56102,
+        "gzipBytes": 20644,
+        "sha256": "194d61d77df3cf43cc38b9fc29df74e3812e6548ce6300b5307477cdffe51802"
+      },
+      {
+        "path": "dist/zeppelin/styles.f99f7c5f0c94eb7a.js",
+        "rawBytes": 136870,
+        "gzipBytes": 23235,
+        "sha256": "60e448c1c8fffb8ff414b405f732edd1e11ba749eb3ec78e718bfc49a6456708"
+      },
+      {
+        "path": "dist/zeppelin/scripts.3e02b0ea73800c10.js",
+        "rawBytes": 825757,
+        "gzipBytes": 238428,
+        "sha256": "ca3bbd0856ca2debfdd5a58c49d95c57793dbfec3ed661920e87aa5506fa176f"
+      },
+      {
+        "path": "dist/zeppelin/main.ac7b8fffc1422995.js",
+        "rawBytes": 6691369,
+        "gzipBytes": 1786436,
+        "sha256": "b10d159995c4ab038c9b9f35f7881a3c979cb7e9997d27a17aea9c8b7d2a9d1e"
+      }
+    ],
+    "reactRemoteEntry": {
+      "path": "dist/zeppelin/assets/react/remoteEntry.js",
+      "rawBytes": 4109,
+      "gzipBytes": 1785,
+      "sha256": "42cdb5cdac9a5d9c8ad8675b6847bbced19b73f505787e0285c5e46aca342f82"
+    }
+  },
+  "samples": [
+    {
+      "cache": "cold",
+      "run": 1,
+      "notebookReadyMs": 1501.5,
+      "fcpMs": 40
+    },
+    {
+      "cache": "cold",
+      "run": 2,
+      "notebookReadyMs": 1515,
+      "fcpMs": 56
+    },
+    {
+      "cache": "cold",
+      "run": 3,
+      "notebookReadyMs": 1544.800000011921,
+      "fcpMs": 56
+    },
+    {
+      "cache": "cold",
+      "run": 4,
+      "notebookReadyMs": 1502.5999999642372,
+      "fcpMs": 36
+    },
+    {
+      "cache": "cold",
+      "run": 5,
+      "notebookReadyMs": 1500.6000000238419,
+      "fcpMs": 60
+    },
+    {
+      "cache": "cold",
+      "run": 6,
+      "notebookReadyMs": 1441,
+      "fcpMs": 52
+    },
+    {
+      "cache": "cold",
+      "run": 7,
+      "notebookReadyMs": 1467,
+      "fcpMs": 36
+    },
+    {
+      "cache": "cold",
+      "run": 8,
+      "notebookReadyMs": 1435.699999988079,
+      "fcpMs": 24
+    },
+    {
+      "cache": "cold",
+      "run": 9,
+      "notebookReadyMs": 1456.199999988079,
+      "fcpMs": 52
+    },
+    {
+      "cache": "cold",
+      "run": 10,
+      "notebookReadyMs": 1459.0999999642372,
+      "fcpMs": 36
+    },
+    {
+      "cache": "warm",
+      "run": 1,
+      "notebookReadyMs": 1088.2000000476837,
+      "fcpMs": 48
+    },
+    {
+      "cache": "warm",
+      "run": 2,
+      "notebookReadyMs": 1019.6999999880791,
+      "fcpMs": 44
+    },
+    {
+      "cache": "warm",
+      "run": 3,
+      "notebookReadyMs": 1052.5,
+      "fcpMs": 40
+    },
+    {
+      "cache": "warm",
+      "run": 4,
+      "notebookReadyMs": 1029.699999988079,
+      "fcpMs": 40
+    },
+    {
+      "cache": "warm",
+      "run": 5,
+      "notebookReadyMs": 1043,
+      "fcpMs": 40
+    },
+    {
+      "cache": "warm",
+      "run": 6,
+      "notebookReadyMs": 1092.3999999761581,
+      "fcpMs": 28
+    },
+    {
+      "cache": "warm",
+      "run": 7,
+      "notebookReadyMs": 1170.5999999642372,
+      "fcpMs": 44
+    },
+    {
+      "cache": "warm",
+      "run": 8,
+      "notebookReadyMs": 1175.5999999642372,
+      "fcpMs": 44
+    },
+    {
+      "cache": "warm",
+      "run": 9,
+      "notebookReadyMs": 1204.6000000238419,
+      "fcpMs": 48
+    },
+    {
+      "cache": "warm",
+      "run": 10,
+      "notebookReadyMs": 1156.699999988079,
+      "fcpMs": 44
+    }
+  ]
+}
