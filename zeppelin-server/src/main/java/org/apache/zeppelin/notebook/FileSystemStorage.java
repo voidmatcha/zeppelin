@@ -210,6 +210,17 @@ public class FileSystemStorage {
     });
   }
 
+  /**
+   * Deletes a file together with temporary and backup files left by {@link #writeFile}.
+   * The artifacts are removed first so a deleted file cannot be recovered on restart.
+   */
+  public boolean deleteWithWriteArtifacts(final Path file) throws IOException {
+    return callHdfsOperation(() -> {
+      deleteWriteArtifacts(file);
+      return fs.delete(file, true);
+    });
+  }
+
   public String readFile(final Path file) throws IOException {
     return callHdfsOperation(new HdfsOperation<String>() {
       @Override
@@ -378,6 +389,29 @@ public class FileSystemStorage {
       fs.rename(src, dest);
       return null;
     });
+  }
+
+  /**
+   * Moves a file after deleting temporary and backup files left at its old path.
+   * Otherwise recovery could recreate the file at the source path after a restart.
+   */
+  public void moveWithWriteArtifacts(Path src, Path dest) throws IOException {
+    callHdfsOperation(() -> {
+      deleteWriteArtifacts(src);
+      if (!fs.rename(src, dest)) {
+        throw new IOException("Fail to rename " + src + " to " + dest);
+      }
+      return null;
+    });
+  }
+
+  private void deleteWriteArtifacts(Path file) throws IOException {
+    for (String suffix : new String[] {TMP_SUFFIX, BACKUP_SUFFIX}) {
+      Path artifact = new Path(file.toString() + suffix);
+      if (fs.exists(artifact) && !fs.delete(artifact, false)) {
+        throw new IOException("Fail to delete write artifact " + artifact);
+      }
+    }
   }
 
   private interface HdfsOperation<T> {

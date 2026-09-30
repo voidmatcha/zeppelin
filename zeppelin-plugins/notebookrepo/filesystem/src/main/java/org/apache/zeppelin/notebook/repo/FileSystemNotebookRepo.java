@@ -124,7 +124,7 @@ public class FileSystemNotebookRepo extends AbstractNotebookRepo {
     Path dest = new Path(notebookDir, buildNoteFileName(noteId, newNotePath));
     // [ZEPPELIN-4195] newNotePath parent path maybe not exist
     this.fs.tryMkDir(new Path(notebookDir, newNotePath.substring(1)).getParent());
-    this.fs.move(src, dest);
+    this.fs.moveWithWriteArtifacts(src, dest);
   }
 
   @Override
@@ -141,8 +141,9 @@ public class FileSystemNotebookRepo extends AbstractNotebookRepo {
   @Override
   public void remove(String noteId, String notePath, AuthenticationInfo subject)
       throws IOException {
-    if (!this.fs.delete(new Path(notebookDir.toString(), buildNoteFileName(noteId, notePath)))) {
-      LOGGER.warn("Fail to move note, noteId: {}, notePath: {}", notePath, notePath);
+    if (!this.fs.deleteWithWriteArtifacts(
+        new Path(notebookDir.toString(), buildNoteFileName(noteId, notePath)))) {
+      LOGGER.warn("Fail to remove note, noteId: {}, notePath: {}", noteId, notePath);
     }
   }
 

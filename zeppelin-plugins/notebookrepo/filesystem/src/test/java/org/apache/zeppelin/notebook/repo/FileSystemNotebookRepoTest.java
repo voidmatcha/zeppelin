@@ -44,6 +44,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileSystemNotebookRepoTest {
@@ -213,22 +214,26 @@ class FileSystemNotebookRepoTest {
   }
 
   @Test
-  void testRemovedNoteIsNotRestoredFromLeftoverTmp() throws IOException {
+  void testRemovedNoteIsNotRestoredFromLeftoverWriteArtifacts() throws IOException {
     Note note = createNote("/title_1", "value_1");
     hdfsNotebookRepo.save(note, authInfo);
     writeString(noteFile(note, ".tmp"), note.toJson());
+    writeString(noteFile(note, ".bak"), note.toJson());
     hdfsNotebookRepo.remove(note.getId(), note.getPath(), authInfo);
 
     restartRepo();
 
     assertEquals(0, hdfsNotebookRepo.list(authInfo).size());
+    assertFalse(Files.exists(noteFile(note, ".tmp")));
+    assertFalse(Files.exists(noteFile(note, ".bak")));
   }
 
   @Test
-  void testMovedNoteIsNotDuplicatedFromLeftoverTmp() throws IOException {
+  void testMovedNoteIsNotDuplicatedFromLeftoverWriteArtifacts() throws IOException {
     Note note = createNote("/title_1", "value_1");
     hdfsNotebookRepo.save(note, authInfo);
     writeString(noteFile(note, ".tmp"), note.toJson());
+    writeString(noteFile(note, ".bak"), note.toJson());
     hdfsNotebookRepo.move(note.getId(), "/title_1", "/dir/title_2", authInfo);
 
     restartRepo();
@@ -238,6 +243,28 @@ class FileSystemNotebookRepoTest {
       zplnCount = files.filter(f -> f.toString().endsWith(".zpln")).count();
     }
     assertEquals(1, zplnCount);
+    assertEquals("/dir/title_2",
+        hdfsNotebookRepo.list(authInfo).get(note.getId()).getPath());
+    assertEquals("value_1",
+        hdfsNotebookRepo.get(note.getId(), "/dir/title_2", authInfo)
+            .getConfig().get("config_1"));
+    assertFalse(Files.exists(noteFile(note, ".tmp")));
+    assertFalse(Files.exists(noteFile(note, ".bak")));
+  }
+
+  @Test
+  void testRemoveKeepsNoteWhenWriteArtifactCannotBeDeleted() throws IOException {
+    Note note = createNote("/title_1", "value_1");
+    hdfsNotebookRepo.save(note, authInfo);
+    java.nio.file.Path tmpDirectory = noteFile(note, ".tmp");
+    Files.createDirectory(tmpDirectory);
+    writeString(tmpDirectory.resolve("child"), "content");
+
+    assertThrows(IOException.class,
+        () -> hdfsNotebookRepo.remove(note.getId(), note.getPath(), authInfo));
+
+    assertEquals(1, hdfsNotebookRepo.list(authInfo).size());
+    assertEquals("value_1", getConfigValue(note));
   }
 
   @Test
