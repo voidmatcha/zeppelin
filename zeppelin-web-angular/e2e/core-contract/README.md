@@ -206,12 +206,19 @@ still select the installed toolchain.
 
 ```bash
 CAPTURE_ROOT="$(mktemp -d)"
+CAPTURE_COMMIT="$(git rev-parse origin/master)"
 e2e/core-contract/capture-server.sh start --root "${CAPTURE_ROOT}" --port 18080
 ZEPPELIN_E2E_SHIRO_INI="${CAPTURE_ROOT}/conf/shiro.ini" \
   ZEPPELIN_CORE_CONTRACT_RUN_DIR="${CAPTURE_ROOT}/browser" \
+  ZEPPELIN_E2E_SOURCE_COMMIT="${CAPTURE_COMMIT}" \
+  ZEPPELIN_E2E_BASE_COMMIT="${CAPTURE_COMMIT}" \
   CI=true PLAYWRIGHT_BASE_URL=http://127.0.0.1:18080 npm run e2e:core-contract:live
 e2e/core-contract/capture-server.sh stop --root "${CAPTURE_ROOT}"
 ```
+
+Use this commit value only when the server artifacts were built from that
+`origin/master` revision. The source commit records the server build, not the
+commit that added the Playwright capture script.
 
 For authenticated capture, add `--mode auth` to start. That installs
 `shiro.ini.template` in the capture root; the same `ZEPPELIN_E2E_SHIRO_INI` setting
@@ -243,6 +250,30 @@ whose key no remaining record can answer is rejected immediately. A route that i
 merely waiting is not: the fixture cannot tell "the page has not sent that request
 yet" from "the page will never send it", so that case is left to Playwright's own
 test timeout.
+
+## Notebook lifecycle fixture
+
+`fixtures/notebook-lifecycle.json` records the ZEPPELIN-6672 structural paragraph,
+revision, collaboration, route-association, disconnect and reconnect contract. The
+lifecycle fixture keeps the active note and optional revision as capture context for
+untagged replies instead of adding identifiers that were not present on the wire. It
+also drops the captured `PARAGRAPH` acknowledgement during replay, then checks that
+`GET_NOTE` recovers the committed paragraph text. The timeout is a bounded replay
+fault, not a claim that the acknowledgement was absent during live capture. It records
+fault-injected collaboration delivery before both viewers converge on the server note.
+
+Run its deterministic validator and replay tests with:
+
+```bash
+npm run check:core-contract-fixtures
+```
+
+The live recorder uses two browser contexts and requires two configured users in Shiro
+mode. Start the isolated capture server with `--mode auth --storage git` so checkpoint
+and revision flows use the repository implementation expected by the fixture. Set
+`ZEPPELIN_E2E_CAPTURE_MODE=lifecycle` and `ZEPPELIN_E2E_FIXTURE_OUTPUT_DIR` when
+refreshing this committed artifact; include both provenance commit variables from the
+command above.
 
 ## Capturing safely
 

@@ -18,13 +18,14 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 start|stop --root <dir> [--mode anonymous|auth] [--port <port>]" >&2
+  echo "usage: $0 start|stop --root <dir> [--mode anonymous|auth] [--storage vfs|git] [--port <port>]" >&2
 }
 
 command="${1:-}"
 shift || true
 capture_root=""
 capture_mode="anonymous"
+capture_storage="vfs"
 zeppelin_port="8080"
 port_given="no"
 
@@ -36,6 +37,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --mode)
       capture_mode="${2:-}"
+      shift 2
+      ;;
+    --storage)
+      capture_storage="${2:-}"
       shift 2
       ;;
     --port)
@@ -57,6 +62,10 @@ done
 
 if [[ -z "${command}" || -z "${capture_root}" ]]; then
   usage
+  exit 2
+fi
+if [[ "${capture_storage}" != "vfs" && "${capture_storage}" != "git" ]]; then
+  echo "--storage must be vfs or git, got '${capture_storage}'" >&2
   exit 2
 fi
 
@@ -214,15 +223,20 @@ start_zeppelin() {
   done
   unset JAVA_OPTS JAVA_TOOL_OPTIONS _JAVA_OPTIONS JDK_JAVA_OPTIONS CLASSPATH
 
-  mkdir -p "${capture_root}/conf" "${capture_root}/notebook" "${capture_root}/index" \
-    "${capture_root}/logs" "${capture_root}/run" "${capture_root}/recovery" "${capture_root}/webapps"
+  mkdir -p "${capture_root}/conf" "${capture_root}/interpreter/shell" \
+    "${capture_root}/notebook" "${capture_root}/index" "${capture_root}/logs" \
+    "${capture_root}/run" "${capture_root}/recovery" "${capture_root}/webapps"
   # bin/common.sh sources conf/zeppelin-env.sh if present. capture-root is caller-supplied and
   # may be an existing/reused directory, so a leftover zeppelin-env.sh (e.g. pointing at a
   # different notebook dir or bind address) would silently override the isolation this script
   # promises. This script never writes that file itself, so any copy here is stale.
   rm -f "${capture_root}/conf/zeppelin-env.sh"
+  cp "${repo_root}/conf/log4j.properties" "${capture_root}/conf/log4j.properties"
+  cp "${repo_root}/conf/log4j.properties2" "${capture_root}/conf/log4j.properties2"
   cp "${repo_root}/conf/log4j2.properties" "${capture_root}/conf/log4j2.properties"
   cp "${repo_root}/conf/zeppelin-site.xml.template" "${capture_root}/conf/zeppelin-site.xml"
+  cp "${repo_root}/shell/src/main/resources/interpreter-setting.json" \
+    "${capture_root}/interpreter/shell/interpreter-setting.json"
   if [[ "${capture_mode}" == "auth" ]]; then
     cp "${repo_root}/conf/shiro.ini.template" "${capture_root}/conf/shiro.ini"
   else
@@ -231,8 +245,13 @@ start_zeppelin() {
 
   export ZEPPELIN_CONF_DIR="${capture_root}/conf"
   export ZEPPELIN_ADDR="127.0.0.1"
-  export ZEPPELIN_NOTEBOOK_STORAGE="org.apache.zeppelin.notebook.repo.VFSNotebookRepo"
+  if [[ "${capture_storage}" == "git" ]]; then
+    export ZEPPELIN_NOTEBOOK_STORAGE="org.apache.zeppelin.notebook.repo.GitNotebookRepo"
+  else
+    export ZEPPELIN_NOTEBOOK_STORAGE="org.apache.zeppelin.notebook.repo.VFSNotebookRepo"
+  fi
   export ZEPPELIN_NOTEBOOK_DIR="${capture_root}/notebook"
+  export ZEPPELIN_INTERPRETER_DIR="${capture_root}/interpreter"
   export ZEPPELIN_LOG_DIR="${capture_root}/logs"
   export ZEPPELIN_PID_DIR="${capture_root}/run"
   export ZEPPELIN_WAR_TEMPDIR="${capture_root}/webapps"

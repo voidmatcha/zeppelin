@@ -235,6 +235,37 @@ await import(${JSON.stringify(stub)});
   }
 });
 
+test('capture server opts into GitNotebookRepo without changing the VFS default', () => {
+  const root = createRoot();
+  const probe = path.join(root.root, 'storage-probe.mjs');
+  const observed = path.join(root.root, 'storage.txt');
+  writeFileSync(
+    probe,
+    `import { writeFileSync } from 'node:fs';
+writeFileSync(${JSON.stringify(observed)}, process.env.ZEPPELIN_NOTEBOOK_STORAGE ?? '');
+await import(${JSON.stringify(stub)});
+`
+  );
+  const result = run(['start', '--root', root.root, '--storage', 'git', '--port', String(root.zeppelinPort)], {
+    CAPTURE_ZEPPELIN_COMMAND: `node ${probe}`
+  });
+  try {
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(observed, 'utf8'), 'org.apache.zeppelin.notebook.repo.GitNotebookRepo');
+  } finally {
+    if (existsSync(path.join(root.root, 'zeppelin.pid'))) stop(root);
+  }
+});
+
+test('capture server rejects an unsupported storage before side effects', () => {
+  const parent = createRoot();
+  const root = path.join(parent.root, 'invalid-storage');
+  const result = run(['start', '--root', root, '--storage', 'memory', '--port', String(parent.zeppelinPort)]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /must be vfs or git/);
+  assert.equal(existsSync(root), false);
+});
+
 test('capture-server starts and stops a server in its own root', () => {
   const root = createRoot();
 
@@ -256,6 +287,10 @@ test('capture-server writes anonymous and auth config in an isolated temp root',
 
   assert.equal(existsSync(path.join(anonymous.root, 'conf/shiro.ini')), false);
   assert.equal(existsSync(path.join(auth.root, 'conf/shiro.ini')), true);
+  assert.equal(existsSync(path.join(anonymous.root, 'conf/log4j.properties')), true);
+  assert.equal(existsSync(path.join(anonymous.root, 'conf/log4j.properties2')), true);
+  assert.equal(existsSync(path.join(anonymous.root, 'conf/log4j2.properties')), true);
+  assert.equal(existsSync(path.join(anonymous.root, 'interpreter/shell/interpreter-setting.json')), true);
 });
 
 test('capture-server reports explicit port conflicts', async () => {
