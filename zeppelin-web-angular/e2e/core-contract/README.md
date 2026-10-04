@@ -244,6 +244,25 @@ merely waiting is not: the fixture cannot tell "the page has not sent that reque
 yet" from "the page will never send it", so that case is left to Playwright's own
 test timeout.
 
+## Notebook lifecycle fixture
+
+`fixtures/notebook-lifecycle.json` records the ZEPPELIN-6672 structural paragraph,
+revision, collaboration, route-association, disconnect and reconnect contract. The
+lifecycle fixture keeps the active note and optional revision as capture context for
+untagged replies instead of adding identifiers that were not present on the wire. It
+also records the bounded reconciliation behavior for a dropped `COMMIT_PARAGRAPH` and
+fault-injected collaboration delivery before both viewers converge on the server note.
+
+Run its deterministic validator and replay tests with:
+
+```bash
+npm run check:core-contract-fixtures
+```
+
+The live recorder uses two browser contexts and requires two configured users in Shiro
+mode. Start the isolated capture server with `--storage git` so checkpoint and revision
+flows use the repository implementation expected by the fixture.
+
 ## Capturing safely
 
 `createNotebookTransportRecorder(metadata)` records only `/api/notebook` REST

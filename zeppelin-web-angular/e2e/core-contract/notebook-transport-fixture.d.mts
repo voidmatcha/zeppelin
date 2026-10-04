@@ -48,9 +48,11 @@ export interface FixtureRecord {
 }
 
 export interface FixtureMetadata {
+  captureSource?: 'live-server';
   coveredOperations: string[];
   knownExclusions: string[];
   owner: string;
+  provenance?: Record<string, unknown>;
   scenario: string;
   // Recorded for provenance; neither is read or validated by this module.
   capturedAt?: string;
@@ -114,7 +116,10 @@ export declare function validateFixture(fixture: unknown): string[];
 export declare function validateReplayFixture(fixture: unknown): string[];
 
 export declare function createPlaywrightFixtureAdapter(fixture: TransportFixture): PlaywrightFixtureAdapter;
-export declare function createNotebookTransportRecorder(metadata: FixtureMetadata): NotebookTransportRecorder;
+export declare function createNotebookTransportRecorder(
+  metadata: FixtureMetadata,
+  options?: { onRecord?: (record: FixtureRecord) => void }
+): NotebookTransportRecorder;
 
 export declare function parseRestBody(
   body: string,
