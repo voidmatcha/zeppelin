@@ -45,6 +45,7 @@
           <nz-resize-handle nzDirection="right"><div class="sidebar-resize"></div></nz-resize-handle>
         }
       </div>
+      <div zeppelin-assistant-slot="panel"></div>
       <div class="notebook-area">
         @if (activatedExtension !== 'hide' && permissions) {
           <div class="extension-area">
@@ -114,5 +115,8 @@
         </div>
       </div>
     </div>
+    @if (!viewOnly && !revisionView) {
+      <zeppelin-assistant-host [note]="note" [enabled]="useReactAssistant"></zeppelin-assistant-host>
+    }
   </div>
 }
