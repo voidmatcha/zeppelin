@@ -14,7 +14,7 @@
 // conversation state and the host stay in the assistant-panel widget.
 export { AssistantPanelLayout } from './ui/PanelLayout';
 export { AiDisclaimer, AiMark, AssistantReply, UserMessage } from './ui/Message';
-export { CodeBlock, MarkdownAnswer } from './ui/MarkdownAnswer';
+export { CodeBlock, MarkdownAnswer, ParagraphLink } from './ui/MarkdownAnswer';
 export type { ParagraphLabel } from './ui/MarkdownAnswer';
 export { ActionLog } from './ui/ActionLog';
 export type { ToolStep } from './ui/ActionLog';

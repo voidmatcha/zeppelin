@@ -111,7 +111,7 @@ const remarkParagraphLinks = () => (tree: MarkdownNode) => {
 const markdownPlugins = [remarkGfm, remarkParagraphLinks];
 
 /** A paragraph mentioned in an answer: a chip that asks the host to scroll to and highlight it. */
-const ParagraphLink = ({
+export const ParagraphLink = ({
   label,
   paragraphId,
   onOpen
