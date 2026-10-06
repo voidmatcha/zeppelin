@@ -45,9 +45,9 @@ import org.apache.zeppelin.rest.exception.NoteNotFoundException;
 import org.apache.zeppelin.service.NotebookService;
 import org.apache.zeppelin.user.AuthenticationInfo;
 
-public class NotebookAssistantService {
+public class AssistantService {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(NotebookAssistantService.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AssistantService.class);
   private static final Gson GSON = new Gson();
   private static final int HISTORY_MESSAGE_LIMIT = 10;
 
@@ -66,7 +66,7 @@ public class NotebookAssistantService {
   private final ConversationRepository conversationRepository;
   private final ToolExecutor toolExecutor;
 
-  public NotebookAssistantService(
+  public AssistantService(
       boolean available,
       Notebook notebook,
       ChatModel modelClient,
@@ -255,7 +255,7 @@ public class NotebookAssistantService {
           )
       );
     } catch (Exception e) {
-      LOGGER.error("Error during Notebook Assistant run", e);
+      LOGGER.error("Error during Assistant run", e);
       sink.onEvent(
           AssistantEventType.RUN_FAILED,
           new AssistantEventPayload.RunFailed(runId, AssistantEventPayload.Error.of(e))

@@ -45,14 +45,14 @@ import org.apache.zeppelin.user.AuthenticationInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class NotebookAssistantServiceTest {
+class AssistantServiceTest {
   private final AuthenticationInfo authInfo = new AuthenticationInfo("holden");
   private final AuthenticationInfo otherAuthInfo = new AuthenticationInfo("phoebe");
   private final Set<String> userAndRoles = Set.of("user");
 
   @Test
   void rejectsUnavailable() {
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         false, null, null, null, null, null
     );
 
@@ -67,7 +67,7 @@ class NotebookAssistantServiceTest {
     var authorization = mock(AuthorizationService.class);
     when(authorization.isReader("noteId", userAndRoles)).thenReturn(false);
 
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, null, null, null, authorization, null
     );
 
@@ -84,7 +84,7 @@ class NotebookAssistantServiceTest {
   void rejectsAnonymousCreate() {
     var authorization = mock(AuthorizationService.class);
     when(authorization.isReader("noteId", userAndRoles)).thenReturn(true);
-    var sut = new NotebookAssistantService(true, null, null, null, authorization, null);
+    var sut = new AssistantService(true, null, null, null, authorization, null);
 
     assertThrows(
         ForbiddenException.class,
@@ -102,7 +102,7 @@ class NotebookAssistantServiceTest {
     when(authorization.isReader("noteId", userAndRoles)).thenReturn(true);
 
     var repository = new FileConversationRepository(tempDir);
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, null, null, authorization, repository
     );
 
@@ -118,7 +118,7 @@ class NotebookAssistantServiceTest {
     var authorization = mock(AuthorizationService.class);
     when(authorization.isReader("noteId", userAndRoles)).thenReturn(true);
     var repository = mock(ConversationRepository.class);
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, null, null, authorization, repository
     );
 
@@ -141,7 +141,7 @@ class NotebookAssistantServiceTest {
     var repository = mock(ConversationRepository.class);
     when(repository.find("noteId", conversation.getId()))
         .thenReturn(Optional.of(conversation));
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, null, null, authorization, repository
     );
 
@@ -174,7 +174,7 @@ class NotebookAssistantServiceTest {
     var repository = mock(ConversationRepository.class);
     when(repository.find("noteId", conversation.getId())).thenReturn(Optional.of(conversation));
     when(repository.findAll("noteId")).thenReturn(List.of(conversation));
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, null, null, authorization, repository
     );
 
@@ -208,7 +208,7 @@ class NotebookAssistantServiceTest {
     var conversation = Conversation.create("noteId", "test", authInfo.getUser());
     var repository = mock(ConversationRepository.class);
     when(repository.find("noteId", conversation.getId())).thenReturn(Optional.of(conversation));
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, null, null, authorization, repository
     );
 
@@ -229,7 +229,7 @@ class NotebookAssistantServiceTest {
 
   @Test
   void rejectsInvalidLimit() {
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, null, null, null, null, null);
     assertThrows(
         BadRequestException.class,
@@ -251,7 +251,7 @@ class NotebookAssistantServiceTest {
     var chatModel = mock(ChatModel.class);
     var repository = mock(ConversationRepository.class);
     var conversation = Conversation.create("noteId", "test", authInfo.getUser());
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, chatModel, null, authorization, repository
     );
     var limit = 10;
@@ -290,7 +290,7 @@ class NotebookAssistantServiceTest {
       return null;
     }).when(repository).update(any(), any());
     var chatModel = mock(ChatModel.class);
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, chatModel, null, authorization, repository
     );
 
@@ -335,7 +335,7 @@ class NotebookAssistantServiceTest {
     }).when(repository).update(any(), any());
     var chatModel = mock(ChatModel.class);
     var notebookService = mock(NotebookService.class);
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, chatModel, notebookService, authorization, repository
     );
 
@@ -379,7 +379,7 @@ class NotebookAssistantServiceTest {
       return null;
     }).when(repository).update(any(), any());
     var chatModel = mock(ChatModel.class);
-    var sut = new NotebookAssistantService(
+    var sut = new AssistantService(
         true, notebook, chatModel, null, authorization, repository);
 
     var streaming = new CountDownLatch(1);

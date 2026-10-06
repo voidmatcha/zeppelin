@@ -888,24 +888,24 @@ public class ZeppelinConfiguration {
     return getBoolean(ConfVars.ZEPPELIN_SEARCH_SEMANTIC_ENABLE);
   }
 
-  public boolean isNotebookAssistantEnabled() {
-    return getBoolean(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_ENABLE);
+  public boolean isAssistantEnabled() {
+    return getBoolean(ConfVars.ZEPPELIN_ASSISTANT_ENABLE);
   }
 
-  public String getNotebookAssistantApiKey() {
-    return getString(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_API_KEY);
+  public String getAssistantApiKey() {
+    return getString(ConfVars.ZEPPELIN_ASSISTANT_OPENAI_API_KEY);
   }
 
-  public String getNotebookAssistantBaseUrl() {
-    return getString(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_BASE_URL);
+  public String getAssistantBaseUrl() {
+    return getString(ConfVars.ZEPPELIN_ASSISTANT_OPENAI_BASE_URL);
   }
 
-  public String getNotebookAssistantModel() {
-    return getString(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_MODEL);
+  public String getAssistantModel() {
+    return getString(ConfVars.ZEPPELIN_ASSISTANT_OPENAI_MODEL);
   }
 
-  public String getNotebookAssistantDir() {
-    return getAbsoluteDir(ConfVars.ZEPPELIN_NOTEBOOK_ASSISTANT_DIR);
+  public String getAssistantDir() {
+    return getAbsoluteDir(ConfVars.ZEPPELIN_ASSISTANT_DIR);
   }
 
   public boolean isOnlyYarnCluster() {
@@ -1214,14 +1214,14 @@ public class ZeppelinConfiguration {
     ZEPPELIN_SESSION_CHECK_INTERVAL("zeppelin.session.check_interval", 60 * 10 * 1000),
     ZEPPELIN_NOTE_CACHE_THRESHOLD("zeppelin.note.cache.threshold", 50),
     ZEPPELIN_NOTE_FILE_EXCLUDE_FIELDS("zeppelin.note.file.exclude.fields", ""),
-    ZEPPELIN_NOTEBOOK_ASSISTANT_ENABLE("zeppelin.notebook.assistant.enable", false),
-    ZEPPELIN_NOTEBOOK_ASSISTANT_DIR("zeppelin.notebook.assistant.dir", "assistant"),
-    ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_API_KEY("zeppelin.notebook.assistant.openai.api.key", ""),
-    ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_BASE_URL(
-        "zeppelin.notebook.assistant.openai.base.url", "https://api.openai.com/v1"
+    ZEPPELIN_ASSISTANT_ENABLE("zeppelin.assistant.enable", false),
+    ZEPPELIN_ASSISTANT_DIR("zeppelin.assistant.dir", "assistant"),
+    ZEPPELIN_ASSISTANT_OPENAI_API_KEY("zeppelin.assistant.openai.api.key", ""),
+    ZEPPELIN_ASSISTANT_OPENAI_BASE_URL(
+        "zeppelin.assistant.openai.base.url", "https://api.openai.com/v1"
     ),
-    ZEPPELIN_NOTEBOOK_ASSISTANT_OPENAI_MODEL(
-        "zeppelin.notebook.assistant.openai.model", "gpt-6-luna"
+    ZEPPELIN_ASSISTANT_OPENAI_MODEL(
+        "zeppelin.assistant.openai.model", "gpt-6-luna"
     );
 
     private String varName;
