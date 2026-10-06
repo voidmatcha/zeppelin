@@ -33,19 +33,19 @@ import org.apache.zeppelin.annotation.ZeppelinApi;
 import org.apache.zeppelin.rest.message.MessagesResponse;
 import org.apache.zeppelin.server.JsonResponse;
 import org.apache.zeppelin.service.AuthenticationService;
-import org.apache.zeppelin.service.assistant.NotebookAssistantService;
+import org.apache.zeppelin.service.assistant.AssistantService;
 
 @Path("/notes/{noteId}/conversations/{conversationId}/messages")
 @Produces("application/json")
 @Singleton
 public class AssistantMessageRestApi extends AbstractRestApi {
 
-  private final NotebookAssistantService assistantService;
+  private final AssistantService assistantService;
 
   @Inject
   public AssistantMessageRestApi(
       AuthenticationService authenticationService,
-      NotebookAssistantService assistantService
+      AssistantService assistantService
   ) {
     super(authenticationService);
     this.assistantService = assistantService;
