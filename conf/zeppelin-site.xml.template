@@ -847,27 +847,27 @@
 </property>
 
 <property>
-  <name>zeppelin.notebook.assistant.enable</name>
+  <name>zeppelin.assistant.enable</name>
   <value>false</value>
 </property>
 
 <property>
-  <name>zeppelin.notebook.assistant.openai.api.key</name>
+  <name>zeppelin.assistant.openai.api.key</name>
   <value></value>
 </property>
 
 <property>
-  <name>zeppelin.notebook.assistant.openai.base.url</name>
+  <name>zeppelin.assistant.openai.base.url</name>
   <value>https://api.openai.com/v1</value>
 </property>
 
 <property>
-  <name>zeppelin.notebook.assistant.openai.model</name>
+  <name>zeppelin.assistant.openai.model</name>
   <value>gpt-6-luna</value>
 </property>
 
 <property>
-  <name>zeppelin.notebook.assistant.dir</name>
+  <name>zeppelin.assistant.dir</name>
   <value>assistant</value>
   <description>Directory for assistant conversations.</description>
 </property>

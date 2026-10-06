@@ -95,7 +95,7 @@ import org.apache.zeppelin.service.*;
 import org.apache.zeppelin.service.assistant.ChatModel;
 import org.apache.zeppelin.service.assistant.ConversationRepository;
 import org.apache.zeppelin.service.assistant.FileConversationRepository;
-import org.apache.zeppelin.service.assistant.NotebookAssistantService;
+import org.apache.zeppelin.service.assistant.AssistantService;
 import org.apache.zeppelin.service.AuthenticationService;
 import org.apache.zeppelin.service.assistant.OpenAiChatModel;
 import org.apache.zeppelin.service.auth.AuthenticationServiceFactory;
@@ -204,14 +204,14 @@ public class ZeppelinServer implements AutoCloseable {
             bindAsContract(NotebookService.class).in(Singleton.class);
             bind(
                 new FileConversationRepository(
-                    new File(zConf.getNotebookAssistantDir())
+                    new File(zConf.getAssistantDir())
                 )
             ).to(ConversationRepository.class);
             bind(
                 new OpenAiChatModel(
-                    zConf.getNotebookAssistantBaseUrl(),
-                    zConf.getNotebookAssistantApiKey(),
-                    zConf.getNotebookAssistantModel()
+                    zConf.getAssistantBaseUrl(),
+                    zConf.getAssistantApiKey(),
+                    zConf.getAssistantModel()
                 )
             ).to(ChatModel.class);
             bindAsContract(JobManagerService.class).in(Singleton.class);
@@ -273,9 +273,9 @@ public class ZeppelinServer implements AutoCloseable {
     Notebook notebook = ServiceLocatorUtilities.getService(
             sharedServiceLocator, Notebook.class.getName());
 
-    NotebookAssistantService assistant = new NotebookAssistantService(
-        zConf.isNotebookAssistantEnabled() &&
-            StringUtils.isNotBlank(zConf.getNotebookAssistantApiKey()),
+    AssistantService assistant = new AssistantService(
+        zConf.isAssistantEnabled() &&
+            StringUtils.isNotBlank(zConf.getAssistantApiKey()),
         notebook,
         sharedServiceLocator.getService(ChatModel.class),
         sharedServiceLocator.getService(NotebookService.class),
@@ -284,7 +284,7 @@ public class ZeppelinServer implements AutoCloseable {
     ServiceLocatorUtilities.bind(sharedServiceLocator, new AbstractBinder() {
       @Override
       protected void configure() {
-        bind(assistant).to(NotebookAssistantService.class);
+        bind(assistant).to(AssistantService.class);
       }
     });
 

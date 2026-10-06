@@ -93,7 +93,7 @@ import org.apache.zeppelin.scheduler.Job.Status;
 import org.apache.zeppelin.service.JobManagerService;
 import org.apache.zeppelin.service.NotebookService;
 import org.apache.zeppelin.service.assistant.AssistantEventListener;
-import org.apache.zeppelin.service.assistant.NotebookAssistantService;
+import org.apache.zeppelin.service.assistant.AssistantService;
 import org.apache.zeppelin.service.ServiceContext;
 import org.apache.zeppelin.service.SimpleServiceCallback;
 import org.apache.zeppelin.service.exception.JobManagerForbiddenException;
@@ -172,7 +172,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
   private Provider<NotebookService> notebookServiceProvider;
   private AuthorizationService authorizationService;
   private Provider<JobManagerService> jobManagerServiceProvider;
-  private Provider<NotebookAssistantService> assistantServiceProvider;
+  private Provider<AssistantService> assistantServiceProvider;
 
   public NotebookServer() {
     NotebookServer.self.set(this);
@@ -232,12 +232,12 @@ public class NotebookServer implements AngularObjectRegistryListener,
   }
 
   @Inject
-  public void setNotebookAssistantService(
-      Provider<NotebookAssistantService> assistantServiceProvider) {
+  public void setAssistantService(
+      Provider<AssistantService> assistantServiceProvider) {
     this.assistantServiceProvider = assistantServiceProvider;
   }
 
-  public NotebookAssistantService getNotebookAssistantService() {
+  public AssistantService getAssistantService() {
     return assistantServiceProvider.get();
   }
 
@@ -1317,7 +1317,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
       }
     };
     assistantExecutor.submit(
-        () -> getNotebookAssistantService().sendMessage(
+        () -> getAssistantService().sendMessage(
             noteId,
             conversationId,
             content,
