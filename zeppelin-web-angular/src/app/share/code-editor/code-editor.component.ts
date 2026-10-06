@@ -59,7 +59,14 @@ import ITextModel = editor.ITextModel;
 export class CodeEditorComponent implements OnDestroy, AfterViewInit {
   @HostBinding('class.ant-code-editor') antCodeEditor = true;
   @Input() nzEditorMode: NzEditorMode = 'normal';
-  @Input() nzOriginalText = '';
+  /** In diff mode, the text before the change; the bound value is the text after it. */
+  @Input() set nzOriginalText(text: string) {
+    this.originalText = text ?? '';
+    this.setValue();
+  }
+  get nzOriginalText(): string {
+    return this.originalText;
+  }
   @Input() @InputBoolean() nzLoading = false;
   @Input() @InputBoolean() nzFullControl = false;
   @Input() nzToolkit?: TemplateRef<void>;
@@ -78,7 +85,10 @@ export class CodeEditorComponent implements OnDestroy, AfterViewInit {
   private editorOption$ = new BehaviorSubject<JoinedEditorOptions>({});
   private editorInstance?: IEditor | IDiffEditor;
   private value = '';
+  private originalText = '';
   private modelSet = false;
+  // Models this component created; Monaco does not dispose them with the editor.
+  private models: ITextModel[] = [];
 
   constructor(
     private nzCodeEditorService: CodeEditorService,
@@ -99,6 +109,8 @@ export class CodeEditorComponent implements OnDestroy, AfterViewInit {
     if (this.editorInstance) {
       this.editorInstance.dispose();
     }
+    this.models.forEach(model => model.dispose());
+    this.models = [];
 
     this.destroy$.next();
     this.destroy$.complete();
@@ -204,23 +216,31 @@ export class CodeEditorComponent implements OnDestroy, AfterViewInit {
         (this.editorInstance.getModel() as ITextModel).setValue(this.value);
       } else {
         (this.editorInstance as IEditor).setModel(
-          editor.createModel(this.value, (this.editorOptionCached as EditorOptions).language)
+          this.createModel(this.value, (this.editorOptionCached as EditorOptions).language)
         );
         this.modelSet = true;
       }
     } else {
       if (this.modelSet) {
         const model = (this.editorInstance as IDiffEditor).getModel()!;
+        model.original.setValue(this.originalText);
         model.modified.setValue(this.value);
-        model.original.setValue(this.nzOriginalText);
       } else {
         const language = (this.editorOptionCached as EditorOptions).language;
+        // Original is the text before the change, modified the bound value, as on every later update.
         (this.editorInstance as IDiffEditor).setModel({
-          original: editor.createModel(this.value, language),
-          modified: editor.createModel(this.nzOriginalText, language)
+          original: this.createModel(this.originalText, language),
+          modified: this.createModel(this.value, language)
         });
+        this.modelSet = true;
       }
     }
+  }
+
+  private createModel(value: string, language?: string): ITextModel {
+    const model = editor.createModel(value, language);
+    this.models.push(model);
+    return model;
   }
 
   private setValueEmitter(): void {
