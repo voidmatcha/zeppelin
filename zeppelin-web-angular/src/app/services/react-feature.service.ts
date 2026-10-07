@@ -14,7 +14,12 @@ import { Injectable, isDevMode } from '@angular/core';
 import { parseBooleanFlag } from './query-flag.util';
 
 export type ReactSurface =
-  'publishedParagraph' | 'paragraphFooter' | 'configurationTable' | 'notebookRepoList' | 'notebookCoreReadOnly';
+  | 'publishedParagraph'
+  | 'paragraphFooter'
+  | 'configurationTable'
+  | 'notebookRepoList'
+  | 'notebookCoreReadOnly'
+  | 'notebookReactPrivate';
 
 interface ReactSurfaceConfig {
   queryParam: string;
@@ -41,6 +46,10 @@ const SURFACES: Record<ReactSurface, ReactSurfaceConfig> = {
   notebookCoreReadOnly: {
     queryParam: 'notebookCoreReadOnly',
     defaultEnabled: false
+  },
+  notebookReactPrivate: {
+    queryParam: 'notebookReactPrivate',
+    defaultEnabled: false
   }
 };
 
@@ -57,7 +66,7 @@ export interface FlagSource {
 export class ReactFeatureService {
   isEnabled(surface: ReactSurface, source?: FlagSource | null): boolean {
     // The read-only Core route is a development proof, not a production surface.
-    if (surface === 'notebookCoreReadOnly' && !isDevMode()) {
+    if ((surface === 'notebookCoreReadOnly' || surface === 'notebookReactPrivate') && !isDevMode()) {
       return false;
     }
     const config = SURFACES[surface];

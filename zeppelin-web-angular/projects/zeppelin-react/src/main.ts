@@ -14,4 +14,5 @@ export { ConfigurationTable, mount as mountConfigurationTable } from './pages/Co
 export { NotebookRepoList, mount as mountNotebookRepoList } from './pages/NotebookRepoList';
 export { PublishedParagraph, mount } from './pages/PublishedParagraph';
 export { ParagraphFooter, mount as mountParagraphFooter } from './components/paragraph/ParagraphFooter';
+export { NotebookRouteEntry, mount as mountNotebookRouteEntry } from './pages/NotebookRouteEntry';
 export type { NotebookCoreRemoteProps } from './notebookCoreContract';

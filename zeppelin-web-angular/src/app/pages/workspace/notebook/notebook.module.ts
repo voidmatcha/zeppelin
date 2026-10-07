@@ -57,6 +57,7 @@ import { NotebookRoutingModule } from './notebook-routing.module';
 import { NotebookComponent } from './notebook.component';
 import { NotebookCoreReadComponent } from './notebook-core-read.component';
 import { NotebookRouteHostComponent } from './notebook-route-host.component';
+import { NotebookReactEntryComponent } from './notebook-react-entry.component';
 import { NotebookShareModule } from './share/share.module';
 import { NotebookSidebarComponent } from './sidebar/sidebar.component';
 
@@ -64,6 +65,7 @@ import { NotebookSidebarComponent } from './sidebar/sidebar.component';
   declarations: [
     NotebookComponent,
     NotebookRouteHostComponent,
+    NotebookReactEntryComponent,
     NotebookCoreReadComponent,
     NotebookActionBarComponent,
     NotebookInterpreterBindingComponent,

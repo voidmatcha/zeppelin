@@ -12,12 +12,9 @@
 
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
 import { cloneDeep } from 'lodash';
-import { ActivatedRoute } from '@angular/router';
-import { combineLatest, Subscription } from 'rxjs';
-import { distinctUntilChanged, map, startWith } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
 
 import { NotebookCoreReadSnapshot, NotebookCoreReadState } from '@zeppelin/notebook-core';
-import { MessageService } from '@zeppelin/services';
 import { ParagraphConfigResult, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 
@@ -102,11 +99,7 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   private readonly subscriptions = new Subscription();
   private readonly resultConfigs = new WeakMap<ParagraphConfigResult, ParagraphConfigResult>();
 
-  constructor(
-    private readonly route: ActivatedRoute,
-    private readonly message: MessageService,
-    private readonly cdr: ChangeDetectorRef
-  ) {}
+  constructor(private readonly cdr: ChangeDetectorRef) {}
 
   get readData(): NotebookCoreReadSnapshot | null {
     return this.state.status === 'ready' ? this.state.data : null;
@@ -117,21 +110,6 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
       this.host.snapshot$.subscribe(snapshot => {
         this.state = snapshot.readState;
         this.cdr.markForCheck();
-      })
-    );
-    this.subscriptions.add(
-      combineLatest([
-        this.message.connectedStatus$.pipe(startWith(this.message.connectedStatus), distinctUntilChanged()),
-        this.route.paramMap.pipe(
-          map(params => ({ noteId: params.get('noteId'), revisionId: params.get('revisionId') })),
-          distinctUntilChanged((left, right) => left.noteId === right.noteId && left.revisionId === right.revisionId)
-        )
-      ]).subscribe(([connected, target]) => {
-        if (!connected) {
-          this.host.invalidate();
-        } else if (target.noteId) {
-          this.host.load(target.noteId, target.revisionId);
-        }
       })
     );
   }

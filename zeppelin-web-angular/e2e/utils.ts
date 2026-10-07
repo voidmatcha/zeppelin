@@ -104,6 +104,7 @@ export const PAGES = {
 export const COVERAGE_EXCLUDED_COMPONENTS = [
   'src/app/core/destroy-hook/destroy-hook.component',
   'src/app/pages/workspace/notebook/notebook-route-host.component',
+  'src/app/pages/workspace/notebook/notebook-react-entry.component',
   'src/app/share/page-header/page-header.component',
   'src/app/share/resize-handle/resize-handle.component',
   'src/app/share/spin/spin.component'

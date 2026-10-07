@@ -11,13 +11,11 @@
  */
 
 import { ChangeDetectorRef } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { NEVER, of } from 'rxjs';
+import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotebookCoreReadStore, NotebookCoreWireNote } from '@zeppelin/notebook-core';
 import { ParagraphConfigResult } from '@zeppelin/sdk';
-import { MessageService } from '@zeppelin/services';
 import { NotebookCoreReadComponent } from './notebook-core-read.component';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 
@@ -40,11 +38,7 @@ describe('NotebookCoreReadComponent', () => {
       ]
     } as unknown as NotebookCoreWireNote);
     store.acceptPermissions(request, { owners: ['owner'], readers: [], writers: [], runners: [] });
-    const component = new NotebookCoreReadComponent(
-      { paramMap: NEVER } as unknown as ActivatedRoute,
-      { connectedStatus$: NEVER, connectedStatus: true } as unknown as MessageService,
-      { markForCheck: vi.fn() } as unknown as ChangeDetectorRef
-    );
+    const component = new NotebookCoreReadComponent({ markForCheck: vi.fn() } as unknown as ChangeDetectorRef);
     component.host = { snapshot$: of(store.getSnapshot()) } as NotebookCoreReadHost;
     component.ngOnInit();
 

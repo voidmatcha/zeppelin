@@ -12,13 +12,16 @@
 
 import { Component, OnDestroy, OnInit, ViewChild, ViewContainerRef } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
-import { distinctUntilChanged, map } from 'rxjs/operators';
+import { combineLatest, Subscription } from 'rxjs';
+import { distinctUntilChanged, map, startWith } from 'rxjs/operators';
 
 import { MessageService, ReactFeatureService, SecurityService } from '@zeppelin/services';
 import { NotebookComponent } from './notebook.component';
 import { NotebookCoreReadComponent } from './notebook-core-read.component';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
+import { NotebookReactEntryComponent } from './notebook-react-entry.component';
+
+type NotebookRouteMode = 'editable' | 'angular-read' | 'react-read' | 'fallback';
 
 @Component({
   selector: 'zeppelin-notebook-route-host',
@@ -29,6 +32,8 @@ export class NotebookRouteHostComponent implements OnInit, OnDestroy {
   @ViewChild('outlet', { read: ViewContainerRef, static: true }) private outlet!: ViewContainerRef;
   private readonly subscriptions = new Subscription();
   private readHost?: NotebookCoreReadHost;
+  private readSubscription?: Subscription;
+  private mode: NotebookRouteMode = 'editable';
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -41,19 +46,50 @@ export class NotebookRouteHostComponent implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.route.queryParamMap
         .pipe(
-          map(params => this.features.isEnabled('notebookCoreReadOnly', params)),
+          map(params =>
+            this.features.isEnabled('notebookReactPrivate', params)
+              ? 'react-read'
+              : this.features.isEnabled('notebookCoreReadOnly', params)
+                ? 'angular-read'
+                : 'editable'
+          ),
           distinctUntilChanged()
         )
-        .subscribe(readOnly => {
-          // Clearing destroys the legacy note before the private view can subscribe or request.
+        .subscribe(mode => {
+          this.mode = mode;
           this.outlet.clear();
+          this.readSubscription?.unsubscribe();
           this.readHost?.destroy();
           this.readHost = undefined;
-          if (readOnly) {
-            this.readHost = new NotebookCoreReadHost(this.message, this.security);
-            this.outlet.createComponent(NotebookCoreReadComponent).setInput('host', this.readHost);
-          } else {
+          if (mode === 'editable') {
             this.outlet.createComponent(NotebookComponent);
+            return;
+          }
+
+          const host = new NotebookCoreReadHost(this.message, this.security);
+          this.readHost = host;
+          this.readSubscription = combineLatest([
+            this.message.connectedStatus$.pipe(startWith(this.message.connectedStatus), distinctUntilChanged()),
+            this.route.paramMap.pipe(
+              map(params => ({ noteId: params.get('noteId'), revisionId: params.get('revisionId') })),
+              distinctUntilChanged(
+                (left, right) => left.noteId === right.noteId && left.revisionId === right.revisionId
+              )
+            )
+          ]).subscribe(([connected, target]) => {
+            if (!connected) {
+              host.invalidate();
+            } else if (target.noteId) {
+              host.load(target.noteId, target.revisionId);
+            }
+          });
+
+          if (mode === 'react-read') {
+            const entry = this.outlet.createComponent(NotebookReactEntryComponent);
+            entry.setInput('host', host);
+            entry.setInput('onEntryFailure', () => this.fallbackToAngular(host));
+          } else {
+            this.outlet.createComponent(NotebookCoreReadComponent).setInput('host', host);
           }
         })
     );
@@ -61,7 +97,17 @@ export class NotebookRouteHostComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subscriptions.unsubscribe();
+    this.readSubscription?.unsubscribe();
     this.outlet.clear();
     this.readHost?.destroy();
+  }
+
+  private fallbackToAngular(host: NotebookCoreReadHost): void {
+    if (this.readHost !== host || this.mode !== 'react-read') {
+      return;
+    }
+    this.mode = 'fallback';
+    this.outlet.clear();
+    this.outlet.createComponent(NotebookCoreReadComponent).setInput('host', host);
   }
 }
