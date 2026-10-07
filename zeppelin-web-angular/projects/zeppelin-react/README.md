@@ -82,6 +82,9 @@ Append `?react=true` to any published paragraph URL, `?reactFooter=true` to a no
 ## Setup
 
 Run `npm install` then `npm run dev` to start the dev server on `http://localhost:3001`.
+The development server uses `webpack-dev-middleware` directly because this remote does not use hot reload,
+live reload, a WebSocket server, or the webpack dev-server client. It still provides the CORS headers and
+history fallback required by the Angular host.
 
 The Angular host must be running on port 4200. From `zeppelin-web-angular/`, `npm start` runs both servers together.
 
@@ -166,4 +169,3 @@ export function mount(element: HTMLElement, props: Props): ReactMountHandle;
    an inline object literal) so identity is stable when nothing changed.
 
 Every exposed module must return the handle contract from `mount`. The directive assigns the return value straight to its handle, so returning a bare unmount function makes the next prop change throw.
-

@@ -5,12 +5,12 @@
     "*.css"
   ],
   "scripts": {
-    "start": "webpack serve --config webpack.config.js --mode development",
+    "start": "node scripts/dev-server.cjs",
     "build": "webpack --config webpack.config.js --mode production",
-    "dev": "webpack serve --config webpack.config.js --mode development",
+    "dev": "node scripts/dev-server.cjs",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/dev-server.spec.cjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -49,14 +49,14 @@
     "html-webpack-plugin": "5.5.0",
     "jsdom": "29.1.1",
     "style-loader": "3.3.0",
-    "ts-loader": "9.5.7",
+    "ts-loader": "9.6.2",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.33.1",
     "vite": "8.2.1",
     "vitest": "4.1.11",
     "webpack": "5.105.4",
     "webpack-cli": "5.1.4",
-    "webpack-dev-server": "6.0.0"
+    "webpack-dev-middleware": "8.3.0"
   },
   "overrides": {
     "minimatch": "^10.2.4",

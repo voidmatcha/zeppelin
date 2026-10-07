@@ -20,20 +20,7 @@ module.exports = (_env, argv) => {
 
   return {
     entry: './src/main.ts',
-    devServer: {
-      port: 3001,
-      historyApiFallback: true,
-      hot: false,
-      liveReload: false,
-      allowedHosts: 'all',
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-        'Access-Control-Allow-Headers': 'X-Requested-With, content-type, Authorization'
-      },
-      client: false,
-      webSocketServer: false
-    },
+    mode: argv.mode,
     resolve: {
       extensions: ['.tsx', '.ts', '.js', '.jsx'],
       modules: ['node_modules', path.resolve(__dirname, '../../node_modules')],
