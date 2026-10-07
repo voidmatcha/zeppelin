@@ -220,6 +220,17 @@ describe('notebook core import boundary', () => {
     expect(findNotebookRemoteConsumerViolations(path, source)).toEqual([]);
 
     expect(
+      findNotebookRemoteConsumerViolations(
+        path,
+        `import type { NotebookCoreReadState, NotebookCoreReadSnapshot, NotebookCoreAclState } from '${relativeTarget}';`
+      )
+    ).toEqual([]);
+
+    expect(
+      findNotebookRemoteConsumerViolations(path, `import type { NotebookCoreReadRequest } from '${relativeTarget}';`)
+    ).toContain(`${path}: remote notebook core import NotebookCoreReadRequest`);
+
+    expect(
       findNotebookRemoteConsumerViolations(path, `export type Port = import('${relativeTarget}').NotebookCorePort;`)
     ).toEqual([]);
 

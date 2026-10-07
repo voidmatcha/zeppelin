@@ -11,3 +11,5 @@
  */
 
 export * from './host-remote-contract';
+export * from './notebook-read-store';
+export * from './notebook-read-selectors';

@@ -226,7 +226,14 @@ export const findReactNotebookConsumerViolations = (
   return violations;
 };
 
-const notebookRemoteContractTypes = new Set(['NotebookCorePort', 'NotebookCoreRemoteProps', 'NotebookCoreSnapshot']);
+const notebookRemoteContractTypes = new Set([
+  'NotebookCorePort',
+  'NotebookCoreRemoteProps',
+  'NotebookCoreSnapshot',
+  'NotebookCoreReadState',
+  'NotebookCoreReadSnapshot',
+  'NotebookCoreAclState'
+]);
 
 const isTypeOnlyImportDeclaration = (node: ts.ImportDeclaration): boolean => {
   const clause = node.importClause;

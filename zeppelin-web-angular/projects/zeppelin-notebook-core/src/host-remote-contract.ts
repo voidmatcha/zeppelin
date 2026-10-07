@@ -13,7 +13,38 @@
 export type NotebookCoreSnapshot = Readonly<{
   noteId: string;
   revisionId: string | null;
+  /** Optional while earlier host/remote contract probes still publish identity only. */
+  readState?: NotebookCoreReadState;
 }>;
+
+/** The wire note's paragraph collection is stored once, by ID, in the Core. */
+export type NotebookCoreReadSnapshot = Readonly<{
+  note: Readonly<{ id: string; name: string; path: string } & Record<string, unknown>>;
+  paragraphOrder: readonly string[];
+  paragraphsById: Readonly<
+    Record<string, Readonly<{ id: string; text: string; status: string } & Record<string, unknown>>>
+  >;
+}>;
+
+export type NotebookCoreAclState =
+  | Readonly<{ status: 'loading' }>
+  | Readonly<{
+      status: 'ready';
+      permissions: Readonly<{
+        readers: readonly string[];
+        owners: readonly string[];
+        writers: readonly string[];
+        runners: readonly string[];
+      }>;
+    }>
+  | Readonly<{ status: 'accessDenied' | 'failed' }>;
+
+export type NotebookCoreReadState =
+  | Readonly<{ status: 'initial'; acl: NotebookCoreAclState }>
+  | Readonly<{ status: 'loading'; acl: NotebookCoreAclState }>
+  | Readonly<{ status: 'ready'; data: NotebookCoreReadSnapshot; acl: NotebookCoreAclState }>
+  | Readonly<{ status: 'notFound' | 'accessDenied' | 'failed'; acl: NotebookCoreAclState }>
+  | Readonly<{ status: 'disposed'; acl: NotebookCoreAclState }>;
 
 export type NotebookCoreUnsubscribe = () => void;
 
