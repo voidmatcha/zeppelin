@@ -1,0 +1,153 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* Mirrors paragraph.component.less: a card with the control at the top right and 32px above the editor. */
+.paragraph {
+  position: relative;
+  padding: 32px 12px 12px;
+  border: 1px solid var(--za-border);
+  background: var(--za-bg);
+  box-shadow:
+    0 1px 2px -2px rgba(0, 0, 0, 0.16),
+    0 3px 6px 0 rgba(0, 0, 0, 0.12),
+    0 5px 12px 4px rgba(0, 0, 0, 0.09);
+}
+/* The host's reveal (notebook.component.less): Zeppelin's focused shadow and a primary ring that fades. */
+.paragraph-reveal {
+  animation: sc-reveal 1.5s var(--za-ease-standard);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.46);
+}
+@keyframes sc-reveal {
+  0%,
+  40% {
+    box-shadow:
+      0 0 0 3px rgba(48, 113, 169, 0.35),
+      0 0 5px rgba(0, 0, 0, 0.46);
+  }
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(48, 113, 169, 0),
+      0 0 5px rgba(0, 0, 0, 0.46);
+  }
+}
+.paragraph-title {
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  color: var(--za-text);
+  font-size: 14px;
+}
+.paragraph-control {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--za-text-secondary);
+  font-size: 13px;
+}
+.paragraph-status {
+  margin-right: 6px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.control-run {
+  color: var(--za-accent);
+}
+.paragraph-suggestion {
+  margin: 4px 0 8px;
+}
+
+/* code-editor.component.less: no box, a 4px bar that is blue when focused and orange when dirty. */
+.editor {
+  margin: 0;
+  padding: 2px 12px 8px;
+  overflow-x: auto;
+  border-left: 4px solid var(--za-border);
+  color: var(--za-text);
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 18px;
+  transition:
+    border-color var(--za-duration-moderate) var(--za-ease-standard),
+    opacity var(--za-duration-moderate) var(--za-ease-standard);
+}
+.editor-focused {
+  border-left-color: #3071a9;
+}
+.editor-dirty {
+  border-left-color: var(--za-warning);
+}
+/* While a suggestion is open, the current code steps back so the diff reads first. */
+.editor-muted {
+  opacity: 0.45;
+}
+.tok-magic {
+  color: var(--za-text-secondary);
+}
+.tok-keyword {
+  color: #0000ff;
+}
+.tok-string {
+  color: #a31515;
+}
+.tok-number {
+  color: #098658;
+}
+html[data-theme='dark'] .tok-keyword {
+  color: #569cd6;
+}
+html[data-theme='dark'] .tok-string {
+  color: #ce9178;
+}
+html[data-theme='dark'] .tok-number {
+  color: #b5cea8;
+}
+
+.progress {
+  height: 2px;
+  margin: 8px 0 0;
+  overflow: hidden;
+  background: var(--za-accent-bg);
+}
+.progress::after {
+  content: '';
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--za-accent);
+  animation: sc-progress 1s var(--za-ease-standard) infinite;
+}
+@keyframes sc-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+/* Text results, as the interpreter prints them. */
+.result {
+  margin: 24px 0 0;
+  color: var(--za-text);
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 18px;
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+/* footer.component.less */
+.footer {
+  margin-top: 12px;
+  color: var(--za-text-secondary);
+  font-size: 12px;
+}

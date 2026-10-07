@@ -66,7 +66,7 @@ const preview: Preview = {
     layout: 'fullscreen',
     options: {
       storySort: {
-        order: ['Assistant', ['Introduction', 'Foundations', 'Components', 'Panel']]
+        order: ['Assistant', ['Introduction', 'Foundations', 'Components', 'Showcase', 'Panel']]
       }
     },
     controls: { expanded: true }

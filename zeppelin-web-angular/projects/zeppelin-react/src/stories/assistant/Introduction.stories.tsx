@@ -24,6 +24,14 @@ export default meta;
 
 const PRINCIPLES: Array<[string, string]> = [
   [
+    'Nothing changes without approval',
+    'Tools that edit or run a paragraph wait for Allow. Skip, a timeout or a disconnect means they do not run, and allowing an edit never runs it.'
+  ],
+  [
+    'Decide where the code is',
+    'A proposed edit is a diff inside its paragraph; the panel keeps the action log and the same approval.'
+  ],
+  [
     'Model output is untrusted',
     'Markdown without raw HTML or remote images; only paragraph ids that exist in the note become links.'
   ],
@@ -48,7 +56,8 @@ export const Principles: StoryObj = {
         <p>
           Presentational pieces for the AI panel in the notebook sidebar, in
           <code> src/entities/assistant/ui</code>. They take data and callbacks only; the conversation state and
-          transport stay in <code>widgets/assistant-panel</code>. Design decisions are recorded in the{' '}
+          transport stay in <code>widgets/assistant-panel</code>. Pieces marked planned wait for server write tools.
+          Design decisions are recorded in the{' '}
           <a
             href="https://cwiki.apache.org/confluence/spaces/ZEPPELIN/pages/451979149/Notebook+Assistant+Frontend"
             target="_blank"

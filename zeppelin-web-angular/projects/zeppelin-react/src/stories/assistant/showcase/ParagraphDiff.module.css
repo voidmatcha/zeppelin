@@ -1,0 +1,117 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.paragraph-diff {
+  overflow: hidden;
+  border: 1px solid var(--za-accent-border);
+  border-radius: var(--za-radius);
+  background: var(--za-bg);
+}
+.paragraph-diff[data-state='skipped'] {
+  border-color: var(--za-border);
+}
+.paragraph-diff-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--za-space-2);
+  min-height: 32px;
+  padding: var(--za-space-1) var(--za-space-2);
+  background: var(--za-accent-bg);
+  font-size: var(--za-font-size-sm);
+}
+.paragraph-diff[data-state='skipped'] .paragraph-diff-bar {
+  background: var(--za-fill);
+}
+.paragraph-diff-title {
+  font-weight: 600;
+}
+.paragraph-diff-count {
+  font-family: var(--za-font-mono);
+  font-size: var(--za-font-size-xs);
+}
+.diff-added-count {
+  color: var(--za-success);
+}
+.diff-removed-count {
+  color: var(--za-error);
+}
+.paragraph-diff-actions {
+  display: flex;
+  gap: var(--za-space-2);
+  margin-left: auto;
+}
+.diff {
+  overflow-x: auto;
+  padding: var(--za-space-1) 0;
+  font-family: var(--za-font-mono);
+  font-size: var(--za-font-size-sm);
+  line-height: 1.6;
+}
+.diff-line {
+  display: grid;
+  grid-template-columns: 32px 32px 1fr;
+  min-width: max-content;
+}
+.diff-line[data-kind='added'] {
+  background: var(--za-success-bg);
+}
+.diff-line[data-kind='removed'] {
+  background: var(--za-error-bg);
+}
+.diff-number {
+  padding-right: var(--za-space-2);
+  color: var(--za-text-tertiary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.diff-text {
+  padding-right: var(--za-space-3);
+  white-space: pre;
+}
+.diff-sign {
+  display: inline-block;
+  width: 2ch;
+  color: var(--za-text-tertiary);
+}
+.diff-line[data-kind='added'] .diff-sign {
+  color: var(--za-success);
+}
+.diff-line[data-kind='removed'] .diff-sign {
+  color: var(--za-error);
+}
+
+.paragraph-diff {
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+  transition: border-color var(--za-duration-moderate) var(--za-ease-standard);
+}
+.paragraph-diff-bar {
+  transition: background-color var(--za-duration-moderate) var(--za-ease-standard);
+}
+/* Lines draw in top to bottom, a few milliseconds apart, so the eye follows the change. */
+.diff-line {
+  animation: za-diff-line var(--za-duration-moderate) var(--za-ease-entrance) both;
+  animation-delay: calc(var(--za-line-index, 0) * 18ms);
+}
+@keyframes za-diff-line {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+.paragraph-diff[data-state='allowed'] {
+  border-color: var(--za-success);
+}
+.paragraph-diff[data-state='allowed'] .paragraph-diff-bar {
+  background: var(--za-success-bg);
+}

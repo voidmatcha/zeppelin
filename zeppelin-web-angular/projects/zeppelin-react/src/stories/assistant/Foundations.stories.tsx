@@ -49,8 +49,10 @@ const COLOR_GROUPS: Array<{ title: string; note: string; tokens: Array<[string, 
     note: "Zeppelin's #3071a9, derived by antd for both themes. Status colours only mark outcomes.",
     tokens: [
       ['--za-accent', 'Primary action, focus, paragraph links'],
-      ['--za-accent-bg', 'Link chips, suggestion hover'],
-      ['--za-success', 'Done steps']
+      ['--za-accent-bg', 'Link chips, suggestion hover, diff header'],
+      ['--za-success', 'Done steps, added lines'],
+      ['--za-warning', 'Waiting for approval'],
+      ['--za-error', 'Failed steps, removed lines']
     ]
   }
 ];
@@ -131,7 +133,7 @@ export const Typography: Story = {
 
 const MOTION: Array<[string, string, string]> = [
   ['--za-duration-fast', '110ms', 'Hover, focus and small state changes'],
-  ['--za-duration-moderate', '240ms', 'A message or step arriving; log open and close'],
+  ['--za-duration-moderate', '240ms', 'A message, step or approval arriving; log open and close'],
   ['--za-duration-slow', '400ms', 'Empty state and disclaimer, which nobody is waiting for']
 ];
 
