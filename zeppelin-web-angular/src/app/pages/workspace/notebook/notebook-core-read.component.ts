@@ -11,6 +11,7 @@
  */
 
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
+import { cloneDeep } from 'lodash';
 import { ActivatedRoute } from '@angular/router';
 import { combineLatest, Subscription } from 'rxjs';
 import { distinctUntilChanged, map, startWith } from 'rxjs/operators';
@@ -52,29 +53,34 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
           @if (state.acl.status === 'failed') {
             <p role="alert">Could not load permissions.</p>
           }
+          @if (state.acl.status === 'ready') {
+            <section aria-label="Notebook permissions">
+              <h2>Permissions</h2>
+              <p>Owners: {{ state.acl.permissions.owners.join(', ') || 'None' }}</p>
+              <p>Readers: {{ state.acl.permissions.readers.join(', ') || 'None' }}</p>
+              <p>Writers: {{ state.acl.permissions.writers.join(', ') || 'None' }}</p>
+              <p>Runners: {{ state.acl.permissions.runners.join(', ') || 'None' }}</p>
+            </section>
+          }
           @for (id of readData?.paragraphOrder; track id) {
             <article class="notebook-core-read-paragraph">
               <h2>{{ paragraph(id)?.title || 'Paragraph' }}</h2>
-              <pre>{{ paragraph(id)?.text }}</pre>
+              @if (!isEditorHidden(id)) {
+                <pre>{{ paragraph(id)?.text }}</pre>
+              }
               <p>{{ paragraph(id)?.status }}</p>
-              @for (result of results(id); track $index) {
-                <div class="notebook-core-read-result" [attr.data-result-type]="result.type">
-                  @switch (result.type) {
-                    @case ('TEXT') {
-                      <pre>{{ result.data }}</pre>
-                    }
-                    @case ('TABLE') {
-                      <p>Saved table data</p>
-                      <pre>{{ result.data }}</pre>
-                      @if (resultConfig(id, $index)?.graph?.mode) {
-                        <p>Saved visualization: {{ resultConfig(id, $index)?.graph?.mode }} (preview unavailable)</p>
-                      }
-                    }
-                    @default {
-                      <p>Saved {{ result.type }} result preview is unavailable.</p>
-                    }
-                  }
-                </div>
+              @if (!isResultHidden(id)) {
+                @for (result of results(id); track $index) {
+                  <div class="notebook-core-read-result" [attr.data-result-type]="result.type">
+                    <zeppelin-notebook-paragraph-result
+                      [result]="result"
+                      [config]="resultConfig(id, $index)"
+                      [id]="id + '_' + $index"
+                      [published]="true"
+                      [isPending]="false"
+                    ></zeppelin-notebook-paragraph-result>
+                  </div>
+                }
               }
             </article>
           }
@@ -94,6 +100,7 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   @Input({ required: true }) host!: NotebookCoreReadHost;
   state: NotebookCoreReadState = { status: 'initial', acl: { status: 'loading' } };
   private readonly subscriptions = new Subscription();
+  private readonly resultConfigs = new WeakMap<ParagraphConfigResult, ParagraphConfigResult>();
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -142,8 +149,23 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
     return value?.msg ?? [];
   }
 
+  isEditorHidden(id: string): boolean {
+    return (this.paragraph(id)?.config as { editorHide?: boolean } | undefined)?.editorHide === true;
+  }
+
+  isResultHidden(id: string): boolean {
+    return (this.paragraph(id)?.config as { tableHide?: boolean } | undefined)?.tableHide === true;
+  }
+
   resultConfig(id: string, index: number): ParagraphConfigResult | undefined {
     const config = this.paragraph(id)?.config as { results?: Record<string, ParagraphConfigResult> } | undefined;
-    return config?.results?.[index];
+    const saved = config?.results?.[index];
+    if (!saved) return undefined;
+    let mutable = this.resultConfigs.get(saved);
+    if (!mutable) {
+      mutable = cloneDeep(saved);
+      this.resultConfigs.set(saved, mutable);
+    }
+    return mutable;
   }
 }
