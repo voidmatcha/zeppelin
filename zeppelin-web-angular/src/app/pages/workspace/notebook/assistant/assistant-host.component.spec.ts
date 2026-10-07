@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OP } from '@zeppelin/sdk';
 import { BaseUrlService, MessageService, TicketService } from '@zeppelin/services';
 import { AssistantHostComponent } from './assistant-host.component';
+import { AssistantProposals } from './assistant-proposals';
 import { AssistantReveal } from './assistant-reveal';
 import { AssistantSlots } from './assistant-slots';
 
@@ -37,7 +38,10 @@ describe('AssistantHostComponent assistant panel', () => {
   };
   const props = current;
 
+  let proposals: AssistantProposals;
+
   beforeEach(() => {
+    proposals = new AssistantProposals();
     window.history.replaceState({}, '', '/');
     logout = vi.fn(() => new Subject<void>());
     entry = new AssistantSlots();
@@ -59,7 +63,8 @@ describe('AssistantHostComponent assistant panel', () => {
       ticket,
       entry,
       { reveal: revealParagraph } as unknown as AssistantReveal,
-      { send: socketSend, receive: vi.fn(() => socketEvents), closed: () => socketClosed } as unknown as MessageService
+      { send: socketSend, receive: vi.fn(() => socketEvents), closed: () => socketClosed } as unknown as MessageService,
+      proposals
     );
     component.note = { id: 'note', paragraphs: [] } as never;
     component.ngOnInit();
@@ -181,9 +186,11 @@ describe('AssistantHostComponent assistant panel', () => {
   });
 
   it('passes paragraph reveals to Angular and refuses them after a note change', async () => {
-    const reveal = current().revealParagraph as (id: string) => Promise<string>;
+    const reveal = current().revealParagraph as (id: string, options?: { focus?: boolean }) => Promise<string>;
     await expect(reveal('p1')).resolves.toBe('shown');
-    expect(revealParagraph).toHaveBeenCalledWith('p1');
+    expect(revealParagraph).toHaveBeenCalledWith('p1', undefined);
+    await reveal('p2', { focus: false });
+    expect(revealParagraph).toHaveBeenLastCalledWith('p2', { focus: false });
     component.note = { id: 'other-note', paragraphs: [] } as never;
     await expect(reveal('p1')).rejects.toThrow('Notebook changed');
   });
@@ -207,5 +214,35 @@ describe('AssistantHostComponent assistant panel', () => {
     expect(window.location.hash).toBe('#assistant-login');
     expect(logout).not.toHaveBeenCalled();
     window.location.hash = originalHash;
+  });
+
+  it('sends tool decisions for the open note only', () => {
+    const socket = current().socket;
+    socket.decide({ noteId: 'note', conversationId: 'c', toolCallId: 't1', decision: 'allow' });
+    expect(socketSend).toHaveBeenCalledWith('ASSISTANT_TOOL_DECISION', {
+      noteId: 'note',
+      conversationId: 'c',
+      toolCallId: 't1',
+      decision: 'allow'
+    });
+    expect(() => socket.decide({ noteId: 'other', conversationId: 'c', toolCallId: 't2', decision: 'skip' })).toThrow(
+      'Notebook changed'
+    );
+  });
+
+  it('shows proposals in their paragraph and reports decisions made there to the panel', () => {
+    const shown: unknown[] = [];
+    const subscription = proposals.forParagraph('p1').subscribe(proposal => shown.push(proposal));
+    const decisions: Array<[string, string]> = [];
+    const unsubscribe = current().subscribeProposalDecisions!((id, decision) => decisions.push([id, decision]));
+
+    current().showProposal!({ toolCallId: 't1', paragraphId: 'p1', text: 'new' });
+    proposals.decide('t1', 'skip');
+    current().clearProposal!('t1');
+
+    expect(shown).toEqual([null, { toolCallId: 't1', paragraphId: 'p1', text: 'new' }, null]);
+    expect(decisions).toEqual([['t1', 'skip']]);
+    unsubscribe();
+    subscription.unsubscribe();
   });
 });

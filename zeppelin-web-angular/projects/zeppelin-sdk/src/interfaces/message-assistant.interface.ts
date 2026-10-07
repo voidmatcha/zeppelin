@@ -23,7 +23,17 @@ export type AssistantEventType =
   | 'message.delta'
   | 'message.done'
   | 'tool_call.started'
-  | 'tool_call.done';
+  | 'tool_call.done'
+  // Proposed with write tools (not yet in the server): sent before a tool that changes the notebook runs.
+  | 'tool_call.approval_requested';
+
+/** Proposed with write tools: the conversation owner's answer to a `tool_call.approval_requested`. */
+export interface AssistantToolDecision {
+  noteId: string;
+  conversationId: string;
+  toolCallId: string;
+  decision: 'allow' | 'skip';
+}
 
 export interface AssistantEvent {
   conversationId: string;

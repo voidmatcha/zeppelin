@@ -38,6 +38,12 @@ export class NotebookAssistantPage extends BasePage {
     return this.panel.getByRole('button', { name: `Delete ${title}`, exact: true });
   }
 
+  proposal(paragraphId: string): Locator {
+    return this.page
+      .locator(`zeppelin-notebook-paragraph[data-paragraph-id="${paragraphId}"]`)
+      .getByRole('region', { name: 'Suggested change from the assistant', exact: true });
+  }
+
   async open(): Promise<void> {
     await this.toggleButton.click();
     await this.messageInput.waitFor({ state: 'visible' });

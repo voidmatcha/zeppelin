@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import type { AssistantSendMessage, AssistantSocket, AssistantSocketEvent } from '@zeppelin/sdk';
+import type { AssistantSendMessage, AssistantSocket, AssistantSocketEvent, AssistantToolDecision } from '@zeppelin/sdk';
 
 /**
  * What the panel needs from the server. Conversations and history come from REST (JSON after unwrapping Zeppelin's
@@ -54,7 +54,9 @@ export type AssistantRunEvent =
   | { type: 'message.done'; messageId: string; content: string }
   | { type: 'tool_call.started'; toolCallId: string; name: string }
   // The server does not repeat the tool name on completion.
-  | { type: 'tool_call.done'; toolCallId: string; name?: string };
+  | { type: 'tool_call.done'; toolCallId: string; name?: string }
+  // Proposed with write tools: the tool waits until the owner allows or skips it.
+  | { type: 'tool_call.approval_requested'; toolCallId: string; name: string; arguments: Record<string, unknown> };
 
 export interface AssistantTransport {
   /** Conversations of the note the transport was created for. */
@@ -64,6 +66,7 @@ export interface AssistantTransport {
   /** The latest page of history, or the page before `before` (an `earlierCursor`). */
   getMessages(conversationId: string, before?: string): Promise<AssistantMessagePage>;
   openRun(conversationId: string, body: AssistantRunBody, signal: AbortSignal): AsyncIterable<AssistantRunEvent>;
+  decideToolCall(conversationId: string, toolCallId: string, decision: AssistantToolDecision['decision']): void;
 }
 
 const HTTP_MESSAGES: Record<number, string> = {
@@ -160,6 +163,15 @@ export const mapSocketEvent = ({ type, payload }: AssistantSocketEvent): Assista
       return { type, toolCallId: requiredString(data, 'toolCallId'), name: requiredString(data, 'name') };
     case 'tool_call.done':
       return { type, toolCallId: requiredString(data, 'toolCallId'), name: optionalString(data, 'name') };
+    case 'tool_call.approval_requested': {
+      const args = data.arguments;
+      return {
+        type,
+        toolCallId: requiredString(data, 'toolCallId'),
+        name: requiredString(data, 'name'),
+        arguments: typeof args === 'object' && args !== null ? (args as Record<string, unknown>) : {}
+      };
+    }
     default:
       return undefined;
   }
@@ -277,8 +289,9 @@ const MAX_ABANDONED_RUNS = 200;
  */
 export interface RunTracking {
   abandoned: Set<string>;
+  decisionListeners: Set<(conversationId: string, toolCallId: string) => void>;
 }
-export const createRunTracking = (): RunTracking => ({ abandoned: new Set() });
+export const createRunTracking = (): RunTracking => ({ abandoned: new Set(), decisionListeners: new Set() });
 
 /**
  * Sends one message over the host's notebook WebSocket and yields that conversation's events until a terminal one.
@@ -289,7 +302,7 @@ export async function* socketRun(
   socket: AssistantSocket,
   message: AssistantSendMessage,
   signal: AbortSignal,
-  { abandoned }: RunTracking,
+  { abandoned, decisionListeners }: RunTracking,
   idleTimeoutMs = RUN_IDLE_TIMEOUT_MS
 ): AsyncIterable<AssistantRunEvent> {
   signal.throwIfAborted();
@@ -314,6 +327,12 @@ export async function* socketRun(
   let started = false;
   let ownRunId: string | undefined;
   let ended = false;
+  // The server is silent while a tool waits for the user's answer, so silence then is not a lost run.
+  const awaitingApprovals = new Set<string>();
+  const onDecision = (conversationId: string, toolCallId: string) => {
+    if (conversationId === message.conversationId && awaitingApprovals.delete(toolCallId)) wake?.();
+  };
+  decisionListeners.add(onDecision);
   try {
     socket.send(message);
     while (true) {
@@ -322,7 +341,7 @@ export async function* socketRun(
         let timer: ReturnType<typeof setTimeout> | undefined;
         await new Promise<void>(resolve => {
           wake = resolve;
-          timer = setTimeout(() => push(new AssistantStreamError()), idleTimeoutMs);
+          if (awaitingApprovals.size === 0) timer = setTimeout(() => push(new AssistantStreamError()), idleTimeoutMs);
         });
         clearTimeout(timer);
         wake = undefined;
@@ -344,6 +363,8 @@ export async function* socketRun(
           ownRunId = item.runId;
         } else if (item.type !== 'run.failed') continue;
       }
+      if (item.type === 'tool_call.approval_requested') awaitingApprovals.add(item.toolCallId);
+      else if (item.type === 'tool_call.done') awaitingApprovals.delete(item.toolCallId);
       if (isTerminal(item)) ended = true;
       yield item;
       if (ended) return;
@@ -354,6 +375,7 @@ export async function* socketRun(
       abandoned.add(ownRunId);
       if (abandoned.size > MAX_ABANDONED_RUNS) abandoned.delete(abandoned.values().next().value!);
     }
+    decisionListeners.delete(onDecision);
     signal.removeEventListener('abort', onAbort);
     unsubscribe();
     unsubscribeClose();
@@ -429,6 +451,11 @@ export const createAssistantTransport = (
     deleteConversation: async conversationId => {
       await requestJson<void>(`${base}/${encodeURIComponent(conversationId)}`, { method: 'DELETE' }, onAuthError);
     },
+    decideToolCall: (conversationId, toolCallId, decision) => {
+      socket.decide({ noteId, conversationId, toolCallId, decision });
+      // Start listening for server progress again only after the last pending decision was sent successfully.
+      runs.decisionListeners.forEach(listener => listener(conversationId, toolCallId));
+    },
     getMessages: async (conversationId, before): Promise<AssistantMessagePage> => {
       const cursor = before ? `&cursor=${encodeURIComponent(before)}` : '';
       const page = await requestJson<MessagePage>(
@@ -480,6 +507,10 @@ export const scopeTransport = (inner: AssistantTransport) => {
     listConversations: () => guarded(() => inner.listConversations()),
     createConversation: body => guarded(() => inner.createConversation(body)),
     deleteConversation: id => guarded(() => inner.deleteConversation(id)),
+    decideToolCall: (id, toolCallId, decision) => {
+      assertActive();
+      inner.decideToolCall(id, toolCallId, decision);
+    },
     getMessages: (id, before) => guarded(() => inner.getMessages(id, before)),
     async *openRun(id, body, signal) {
       assertActive();

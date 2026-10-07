@@ -53,12 +53,13 @@ import {
 
 import { scrollIntoViewIfNeeded } from '@zeppelin/utility';
 import { NotebookParagraphComponent } from './paragraph/paragraph.component';
+import { AssistantProposals } from './assistant/assistant-proposals';
 import { AssistantReveal } from './assistant/assistant-reveal';
 import { AssistantSlots } from './assistant/assistant-slots';
 
 @Component({
   selector: 'zeppelin-notebook',
-  providers: [AssistantSlots, AssistantReveal],
+  providers: [AssistantSlots, AssistantReveal, AssistantProposals],
   templateUrl: './notebook.component.html',
   styleUrls: ['./notebook.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush,

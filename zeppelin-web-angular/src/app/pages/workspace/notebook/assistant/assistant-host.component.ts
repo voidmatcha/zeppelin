@@ -16,6 +16,7 @@ import { takeUntil } from 'rxjs/operators';
 
 import { Note, OP, type AssistantHostProps, type AssistantSocket } from '@zeppelin/sdk';
 import { BaseUrlService, MessageService, TicketService } from '@zeppelin/services';
+import { AssistantProposals } from './assistant-proposals';
 import { AssistantReveal } from './assistant-reveal';
 import { AssistantSlots } from './assistant-slots';
 
@@ -48,6 +49,12 @@ export class AssistantHostComponent implements OnInit, DoCheck, OnDestroy {
       }
       this.messages.send<OP.ASSISTANT_SEND_MESSAGE>(OP.ASSISTANT_SEND_MESSAGE, message);
     },
+    decide: decision => {
+      if (decision.noteId !== this.note?.id) {
+        throw new DOMException('Notebook changed', 'AbortError');
+      }
+      this.messages.send<OP.ASSISTANT_TOOL_DECISION>(OP.ASSISTANT_TOOL_DECISION, decision);
+    },
     subscribe: listener => {
       const subscription = this.messages.receive(OP.ASSISTANT_EVENT).subscribe(listener);
       return () => subscription.unsubscribe();
@@ -72,7 +79,8 @@ export class AssistantHostComponent implements OnInit, DoCheck, OnDestroy {
     private ticket: TicketService,
     private slots: AssistantSlots,
     private reveal: AssistantReveal,
-    private messages: MessageService
+    private messages: MessageService,
+    private proposals: AssistantProposals
   ) {}
 
   get note(): Exclude<Note['note'], undefined> {
@@ -176,15 +184,25 @@ export class AssistantHostComponent implements OnInit, DoCheck, OnDestroy {
           this.onAssistantError(error);
         }
       },
-      revealParagraph: paragraphId =>
+      revealParagraph: (paragraphId, options) =>
         generation === this.assistantGeneration
-          ? this.reveal.reveal(paragraphId)
+          ? this.reveal.reveal(paragraphId, options)
           : Promise.reject(new DOMException('Notebook changed', 'AbortError')),
       paragraphs,
       onPanelVisibilityChange: this.onPanelVisibilityChange,
       subscribePanelClose: this.subscribePanelClose,
       panelWidth: this.panelWidth,
-      onPanelWidthChange: this.onPanelWidthChange
+      onPanelWidthChange: this.onPanelWidthChange,
+      showProposal: proposal => {
+        if (generation === this.assistantGeneration) this.proposals.show(proposal);
+      },
+      clearProposal: toolCallId => this.proposals.clear(toolCallId),
+      subscribeProposalDecisions: listener => {
+        const subscription = this.proposals.decisions.subscribe(({ toolCallId, decision }) =>
+          listener(toolCallId, decision)
+        );
+        return () => subscription.unsubscribe();
+      }
     };
   }
 

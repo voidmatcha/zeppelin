@@ -45,26 +45,34 @@ export class FakeAssistantBackend {
   readonly deletedIds: string[] = [];
   /** Stored history by conversation id, newest first like the server's pages. */
   readonly history = new Map<string, StoredMessage[]>();
+  readonly decisions: Array<{ noteId: string; conversationId: string; toolCallId: string; decision: string }> = [];
   private nextId = 1;
   /** The ASSISTANT_EVENT frames that answer a sent message. */
   reply: (content: string) => AssistantSocketEvent[] = () => [];
+  /** The frames that follow an ASSISTANT_TOOL_DECISION (the proposed approval protocol). */
+  afterDecision: (decision: { toolCallId: string; decision: string }) => AssistantSocketEvent[] = () => [];
 
   async install(page: Page): Promise<void> {
     await page.route(CONVERSATIONS_URL_PATTERN, route => this.handleRest(route));
     await page.routeWebSocket(ZEPPELIN_WS_URL_PATTERN, socket => {
       const server = socket.connectToServer();
+      const emit = (conversationId: string, events: AssistantSocketEvent[]) => {
+        for (const event of events) {
+          socket.send(JSON.stringify({ op: 'ASSISTANT_EVENT', data: { conversationId, ...event } }));
+        }
+      };
       socket.onMessage(message => {
         const parsed = parse(message);
-        if (parsed?.op !== 'ASSISTANT_SEND_MESSAGE') {
+        if (parsed?.op === 'ASSISTANT_SEND_MESSAGE') {
+          const data = parsed.data as { noteId: string; conversationId: string; content: string };
+          this.sentMessages.push(data);
+          emit(data.conversationId, this.reply(data.content));
+        } else if (parsed?.op === 'ASSISTANT_TOOL_DECISION') {
+          const data = parsed.data as { noteId: string; conversationId: string; toolCallId: string; decision: string };
+          this.decisions.push(data);
+          emit(data.conversationId, this.afterDecision(data));
+        } else {
           server.send(message);
-          return;
-        }
-        const data = parsed.data as { noteId: string; conversationId: string; content: string };
-        this.sentMessages.push(data);
-        for (const event of this.reply(data.content)) {
-          socket.send(
-            JSON.stringify({ op: 'ASSISTANT_EVENT', data: { conversationId: data.conversationId, ...event } })
-          );
         }
       });
       server.onMessage(message => socket.send(message));

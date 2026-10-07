@@ -43,12 +43,16 @@ const AssistantWorkspaceSession = (props: AssistantWorkspaceProps & AssistantTra
     deleteConversation,
     getMessages,
     openRun,
+    decideToolCall,
     onPanelVisibilityChange,
     subscribePanelClose,
     revealParagraph,
     paragraphs,
     panelWidth,
-    onPanelWidthChange
+    onPanelWidthChange,
+    showProposal,
+    clearProposal,
+    subscribeProposalDecisions
   } = props;
   const { token } = theme.useToken();
   const [panelMounted, setPanelMounted] = useState(false);
@@ -184,6 +188,10 @@ const AssistantWorkspaceSession = (props: AssistantWorkspaceProps & AssistantTra
                       deleteConversation={deleteConversation}
                       getMessages={getMessages}
                       openRun={openRun}
+                      decideToolCall={decideToolCall}
+                      showProposal={showProposal}
+                      clearProposal={clearProposal}
+                      subscribeProposalDecisions={subscribeProposalDecisions}
                     />
                   </Suspense>
                 </div>
@@ -211,6 +219,7 @@ export const AssistantWorkspace = (props: AssistantWorkspaceProps) => {
           noteId,
           {
             send: message => socketRef.current.send(message),
+            decide: message => socketRef.current.decide(message),
             subscribe: listener => socketRef.current.subscribe(listener),
             subscribeClose: listener => socketRef.current.subscribeClose(listener)
           },

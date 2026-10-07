@@ -33,6 +33,6 @@ describe.each([
   });
 
   it('keeps focus rings and status icons at 3:1 on the panel', () => {
-    expect(below(['--za-focus', '--za-success'], [panel], 3)).toEqual([]);
+    expect(below(['--za-focus', '--za-success', '--za-warning'], [panel], 3)).toEqual([]);
   });
 });

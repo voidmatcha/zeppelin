@@ -10,6 +10,8 @@
  * limitations under the License.
  */
 
+import { ToolApproval, type ApprovalState } from '@/features/assistant-approval';
+
 import styles from './AssistantPanel.module.css';
 
 import { Fragment, memo, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
@@ -28,6 +30,7 @@ import {
   LoadEarlier,
   PanelSkeleton,
   MarkdownAnswer,
+  ParagraphLink,
   RunStatus,
   UserMessage,
   AssistantPanelLayout,
@@ -55,6 +58,9 @@ export interface AssistantPanelProps extends AssistantTransport {
   revealParagraph?: AssistantHostProps['revealParagraph'];
   /** The notebook's paragraphs in order; only ids in this list become links in answers. */
   paragraphs?: AssistantParagraphRef[];
+  showProposal?: AssistantHostProps['showProposal'];
+  clearProposal?: AssistantHostProps['clearProposal'];
+  subscribeProposalDecisions?: AssistantHostProps['subscribeProposalDecisions'];
 }
 
 const EARLIER_LOADING_MIN_MS = 500;
@@ -63,6 +69,8 @@ interface ToolCall {
   id: string;
   name: string;
   done: boolean;
+  /** Set for a tool that changes the notebook and waited for the owner. */
+  approval?: { state: ApprovalState; paragraphId?: string };
 }
 
 // One run's tool calls, shown after the message the run followed. A reopened conversation shows the same log
@@ -75,11 +83,19 @@ interface ToolLog {
 
 // What each server tool did, in the user's words. Unknown tools show their own name.
 const TOOL_LABELS: Record<string, string> = {
-  list_paragraphs: 'Read paragraphs'
+  list_paragraphs: 'Read paragraphs',
+  // Proposed write tools; their arguments carry the target paragraphId, and the edit its new text.
+  update_paragraph: 'Edit paragraph',
+  run_paragraph: 'Run paragraph'
 };
 const toolLabel = (name: string) => TOOL_LABELS[name] ?? name;
+const stepStatus = ({ done, approval }: ToolCall): ToolStep['status'] => {
+  if (approval?.state === 'pending') return 'awaiting';
+  if (approval?.state === 'skipped') return 'skipped';
+  return done ? 'done' : 'running';
+};
 const toSteps = (calls: ToolCall[]): ToolStep[] =>
-  calls.map(call => ({ id: call.id, label: toolLabel(call.name), status: call.done ? 'done' : 'running' }));
+  calls.map(call => ({ id: call.id, label: toolLabel(call.name), status: stepStatus(call) }));
 
 // Prompts today's read-only tools can answer; picking one fills the composer.
 const SUGGESTIONS = [
@@ -179,8 +195,12 @@ export const AssistantPanel = ({
   deleteConversation,
   getMessages,
   openRun,
+  decideToolCall,
   revealParagraph,
-  paragraphs
+  paragraphs,
+  showProposal,
+  clearProposal,
+  subscribeProposalDecisions
 }: AssistantPanelProps) => {
   // Title, else position as "#2": answers usually already say "paragraph" before the id.
   const describeParagraph = useMemo(() => {
@@ -348,9 +368,52 @@ export const AssistantPanel = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [earlierCursor, loading, loadingEarlier]);
 
+  // Approvals this panel can still answer: the server sent them to this connection for a run it started here.
+  const pendingApprovalsRef = useRef(new Map<string, { conversationId: string; run: number }>());
+  // Unanswered requests lapse on the server (time out as skipped); only the paragraph diffs need removing here.
+  const dropPendingApprovals = () => {
+    pendingApprovalsRef.current.forEach((_pending, toolCallId) => clearProposal?.(toolCallId));
+    pendingApprovalsRef.current.clear();
+  };
+  // Answers one request; false when the host refuses because it has already left the note.
+  const sendDecision = (conversationId: string, toolCallId: string, decision: 'allow' | 'skip') => {
+    try {
+      decideToolCall(conversationId, toolCallId, decision);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  // Sets an approval's state in its run's log; a lapsed one changes only while it still waits.
+  const settleApproval = (run: number, toolCallId: string, state: ApprovalState, onlyPending = false) =>
+    setToolLogs(current =>
+      current.map(log =>
+        log.run === run
+          ? {
+              ...log,
+              steps: log.steps.map(step =>
+                step.id === toolCallId && step.approval && (!onlyPending || step.approval.state === 'pending')
+                  ? { ...step, approval: { ...step.approval, state } }
+                  : step
+              )
+            }
+          : log
+      )
+    );
+  // The tool finished or its run ended without an answer from here: the server skipped it, so it cannot be
+  // answered any more.
+  const lapseApproval = (toolCallId: string) => {
+    const pending = pendingApprovalsRef.current.get(toolCallId);
+    if (!pending) return;
+    pendingApprovalsRef.current.delete(toolCallId);
+    clearProposal?.(toolCallId);
+    settleApproval(pending.run, toolCallId, 'skipped', true);
+  };
+
   // Leaves the open conversation for `next` (null: a new, unsaved one): its run stops being followed and its
   // history and logs go. The caller loads or restores what comes next.
   const showConversation = (next: string | null) => {
+    dropPendingApprovals();
     runControllerRef.current?.abort();
     runControllerRef.current = null;
     setRunning(false);
@@ -404,6 +467,7 @@ export const AssistantPanel = ({
       mounted = false;
       messageRequestRef.current += 1;
       runControllerRef.current?.abort();
+      dropPendingApprovals();
     };
     // Once per mount: the host remounts the panel for another note or account.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -536,7 +600,29 @@ export const AssistantPanel = ({
               { id: event.toolCallId, name: event.name, done: false }
             ]);
             break;
+          case 'tool_call.approval_requested': {
+            const { toolCallId, name, arguments: args } = event;
+            const paragraphId = typeof args.paragraphId === 'string' ? args.paragraphId : undefined;
+            pendingApprovalsRef.current.set(toolCallId, { conversationId, run });
+            updateSteps(current => [
+              ...current.filter(step => step.id !== toolCallId),
+              { id: toolCallId, name, done: false, approval: { state: 'pending', paragraphId } }
+            ]);
+            if (paragraphId) {
+              if (name === 'update_paragraph' && typeof args.text === 'string') {
+                showProposal?.({ toolCallId, paragraphId, text: args.text });
+              }
+              // Take the user to what will change; a host that left the note just refuses.
+              Promise.resolve()
+                // Shown, not focused: the user did not ask to move and may be typing.
+                .then(() => revealParagraph?.(paragraphId, { focus: false }))
+                .catch(() => undefined);
+            }
+            setAnnouncement(`Approval needed: ${toolLabel(name)}.`);
+            break;
+          }
           case 'tool_call.done':
+            lapseApproval(event.toolCallId);
             updateSteps(current =>
               current.some(step => step.id === event.toolCallId)
                 ? current.map(step =>
@@ -567,6 +653,9 @@ export const AssistantPanel = ({
       // Text still waiting for a frame shows if this conversation is still open, and is dropped otherwise.
       if (isCurrent(conversationId) && !controller.signal.aborted) flushDeltas();
       else cancelAnimationFrame(frame);
+      Array.from(pendingApprovalsRef.current).forEach(([toolCallId, pending]) => {
+        if (pending.run === run) lapseApproval(toolCallId);
+      });
       if (runControllerRef.current === controller) {
         runControllerRef.current = null;
         if (isCurrent(conversationId)) {
@@ -661,14 +750,35 @@ export const AssistantPanel = ({
     [revealParagraph]
   );
 
+  // One answer per request, from the panel card or the paragraph diff; Allow applies, it never runs.
+  const answerApproval = (toolCallId: string, decision: 'allow' | 'skip') => {
+    const pending = pendingApprovalsRef.current.get(toolCallId);
+    if (!pending || !sendDecision(pending.conversationId, toolCallId, decision)) return;
+    pendingApprovalsRef.current.delete(toolCallId);
+    clearProposal?.(toolCallId);
+    settleApproval(pending.run, toolCallId, decision === 'allow' ? 'allowed' : 'skipped');
+    setAnnouncement(decision === 'allow' ? 'Allowed.' : 'Skipped.');
+  };
+  const onProposalDecision = useEffectEvent(answerApproval);
+  useEffect(
+    () => subscribeProposalDecisions?.((toolCallId, decision) => onProposalDecision(toolCallId, decision)),
+    [subscribeProposalDecisions]
+  );
+
   const activeConversation = conversations.find(conversation => conversation.id === activeConversationId);
   const readOnly = isReadOnly(activeConversation);
   const lastMessage = messages[messages.length - 1];
-  const progress = toolLogs.some(log => log.run === activeRun && log.steps.some(step => !step.done))
-    ? 'Reading notebook context…'
-    : lastMessage?.role === 'assistant' && lastMessage.content
-      ? 'Writing response…'
-      : 'Thinking…';
+  const activeSteps = toolLogs.find(log => log.run === activeRun)?.steps ?? [];
+  const runningSteps = activeSteps.filter(step => stepStatus(step) === 'running');
+  const progress = activeSteps.some(step => stepStatus(step) === 'awaiting')
+    ? 'Waiting for your approval…'
+    : runningSteps.some(step => step.approval)
+      ? 'Applying the change…'
+      : runningSteps.length
+        ? 'Reading notebook context…'
+        : lastMessage?.role === 'assistant' && lastMessage.content
+          ? 'Writing response…'
+          : 'Thinking…';
   // Each run's log after the message it followed, grouped once per change rather than per message.
   const logs = useMemo(() => {
     const ids = new Set(messages.map(message => message.id));
@@ -702,7 +812,32 @@ export const AssistantPanel = ({
     void removeConversation(conversationId);
   });
   const renderLog = (log: ToolLog) => (
-    <ActionLog key={log.run} steps={toSteps(log.steps)} running={running && log.run === activeRun} />
+    <ActionLog key={log.run} steps={toSteps(log.steps)} running={running && log.run === activeRun}>
+      {log.steps.map(step => {
+        if (!step.approval) return null;
+        const { paragraphId, state } = step.approval;
+        const label = paragraphId ? describeParagraph(paragraphId) : undefined;
+        return (
+          <ToolApproval
+            key={step.id}
+            action={toolLabel(step.name)}
+            target={
+              paragraphId && label ? (
+                <ParagraphLink
+                  paragraphId={paragraphId}
+                  label={label}
+                  onOpen={() => openMentionedParagraph(paragraphId, label.name)}
+                />
+              ) : undefined
+            }
+            reviewHint={step.name === 'update_paragraph' ? 'Review the change in the paragraph.' : undefined}
+            state={state}
+            onAllow={() => answerApproval(step.id, 'allow')}
+            onSkip={() => answerApproval(step.id, 'skip')}
+          />
+        );
+      })}
+    </ActionLog>
   );
   return (
     <AssistantPanelLayout

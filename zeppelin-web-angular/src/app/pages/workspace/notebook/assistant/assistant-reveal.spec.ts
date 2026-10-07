@@ -53,6 +53,16 @@ describe('AssistantReveal', () => {
     expect(document.activeElement).toBe(element);
   });
 
+  it('scrolls and highlights without taking focus when asked not to', async () => {
+    const element = paragraph('quiet', 900);
+    const input = document.createElement('textarea');
+    document.body.appendChild(input);
+    input.focus();
+    await expect(reveal.reveal('quiet', { focus: false })).resolves.toBe('shown');
+    expect(element.classList.contains(REVEAL_HIGHLIGHT_CLASS)).toBe(true);
+    expect(document.activeElement).toBe(input);
+  });
+
   it('scrolls an off-screen or bar-covered paragraph below the sticky bar, then drops the margin', async () => {
     const margins: string[] = [];
     scrollIntoView.mockImplementation(function (this: HTMLElement) {
@@ -75,10 +85,10 @@ describe('AssistantReveal', () => {
   });
 
   it('waits for a paragraph that renders later and gives up after the timeout', async () => {
-    const pending = reveal.reveal('late', 1000);
+    const pending = reveal.reveal('late', { timeoutMs: 1000 });
     setTimeout(() => paragraph('late', 1200), 10);
     await expect(pending).resolves.toBe('shown');
-    await expect(reveal.reveal('never', 20)).resolves.toBe('missing');
+    await expect(reveal.reveal('never', { timeoutMs: 20 })).resolves.toBe('missing');
   });
 
   it('removes the highlight after it fades', async () => {

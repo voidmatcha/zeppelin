@@ -12,15 +12,16 @@
 
 import styles from './ActionLog.module.css';
 
-import { useEffect, useState } from 'react';
-import { CheckOutlined } from '@ant-design/icons';
+import { useEffect, useState, type ReactNode } from 'react';
+import { CheckOutlined, MinusCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { Spin } from 'antd';
 
 /**
- * Where one tool call stands. The server has no tool failure event, so there is no failed state; a failed run is
- * reported by the panel's error notice.
+ * Where one tool call stands. `awaiting` and `skipped` belong to tools that change the notebook:
+ * the server holds them until the user answers an approval. The server has no tool failure event, so
+ * there is no failed state; a failed run is reported by the panel's error notice.
  */
-export type ToolStepStatus = 'running' | 'done';
+export type ToolStepStatus = 'running' | 'done' | 'awaiting' | 'skipped';
 
 export interface ToolStep {
   id: string;
@@ -34,6 +35,17 @@ const StatusIcon = ({ status }: { status: ToolStepStatus }) => {
   switch (status) {
     case 'done':
       return <CheckOutlined className={`${styles['step-icon']} ${styles['step-done']}`} aria-label="Done" />;
+    case 'awaiting':
+      return (
+        <PauseCircleOutlined
+          className={`${styles['step-icon']} ${styles['step-awaiting']}`}
+          aria-label="Waiting for approval"
+        />
+      );
+    case 'skipped':
+      return (
+        <MinusCircleOutlined className={`${styles['step-icon']} ${styles['step-skipped']}`} aria-label="Skipped" />
+      );
     default:
       return (
         <span role="img" aria-label="In progress" className={styles['step-icon']}>
@@ -49,17 +61,24 @@ export interface ActionLogProps {
   steps: ToolStep[];
   /** The run is still working: the log stays open so progress is visible. */
   running: boolean;
+  /** Approvals and the like, shown inside the log under the steps. */
+  children?: ReactNode;
 }
 
 /**
- * One run's tool calls as a single disclosure: open while the run works, folded afterwards so the answer stays in
- * front.
+ * One run's tool calls as a single disclosure: open while the run works or needs approval,
+ * folded afterwards so the answer stays in front.
  */
-export const ActionLog = ({ steps, running }: ActionLogProps) => {
-  const [open, setOpen] = useState(running);
-  useEffect(() => setOpen(running), [running]);
+export const ActionLog = ({ steps, running, children }: ActionLogProps) => {
+  const needsAttention = steps.some(step => step.status === 'awaiting');
+  const [open, setOpen] = useState(running || needsAttention);
+  useEffect(() => setOpen(running || needsAttention), [running, needsAttention]);
   return (
-    <details className={styles['actions']} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <details
+      className={needsAttention ? `${styles['actions']} ${styles['actions-attention']}` : styles['actions']}
+      open={open}
+      onToggle={event => setOpen(event.currentTarget.open)}
+    >
       <summary aria-label={`Assistant actions, ${steps.length}`}>
         <span>
           {steps.length} {steps.length === 1 ? 'action' : 'actions'}
@@ -73,6 +92,7 @@ export const ActionLog = ({ steps, running }: ActionLogProps) => {
           </li>
         ))}
       </ul>
+      {children}
     </details>
   );
 };

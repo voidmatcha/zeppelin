@@ -1,0 +1,71 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value actions as crosszaactions from '../../../entities/assistant/ui/ActionLog.module.css';
+
+.approval {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 var(--za-space-3);
+  padding: var(--za-space-2) var(--za-space-3);
+  border-left: 3px solid var(--za-warning);
+  border-radius: var(--za-radius-sm);
+  background: var(--za-warning-bg);
+  font-size: var(--za-font-size-sm);
+}
+/* Inside an action log it lines up with the steps. */
+:global(.crosszaactions) .approval {
+  margin: 0 var(--za-space-3) var(--za-space-3);
+}
+.approval[data-state='allowed'] {
+  border-left-color: var(--za-success);
+  background: var(--za-success-bg);
+}
+.approval[data-state='skipped'] {
+  border-left-color: var(--za-border-strong);
+  background: var(--za-fill);
+}
+.approval-title {
+  color: var(--za-text);
+}
+.approval-description,
+.approval-hint,
+.approval-result {
+  color: var(--za-text-secondary);
+}
+.approval-actions {
+  display: flex;
+  gap: var(--za-space-2);
+}
+
+/* An approval slides in and its edge pulses once, then stays still while it waits. */
+.approval {
+  animation:
+    global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both,
+    za-approval-pulse 1.2s var(--za-ease-standard) var(--za-duration-moderate) 1;
+  transition:
+    background-color var(--za-duration-moderate) var(--za-ease-standard),
+    border-color var(--za-duration-moderate) var(--za-ease-standard);
+}
+@keyframes za-approval-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  40% {
+    box-shadow: 0 0 0 3px var(--za-warning-bg);
+  }
+}
+.approval-actions,
+.approval-result {
+  animation: global(za-enter) var(--za-duration-fast) var(--za-ease-entrance) both;
+}

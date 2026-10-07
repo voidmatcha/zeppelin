@@ -12,7 +12,8 @@
 
 import type {
   AssistantEvent as AssistantSocketEvent,
-  AssistantSendMessage
+  AssistantSendMessage,
+  AssistantToolDecision
 } from './interfaces/message-assistant.interface';
 
 /** ASSISTANT_EVENT as the server sends it; the remote maps it to its run events. */
@@ -21,6 +22,8 @@ export type { AssistantSocketEvent };
 /** The host's notebook WebSocket, narrowed to the assistant ops. */
 export interface AssistantSocket {
   send(message: AssistantSendMessage): void;
+  /** Answers an approval request on the connection that started the run. */
+  decide(message: AssistantToolDecision): void;
   subscribe(listener: (event: AssistantSocketEvent) => void): () => void;
   /** The connection closed. The server sends a run's events only to the connection that started it. */
   subscribeClose(listener: () => void): () => void;
@@ -28,6 +31,12 @@ export interface AssistantSocket {
 
 /** The notebook sidebar's width: its default and its resize range. The assistant panel shares it. */
 export const NOTEBOOK_SIDEBAR_WIDTH = { initial: 370, min: 280, max: 800 } as const;
+
+/** How the host reveals a paragraph. */
+export interface AssistantRevealOptions {
+  /** Move keyboard focus to it (default). False when the panel shows it on its own, e.g. for an approval. */
+  focus?: boolean;
+}
 
 /** Result of a host reveal: scrolled to it, already visible, or not rendered. */
 export type AssistantRevealResult = 'shown' | 'visible' | 'missing';
@@ -59,11 +68,26 @@ export type AssistantHostProps = {
   onPanelVisibilityChange?: (visible: boolean) => void;
   subscribePanelClose?: (listener: () => void) => () => void;
   /** Host-side scroll and highlight for a paragraph an answer links to; notebook DOM stays with Angular. */
-  revealParagraph?: (paragraphId: string) => Promise<AssistantRevealResult>;
+  revealParagraph?: (paragraphId: string, options?: AssistantRevealOptions) => Promise<AssistantRevealResult>;
   /** The notebook's paragraphs in order, as data so labelling them never calls into the host. */
   paragraphs?: AssistantParagraphRef[];
   /** The notebook sidebar's width, which the panel shares so switching views keeps it. */
   panelWidth?: number;
   /** A resize of the panel, at the end of a drag or per arrow key. */
   onPanelWidthChange?: (width: number) => void;
+  /** Shows a proposed paragraph edit as a diff inside that paragraph; replaces one with the same toolCallId. */
+  showProposal?: (proposal: AssistantParagraphProposal) => void;
+  clearProposal?: (toolCallId: string) => void;
+  /** Decisions made in the paragraph, so the panel answers them as if made on its own card. */
+  subscribeProposalDecisions?: (
+    listener: (toolCallId: string, decision: AssistantToolDecision['decision']) => void
+  ) => () => void;
 };
+
+/** A proposed edit of one paragraph, waiting for the conversation owner. */
+export interface AssistantParagraphProposal {
+  toolCallId: string;
+  paragraphId: string;
+  /** The paragraph text after the edit; the host diffs it against the current text. */
+  text: string;
+}

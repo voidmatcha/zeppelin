@@ -11,7 +11,7 @@
  */
 
 import { AuthInfo, ErrorInfo } from './message-common.interface';
-import { AssistantEvent, AssistantSendMessage } from './message-assistant.interface';
+import { AssistantEvent, AssistantSendMessage, AssistantToolDecision } from './message-assistant.interface';
 import {
   CheckpointNote,
   CloneNote,
@@ -130,6 +130,7 @@ export interface MessageReceiveDataTypeMap {
 
 export interface MessageSendDataTypeMap {
   [OP.ASSISTANT_SEND_MESSAGE]: AssistantSendMessage;
+  [OP.ASSISTANT_TOOL_DECISION]: AssistantToolDecision;
   [OP.PING]: undefined;
   [OP.LIST_NOTES]: undefined;
   [OP.GET_HOME_NOTE]: undefined;

@@ -56,6 +56,7 @@ const transport = (overrides: Partial<AssistantTransport> = {}): AssistantTransp
   listConversations: vi.fn().mockResolvedValue([{ id: 'conversation-1', title: 'First' }]),
   createConversation: vi.fn().mockResolvedValue({ id: 'new-conversation', title: 'New' }),
   deleteConversation: vi.fn().mockResolvedValue(undefined),
+  decideToolCall: vi.fn(),
   getMessages: history([]),
   openRun: emptyRun,
   ...overrides
@@ -1251,5 +1252,121 @@ describe('AssistantPanel', () => {
     expect(await within(host!).findByText('Read paragraphs')).toBeTruthy();
     expect(within(host!).queryByRole('article')).toBeNull();
     expect(within(host!).queryByText('AI answers can be wrong. Check them before you rely on them.')).toBeNull();
+  });
+
+  it('asks before an edit, shows it in the paragraph, and answers once from either place', async () => {
+    const decided = deferred<void>();
+    const openRun = vi.fn(async function* (): AsyncIterable<AssistantRunEvent> {
+      yield { type: 'run.started' };
+      yield {
+        type: 'tool_call.approval_requested',
+        toolCallId: 'edit-1',
+        name: 'update_paragraph',
+        arguments: { paragraphId: 'paragraph_1_1', text: 'new code' }
+      };
+      await decided.promise;
+      yield { type: 'tool_call.done', toolCallId: 'edit-1' };
+      yield {
+        type: 'tool_call.approval_requested',
+        toolCallId: 'run-1',
+        name: 'run_paragraph',
+        arguments: { paragraphId: 'paragraph_1_1' }
+      };
+      await new Promise(() => undefined);
+    });
+    const decideToolCall = vi.fn();
+    const showProposal = vi.fn();
+    const clearProposal = vi.fn();
+    let paragraphDecision: ((toolCallId: string, decision: 'allow' | 'skip') => void) | undefined;
+    const revealParagraph = vi.fn(async (): Promise<AssistantRevealResult> => 'shown');
+    mountPanel({
+      ...transport({ openRun, decideToolCall }),
+      noteId: 'note-1',
+      paragraphs: [{ id: 'paragraph_1_1', title: 'Load data' }],
+      revealParagraph,
+      showProposal,
+      clearProposal,
+      subscribeProposalDecisions: listener => {
+        paragraphDecision = listener;
+        return () => undefined;
+      }
+    });
+
+    await waitFor(() => expect(openTitle()).toBe('First'));
+    fireEvent.change(within(host!).getByRole('textbox', { name: 'Message' }), { target: { value: 'Fix it' } });
+    fireEvent.click(within(host!).getByRole('button', { name: 'Send' }));
+
+    // The edit waits: a card in the action log, the diff in the paragraph, and the paragraph brought into view.
+    expect(await within(host!).findByText('Edit paragraph', { selector: 'strong' })).toBeTruthy();
+    expect(within(host!).getByText('Waiting for your approval…')).toBeTruthy();
+    expect(showProposal).toHaveBeenCalledWith({
+      toolCallId: 'edit-1',
+      paragraphId: 'paragraph_1_1',
+      text: 'new code'
+    });
+    await waitFor(() => expect(revealParagraph).toHaveBeenCalledWith('paragraph_1_1', { focus: false }));
+
+    // Allow in the paragraph answers the panel's request too, once.
+    act(() => paragraphDecision!('edit-1', 'allow'));
+    act(() => paragraphDecision!('edit-1', 'skip'));
+    expect(decideToolCall).toHaveBeenCalledTimes(1);
+    expect(decideToolCall).toHaveBeenCalledWith('conversation-1', 'edit-1', 'allow');
+    expect(clearProposal).toHaveBeenCalledWith('edit-1');
+    expect(within(host!).getByText('Allowed')).toBeTruthy();
+
+    // Running asks again, as its own request, and Skip from the card answers it.
+    decided.resolve();
+    expect(await within(host!).findByText('Run paragraph', { selector: 'strong' })).toBeTruthy();
+    fireEvent.click(within(host!).getByRole('button', { name: 'Skip' }));
+    expect(decideToolCall).toHaveBeenLastCalledWith('conversation-1', 'run-1', 'skip');
+    const skipped = await within(host!).findByText(/Skipped. The assistant was told/);
+    // The buttons are gone; keyboard focus moved to the result in their place.
+    await waitFor(() => expect(document.activeElement).toBe(skipped));
+  });
+  it('stops offering an approval the server resolved without an answer from here', async () => {
+    const finish = deferred<void>();
+    const openRun = vi.fn(async function* (): AsyncIterable<AssistantRunEvent> {
+      yield { type: 'run.started' };
+      yield {
+        type: 'tool_call.approval_requested',
+        toolCallId: 'edit-1',
+        name: 'update_paragraph',
+        arguments: { paragraphId: 'paragraph_1_1', text: 'new code' }
+      };
+      // The request timed out on the server, which skipped the tool.
+      yield { type: 'tool_call.done', toolCallId: 'edit-1' };
+      yield {
+        type: 'tool_call.approval_requested',
+        toolCallId: 'run-1',
+        name: 'run_paragraph',
+        arguments: { paragraphId: 'paragraph_1_1' }
+      };
+      await finish.promise;
+      yield { type: 'run.completed' };
+    });
+    const decideToolCall = vi.fn();
+    const clearProposal = vi.fn();
+    mountPanel({
+      ...transport({ openRun, decideToolCall }),
+      noteId: 'note-1',
+      paragraphs: [{ id: 'paragraph_1_1', title: 'Load data' }],
+      showProposal: vi.fn(),
+      clearProposal
+    });
+    await waitFor(() => expect(openTitle()).toBe('First'));
+    fireEvent.change(within(host!).getByRole('textbox', { name: 'Message' }), { target: { value: 'Fix it' } });
+    fireEvent.click(within(host!).getByRole('button', { name: 'Send' }));
+
+    // The edit's request lapsed when its tool finished: no buttons, no diff, shown as skipped.
+    expect(await within(host!).findByText('Run paragraph', { selector: 'strong' })).toBeTruthy();
+    expect(clearProposal).toHaveBeenCalledWith('edit-1');
+    expect(within(host!).getAllByRole('button', { name: 'Allow' })).toHaveLength(1);
+
+    // The run ends while the run request waits: it lapses too.
+    finish.resolve();
+    await waitFor(() => expect(within(host!).queryByRole('button', { name: 'Allow' })).toBeNull());
+    expect(clearProposal).toHaveBeenCalledWith('run-1');
+    expect(within(host!).getAllByText(/Skipped. The assistant was told/)).toHaveLength(2);
+    expect(decideToolCall).not.toHaveBeenCalled();
   });
 });

@@ -58,11 +58,13 @@ import { NotebookComponent } from './notebook.component';
 import { NotebookShareModule } from './share/share.module';
 import { NotebookSidebarComponent } from './sidebar/sidebar.component';
 import { AssistantHostComponent } from './assistant/assistant-host.component';
+import { AssistantParagraphProposalComponent } from './assistant/assistant-paragraph-proposal.component';
 import { AssistantSlotDirective } from './assistant/assistant-slots';
 
 @NgModule({
   declarations: [
     AssistantHostComponent,
+    AssistantParagraphProposalComponent,
     AssistantSlotDirective,
     NotebookComponent,
     NotebookActionBarComponent,

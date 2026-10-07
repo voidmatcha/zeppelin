@@ -40,6 +40,7 @@ const fakeSocket = () => {
     send: vi.fn((message: AssistantSendMessage) => {
       sent.push(message);
     }),
+    decide: vi.fn(),
     subscribe: vi.fn((listener: (event: AssistantSocketEvent) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -382,6 +383,37 @@ describe('assistant transport', () => {
     expect(socket.listenerCount()).toBe(0);
   });
 
+  it('keeps waiting while a tool waits for the user, and times out again once the run moves on', async () => {
+    vi.useFakeTimers();
+    const socket = fakeSocket();
+    const run = iterate(socketRun(socket, message(), new AbortController().signal, tracking, 1000));
+    // The run subscribes on its first pull, so each event is sent after it.
+    const first = run.next();
+    socket.emit({ conversationId: 'c1', type: 'run.started', payload: { runId: 'r1' } });
+    expect((await first).value).toMatchObject({ type: 'run.started' });
+    const second = run.next();
+    socket.emit({
+      conversationId: 'c1',
+      type: 'tool_call.approval_requested',
+      payload: { toolCallId: 't1', name: 'update_paragraph', arguments: {} }
+    });
+    expect((await second).value).toMatchObject({ type: 'tool_call.approval_requested' });
+    const next = run.next().then(
+      result => result,
+      (error: unknown) => error
+    );
+    // The user takes longer than the idle timeout to decide; the run is not lost.
+    await vi.advanceTimersByTimeAsync(5000);
+    socket.emit({ conversationId: 'c1', type: 'tool_call.done', payload: { toolCallId: 't1' } });
+    expect(await next).toMatchObject({ value: { type: 'tool_call.done' } });
+    const after = run.next().then(
+      () => null,
+      (error: unknown) => error
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await after).toBeInstanceOf(AssistantStreamError);
+  });
+
   it('fails the run on an event with a malformed payload', async () => {
     const socket = fakeSocket();
     const pending = collect(socketRun(socket, message(), new AbortController().signal, tracking));
@@ -416,6 +448,7 @@ describe('assistant transport', () => {
       createConversation: vi.fn(),
       deleteConversation: vi.fn(),
       getMessages: vi.fn(),
+      decideToolCall: vi.fn(),
       openRun: async function* (_id: string, _body: unknown, signal: AbortSignal): AsyncIterable<AssistantRunEvent> {
         runSignal = signal;
         yield { type: 'run.started' };
@@ -532,5 +565,86 @@ describe('assistant transport', () => {
     expect(joinPages(earlier, later)).toEqual([
       { id: 'a3', role: 'assistant', content: 'Looking.\n\nDone.', toolCalls: [call] }
     ]);
+  });
+
+  it.each(['allow', 'skip'] as const)('resumes the idle timeout after sending %s', async decision => {
+    vi.useFakeTimers();
+    const socket = fakeSocket();
+    const transport = createAssistantTransport('/api', 'n', socket);
+    const pending = collect(transport.openRun('c1', { prompt: 'edit' }, new AbortController().signal));
+    const outcome = pending.catch((error: unknown) => error);
+    socket.emit({ conversationId: 'c1', type: 'run.started', payload: { runId: 'r1' } });
+    socket.emit({
+      conversationId: 'c1',
+      type: 'tool_call.approval_requested',
+      payload: { toolCallId: 't1', name: 'update_paragraph', arguments: {} }
+    });
+    await vi.advanceTimersByTimeAsync(180_001);
+    transport.decideToolCall('c1', 't1', decision);
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(await outcome).toBeInstanceOf(AssistantStreamError);
+    expect(socket.listenerCount()).toBe(0);
+  });
+
+  it('keeps waiting for every outstanding approval despite other tool events and unrelated decisions', async () => {
+    vi.useFakeTimers();
+    const socket = fakeSocket();
+    const transport = createAssistantTransport('/api', 'n', socket);
+    const pending = collect(transport.openRun('c1', { prompt: 'edit' }, new AbortController().signal));
+    let settled = false;
+    const outcome = pending
+      .catch((error: unknown) => error)
+      .then(result => {
+        settled = true;
+        return result;
+      });
+    socket.emit({ conversationId: 'c1', type: 'run.started', payload: { runId: 'r1' } });
+    for (const toolCallId of ['t1', 't2']) {
+      socket.emit({
+        conversationId: 'c1',
+        type: 'tool_call.approval_requested',
+        payload: { toolCallId, name: 'update_paragraph', arguments: {} }
+      });
+    }
+    socket.emit({ conversationId: 'c1', type: 'tool_call.done', payload: { toolCallId: 'other' } });
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(settled).toBe(false);
+    transport.decideToolCall('c1', 't1', 'skip');
+    transport.decideToolCall('other-conversation', 't2', 'allow');
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(settled).toBe(false);
+    transport.decideToolCall('c1', 't2', 'allow');
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(await outcome).toBeInstanceOf(AssistantStreamError);
+  });
+
+  it('keeps an approval pending when sending its decision throws', async () => {
+    vi.useFakeTimers();
+    const socket = fakeSocket();
+    const transport = createAssistantTransport('/api', 'n', socket);
+    const pending = collect(transport.openRun('c1', { prompt: 'edit' }, new AbortController().signal));
+    let settled = false;
+    const outcome = pending
+      .catch((error: unknown) => error)
+      .then(result => {
+        settled = true;
+        return result;
+      });
+    socket.emit({ conversationId: 'c1', type: 'run.started', payload: { runId: 'r1' } });
+    socket.emit({
+      conversationId: 'c1',
+      type: 'tool_call.approval_requested',
+      payload: { toolCallId: 't1', name: 'update_paragraph', arguments: {} }
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    socket.decide.mockImplementationOnce(() => {
+      throw new Error('Send failed');
+    });
+    expect(() => transport.decideToolCall('c1', 't1', 'allow')).toThrow('Send failed');
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(settled).toBe(false);
+    transport.decideToolCall('c1', 't1', 'allow');
+    await vi.advanceTimersByTimeAsync(180_001);
+    expect(await outcome).toBeInstanceOf(AssistantStreamError);
   });
 });

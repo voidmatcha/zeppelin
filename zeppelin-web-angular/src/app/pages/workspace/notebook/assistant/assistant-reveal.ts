@@ -29,7 +29,8 @@ export class AssistantReveal implements OnDestroy {
 
   constructor(@Inject(DOCUMENT) private readonly document: Document) {}
 
-  async reveal(paragraphId: string, timeoutMs = 5000): Promise<RevealResult> {
+  /** `focus: false` only scrolls and highlights, for a reveal the user did not ask for. */
+  async reveal(paragraphId: string, { focus = true, timeoutMs = 5000 } = {}): Promise<RevealResult> {
     const element = await this.waitForParagraph(paragraphId, timeoutMs);
     if (!element) {
       return 'missing';
@@ -45,7 +46,7 @@ export class AssistantReveal implements OnDestroy {
     }
     this.highlight(element);
     // The paragraph card is focusable (tabindex -1), so keyboard users land where they asked to go.
-    element.focus({ preventScroll: true });
+    if (focus) element.focus({ preventScroll: true });
     return result;
   }
 

@@ -1,0 +1,86 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@import "theme-mixin";
+
+:host {
+  display: block;
+}
+
+// The look of the design system's ParagraphDiff, in the notebook's own theme variables.
+.themeMixin({
+  .assistant-proposal {
+    margin: 0 0 8px;
+    overflow: hidden;
+    border: 1px solid fade(@primary-color, 45%);
+    border-radius: @border-radius-base;
+    background: @component-background;
+    animation: assistant-proposal-enter 240ms cubic-bezier(0, 0, 0.38, 0.9) both;
+  }
+
+  .assistant-proposal-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 8px;
+    background: fade(@primary-color, 10%);
+    color: @heading-color;
+    font-size: 12px;
+  }
+
+  .assistant-proposal-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 16px;
+    border: 1px solid @border-color-base;
+    border-radius: 4px;
+    background: @component-background;
+    font-family: Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .assistant-proposal-note {
+    margin: 0;
+    padding: 4px 8px;
+    background: fade(@warning-color, 12%);
+    color: @heading-color;
+    font-size: 12px;
+  }
+
+  .assistant-proposal-summary {
+    color: @text-color;
+  }
+
+  .assistant-proposal-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+});
+
+@keyframes assistant-proposal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-proposal {
+    animation: none;
+  }
+}

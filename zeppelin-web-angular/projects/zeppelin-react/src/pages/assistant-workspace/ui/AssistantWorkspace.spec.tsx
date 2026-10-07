@@ -36,11 +36,12 @@ const transport = (
     deleteConversation: vi.fn().mockResolvedValue(undefined),
     getMessages: vi.fn().mockResolvedValue({ messages: [], earlierCursor: null }),
     openRun: emptyRun,
+    decideToolCall: vi.fn(),
     ...overrides
   } satisfies AssistantTransport;
   return {
     apiBase: 'https://example.test/api',
-    socket: { send: vi.fn(), subscribe: () => () => undefined, subscribeClose: () => () => undefined }
+    socket: { send: vi.fn(), decide: vi.fn(), subscribe: () => () => undefined, subscribeClose: () => () => undefined }
   };
 };
 

@@ -524,6 +524,12 @@ export enum OP {
   ASSISTANT_EVENT = 'ASSISTANT_EVENT',
 
   /**
+   * [c-s]
+   * answer a tool approval request (proposed with write tools)
+   */
+  ASSISTANT_TOOL_DECISION = 'ASSISTANT_TOOL_DECISION',
+
+  /**
    * [s-c]
    * Notice
    */

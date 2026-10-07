@@ -70,6 +70,11 @@
         (cloneParagraph)="cloneParagraph()"
         (cancelParagraph)="cancelParagraph()"
       ></zeppelin-notebook-paragraph-control>
+      <zeppelin-assistant-paragraph-proposal
+        [paragraphId]="paragraph.id"
+        [text]="paragraph.text"
+        [language]="paragraph.config.editorSetting?.language"
+      ></zeppelin-assistant-paragraph-proposal>
       @if (!paragraph.config.editorHide && !viewOnly) {
         <zeppelin-notebook-paragraph-code-editor
           [text]="paragraph.text"

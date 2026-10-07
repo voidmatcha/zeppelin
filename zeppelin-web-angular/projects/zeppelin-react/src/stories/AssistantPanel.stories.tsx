@@ -54,6 +54,7 @@ const fakeTransport = ({ conversations = [], history = {}, failRun = false }: Fa
         1
       );
     },
+    decideToolCall: () => undefined,
     getMessages: async conversationId => {
       await delay(250);
       return { messages: messages[conversationId] ?? [], earlierCursor: null };

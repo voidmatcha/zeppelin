@@ -19,6 +19,9 @@
   background: var(--za-bg);
   font-size: var(--za-font-size-sm);
 }
+.actions-attention {
+  border-color: var(--za-warning-border);
+}
 /* .za-scope first: the host's dark theme puts antd's element reset under html.dark, which outranks a bare class. */
 :global(.crosszascope) .actions > summary {
   display: flex;
@@ -59,6 +62,10 @@
   min-height: 24px;
   color: var(--za-text);
 }
+.step[data-status='skipped'] .step-label {
+  color: var(--za-text-tertiary);
+  text-decoration: line-through;
+}
 :global(.crosszascope) .step-icon {
   display: inline-grid;
   place-items: center;
@@ -67,9 +74,16 @@
 .step-done {
   color: var(--za-success);
 }
+.step-awaiting {
+  color: var(--za-warning);
+}
+.step-skipped {
+  color: var(--za-text-tertiary);
+}
 
 .actions {
   animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+  transition: border-color var(--za-duration-moderate) var(--za-ease-standard);
 }
 /* Open and close smoothly where the browser can animate details content to its natural height. */
 @supports (interpolate-size: allow-keywords) {
