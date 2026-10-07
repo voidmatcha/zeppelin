@@ -671,6 +671,10 @@
         {
           "id": "NB-PARITY-070-OUTCOME-005",
           "description": "Saved results remain readable in light, dark and system theme after a live theme change and reload."
+        },
+        {
+          "id": "NB-PARITY-070-OUTCOME-006",
+          "description": "The saved note name is the same on the default Angular route, the private Angular Core view and the private React view."
         }
       ],
       "interpreter": null,

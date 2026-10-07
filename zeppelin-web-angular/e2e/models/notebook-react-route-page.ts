@@ -46,4 +46,8 @@ export class NotebookReactRoutePage {
   async openDefault(noteId: string): Promise<void> {
     await this.page.goto(`/#/notebook/${noteId}`);
   }
+
+  defaultTitle(name: string): Locator {
+    return this.legacyNotebook.getByText(name, { exact: true }).first();
+  }
 }
