@@ -148,7 +148,12 @@ test.describe('Private React notebook route entry', () => {
             notebook.paragraphs.nth(1).getByRole('img', { name: 'multiBarChart visualization' })
           ).toBeVisible();
           await notebook.paragraphs.nth(1).getByText('View chart data as a table').click();
-          await expect(notebook.paragraphs.nth(1).getByRole('table')).toContainText('Seoul');
+          const chartData = notebook.paragraphs.nth(1).getByRole('table');
+          await expect(chartData.getByRole('columnheader', { name: 'amount' })).toBeVisible();
+          await expect(chartData.getByRole('rowheader', { name: 'Seoul' })).toBeVisible();
+          await expect(chartData.getByRole('cell', { name: '2' })).toBeVisible();
+          await expect(chartData).not.toContainText('unused');
+          await expect(chartData).not.toContainText('other');
           await expect(notebook.permissions).toBeVisible();
           await expect(notebook.editor).toHaveCount(0);
           await expect(notebook.writeControls).toHaveCount(0);

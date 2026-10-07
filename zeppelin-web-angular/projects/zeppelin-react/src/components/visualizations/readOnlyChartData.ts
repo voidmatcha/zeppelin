@@ -74,7 +74,7 @@ export const readOnlyChartData = (data: TableData, graph: GraphConfig): ReadOnly
   }
 
   const keys = graph.keys?.length ? graph.keys.map(key => columnIndex(data, key.name, 0)) : [0];
-  const groupIndex = graph.groups?.[0] ? columnIndex(data, graph.groups[0].name, -1) : -1;
+  const groupIndexes = (graph.groups ?? []).map(group => columnIndex(data, group.name, -1)).filter(index => index >= 0);
   const values = graph.values?.length
     ? graph.values.map(value => ({ name: value.name, index: columnIndex(data, value.name, 1), aggr: value.aggr }))
     : [{ name: data.columnNames[1] ?? 'Value', index: 1, aggr: 'sum' }];
@@ -84,7 +84,7 @@ export const readOnlyChartData = (data: TableData, graph: GraphConfig): ReadOnly
   for (const row of data.rows) {
     const key = keys.map(index => row[index] ?? '').join(' / ');
     if (!labels.includes(key)) labels.push(key);
-    const group = groupIndex < 0 ? '' : row[groupIndex] ?? '';
+    const group = groupIndexes.map(index => row[index] ?? '').join(' / ');
     for (const value of values) {
       const label = group ? `${value.name} / ${group}` : value.name;
       const buckets = series.get(label) ?? new Map<string, Aggregate>();

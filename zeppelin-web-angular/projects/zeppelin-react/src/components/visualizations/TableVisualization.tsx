@@ -31,11 +31,19 @@ export const TableVisualization = ({ result, config, readOnly = false }: TableVi
   const [currentMode, setCurrentMode] = useState<VisualizationMode>(config?.graph?.mode || 'table');
   const savedMode = config?.graph?.mode;
   const readOnlyMode = savedMode && savedChartModes.has(savedMode) ? savedMode : 'table';
-  const displayMode = readOnly ? readOnlyMode : currentMode;
+  const unsupportedAreaStyle =
+    readOnly &&
+    readOnlyMode === 'stackedAreaChart' &&
+    ['stream', 'expand'].includes(config?.graph?.setting?.stackedAreaChart?.style ?? 'stack');
+  const displayMode = readOnly ? (unsupportedAreaStyle ? 'table' : readOnlyMode) : currentMode;
   const chartRef = useRef<HTMLDivElement>(null);
   const themeMode = useHostThemeMode();
 
   const tableData = useMemo(() => parseTableData(result.data), [result.data]);
+  const readOnlyData = useMemo(
+    () => (readOnly && tableData && config?.graph ? readOnlyChartData(tableData, config.graph) : null),
+    [readOnly, tableData, config?.graph]
+  );
 
   const handleExport = (type: 'csv' | 'xlsx') => {
     if (tableData) {
@@ -110,8 +118,8 @@ export const TableVisualization = ({ result, config, readOnly = false }: TableVi
       if (!ctx) return;
 
       let chartConfig: ChartConfiguration | null = null;
-      if (readOnly && config?.graph) {
-        const mapped = readOnlyChartData(tableData, config.graph);
+      if (readOnly && readOnlyData) {
+        const mapped = readOnlyData;
         const colors = ['#1890ff', '#2fc25b', '#facc14', '#8543e0', '#13c2c2', '#f04864'];
         const sharedOptions = { responsive: true, maintainAspectRatio: false };
         if (displayMode === 'scatterChart') {
@@ -138,124 +146,128 @@ export const TableVisualization = ({ result, config, readOnly = false }: TableVi
                 data: series.values,
                 borderColor: colors[index % colors.length],
                 backgroundColor: displayMode === 'pieChart' ? colors : colors[index % colors.length],
-                fill: displayMode === 'stackedAreaChart'
+                fill: displayMode === 'stackedAreaChart' ? 'stack' : false
               }))
             },
-            options: sharedOptions
+            options:
+              displayMode === 'stackedAreaChart'
+                ? { ...sharedOptions, scales: { y: { stacked: true } } }
+                : sharedOptions
           };
         }
-      } else switch (currentMode) {
-        case 'multiBarChart':
-          chartConfig = {
-            type: 'bar',
-            data: {
-              labels: data.map(d => d.category),
-              datasets: [
-                {
-                  label: 'Value',
-                  data: data.map(d => d.value),
-                  backgroundColor: '#1890ff'
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false
-            }
-          };
-          break;
-        case 'lineChart':
-          chartConfig = {
-            type: 'line',
-            data: {
-              labels: data.map(d => d.category),
-              datasets: [
-                {
-                  label: 'Value',
-                  data: data.map(d => d.value),
-                  borderColor: '#1890ff',
-                  backgroundColor: 'rgba(24, 144, 255, 0.1)',
-                  tension: 0.1
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false
-            }
-          };
-          break;
-        case 'pieChart':
-          chartConfig = {
-            type: 'pie',
-            data: {
-              labels: data.map(d => d.category),
-              datasets: [
-                {
-                  data: data.map(d => d.value),
-                  backgroundColor: [
-                    '#1890ff',
-                    '#2fc25b',
-                    '#facc14',
-                    '#223273',
-                    '#8543e0',
-                    '#13c2c2',
-                    '#3436c7',
-                    '#f04864'
-                  ]
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false
-            }
-          };
-          break;
-        case 'scatterChart':
-          chartConfig = {
-            type: 'scatter',
-            data: {
-              datasets: [
-                {
-                  label: 'Value',
-                  data: data.map(d => ({ x: d.x, y: d.y })),
-                  backgroundColor: '#1890ff'
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                x: { type: 'linear', position: 'bottom' }
+      } else
+        switch (currentMode) {
+          case 'multiBarChart':
+            chartConfig = {
+              type: 'bar',
+              data: {
+                labels: data.map(d => d.category),
+                datasets: [
+                  {
+                    label: 'Value',
+                    data: data.map(d => d.value),
+                    backgroundColor: '#1890ff'
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
               }
-            }
-          };
-          break;
-        case 'stackedAreaChart':
-          chartConfig = {
-            type: 'line',
-            data: {
-              labels: data.map(d => d.category),
-              datasets: [
-                {
-                  label: 'Value',
-                  data: data.map(d => d.value),
-                  borderColor: '#1890ff',
-                  backgroundColor: 'rgba(24, 144, 255, 0.2)',
-                  fill: true,
-                  tension: 0.1
+            };
+            break;
+          case 'lineChart':
+            chartConfig = {
+              type: 'line',
+              data: {
+                labels: data.map(d => d.category),
+                datasets: [
+                  {
+                    label: 'Value',
+                    data: data.map(d => d.value),
+                    borderColor: '#1890ff',
+                    backgroundColor: 'rgba(24, 144, 255, 0.1)',
+                    tension: 0.1
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
+              }
+            };
+            break;
+          case 'pieChart':
+            chartConfig = {
+              type: 'pie',
+              data: {
+                labels: data.map(d => d.category),
+                datasets: [
+                  {
+                    data: data.map(d => d.value),
+                    backgroundColor: [
+                      '#1890ff',
+                      '#2fc25b',
+                      '#facc14',
+                      '#223273',
+                      '#8543e0',
+                      '#13c2c2',
+                      '#3436c7',
+                      '#f04864'
+                    ]
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
+              }
+            };
+            break;
+          case 'scatterChart':
+            chartConfig = {
+              type: 'scatter',
+              data: {
+                datasets: [
+                  {
+                    label: 'Value',
+                    data: data.map(d => ({ x: d.x, y: d.y })),
+                    backgroundColor: '#1890ff'
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  x: { type: 'linear', position: 'bottom' }
                 }
-              ]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false
-            }
-          };
-          break;
-      }
+              }
+            };
+            break;
+          case 'stackedAreaChart':
+            chartConfig = {
+              type: 'line',
+              data: {
+                labels: data.map(d => d.category),
+                datasets: [
+                  {
+                    label: 'Value',
+                    data: data.map(d => d.value),
+                    borderColor: '#1890ff',
+                    backgroundColor: 'rgba(24, 144, 255, 0.2)',
+                    fill: true,
+                    tension: 0.1
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
+              }
+            };
+            break;
+        }
 
       if (chartConfig) {
         chart = new ChartConstructor(ctx, chartConfig);
@@ -271,21 +283,59 @@ export const TableVisualization = ({ result, config, readOnly = false }: TableVi
         container.innerHTML = '';
       }
     };
-  }, [config?.graph, currentMode, displayMode, readOnly, tableData, themeMode]);
+  }, [currentMode, displayMode, readOnly, readOnlyData, tableData, themeMode]);
 
   return (
     <div>
-      {!readOnly && <VisualizationControls currentMode={currentMode} onModeChange={setCurrentMode} onExport={handleExport} />}
+      {!readOnly && (
+        <VisualizationControls currentMode={currentMode} onModeChange={setCurrentMode} onExport={handleExport} />
+      )}
+      {unsupportedAreaStyle && <p role="status">This saved area style is not available in the read-only preview.</p>}
       {renderVisualization()}
-      {readOnly && displayMode !== 'table' && tableData && (
+      {readOnly && displayMode !== 'table' && readOnlyData && (
         <details>
           <summary>View chart data as a table</summary>
-          <Table
-            columns={tableData.columnNames.map((name, index) => ({ title: name, dataIndex: index, key: index }))}
-            dataSource={tableData.rows.map((row, index) => ({ key: index, ...Object.fromEntries(row.map((value, cell) => [cell, value])) }))}
-            size="small"
-            pagination={{ pageSize: 50 }}
-          />
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">{displayMode === 'scatterChart' ? 'Group' : 'Category'}</th>
+                {displayMode === 'scatterChart' ? (
+                  <>
+                    <th scope="col">X</th>
+                    <th scope="col">Y</th>
+                    <th scope="col">Size</th>
+                  </>
+                ) : (
+                  readOnlyData.series.map(series => (
+                    <th scope="col" key={series.label}>
+                      {series.label}
+                    </th>
+                  ))
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {displayMode === 'scatterChart'
+                ? readOnlyData.scatter.flatMap(series =>
+                    series.points.map((point, index) => (
+                      <tr key={`${series.label}-${index}`}>
+                        <th scope="row">{series.label}</th>
+                        <td>{point.x}</td>
+                        <td>{point.y}</td>
+                        <td>{point.radius}</td>
+                      </tr>
+                    ))
+                  )
+                : readOnlyData.labels.map((label, index) => (
+                    <tr key={label}>
+                      <th scope="row">{label}</th>
+                      {readOnlyData.series.map(series => (
+                        <td key={series.label}>{series.values[index]}</td>
+                      ))}
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
         </details>
       )}
     </div>

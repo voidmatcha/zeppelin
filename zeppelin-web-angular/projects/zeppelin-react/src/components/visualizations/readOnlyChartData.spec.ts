@@ -62,4 +62,31 @@ describe('readOnlyChartData', () => {
       ).scatter
     ).toEqual([{ label: 'A', points: [{ x: 2, y: 3, radius: 8 }] }]);
   });
+
+  it('keeps every saved group column distinct', () => {
+    const graph = new GraphConfig();
+    graph.mode = 'multiBarChart';
+    graph.keys = [{ name: 'city', index: 0, aggr: 'sum' }];
+    graph.groups = [
+      { name: 'region', index: 1, aggr: 'sum' },
+      { name: 'team', index: 2, aggr: 'sum' }
+    ];
+    graph.values = [{ name: 'amount', index: 3, aggr: 'sum' }];
+
+    expect(
+      readOnlyChartData(
+        {
+          columnNames: ['city', 'region', 'team', 'amount'],
+          rows: [
+            ['Seoul', 'East', 'A', '2'],
+            ['Seoul', 'East', 'B', '3']
+          ]
+        },
+        graph
+      ).series
+    ).toEqual([
+      { label: 'amount / East / A', values: [2] },
+      { label: 'amount / East / B', values: [3] }
+    ]);
+  });
 });

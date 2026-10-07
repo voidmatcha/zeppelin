@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Alert, Tag, Typography } from 'antd';
 import type { NotebookCoreReadState, NotebookCoreRemoteProps } from '@zeppelin/notebook-core';
@@ -91,7 +91,9 @@ const NotebookReadContent = ({ state, revisionId }: { state: NotebookCoreReadSta
       )}
       {state.acl.status === 'loading' && <p role="status">Loading permissions…</p>}
       {state.acl.status === 'failed' && <Alert type="warning" role="alert" message="Could not load permissions." />}
-      {state.acl.status === 'accessDenied' && <Alert type="warning" role="alert" message="Permissions are unavailable." />}
+      {state.acl.status === 'accessDenied' && (
+        <Alert type="warning" role="alert" message="Permissions are unavailable." />
+      )}
       {paragraphOrder.map((id, index) => {
         const paragraph = paragraphsById[id] as ReadParagraph | undefined;
         return paragraph ? <ReadOnlyParagraph key={id} paragraph={paragraph} index={index} /> : null;
@@ -102,14 +104,18 @@ const NotebookReadContent = ({ state, revisionId }: { state: NotebookCoreReadSta
 
 export const NotebookRouteEntry = ({ onReady }: { onReady?: () => void }) => {
   const snapshot = useNotebookSelector(value => value);
-  useEffect(() => onReady?.(), [onReady]);
+  const reportedReady = useRef(false);
+  const state = snapshot.readState ?? { status: 'initial' as const, acl: { status: 'loading' as const } };
+  useEffect(() => {
+    if (onReady && !reportedReady.current && !['initial', 'loading', 'disposed'].includes(state.status)) {
+      reportedReady.current = true;
+      onReady();
+    }
+  }, [onReady, state.status]);
   return (
     <ZeppelinThemeProvider>
       <main data-testid="react-notebook-entry" aria-label="Read-only notebook" className="notebook-react-read">
-        <NotebookReadContent
-          state={snapshot.readState ?? { status: 'initial', acl: { status: 'loading' } }}
-          revisionId={snapshot.revisionId}
-        />
+        <NotebookReadContent state={state} revisionId={snapshot.revisionId} />
       </main>
     </ZeppelinThemeProvider>
   );

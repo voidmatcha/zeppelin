@@ -28,19 +28,30 @@ describe('NotebookRouteEntry', () => {
     element.replaceChildren();
   });
 
-  it('confirms the first React commit and reads the host-owned Core port', () => {
+  it('reports readiness only after the host-owned Core publishes a loaded screen', () => {
     const store = new NotebookCoreReadStore('');
     const onReady = vi.fn();
     act(() => {
       unmount = mount(element, { core: store.port, onReady }).unmount;
     });
-    expect(onReady).toHaveBeenCalledOnce();
+    expect(onReady).not.toHaveBeenCalled();
     expect(element.textContent).toContain('Loading notebook');
 
+    let request!: ReturnType<NotebookCoreReadStore['beginRoute']>;
     act(() => {
-      store.beginRoute('note-1', null);
+      request = store.beginRoute('note-1', null);
     });
+    expect(onReady).not.toHaveBeenCalled();
     expect(element.textContent).toContain('Loading notebook');
+    act(() => {
+      store.acceptNote(request, { id: 'note-1', name: 'Loaded note', path: '/Loaded note', paragraphs: [] });
+    });
+    expect(element.querySelector('h1')?.textContent).toBe('Loaded note');
+    expect(onReady).toHaveBeenCalledOnce();
+    act(() => {
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+    expect(onReady).toHaveBeenCalledOnce();
     store.dispose();
   });
 
