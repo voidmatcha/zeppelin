@@ -16,6 +16,12 @@ React micro-frontend that runs alongside the Angular host via [Webpack Module Fe
 
 - Design Document: [Micro Frontend Migration (Angular to React) Proposal](https://cwiki.apache.org/confluence/display/ZEPPELIN/Micro+Frontend+Migration%28Angular+to+React%29+Proposal)
 
+## Temporary development dependency audit exception
+
+`webpack-dev-server@6.0.0` reaches `braces@3.0.3` through `http-proxy-middleware` and `micromatch`. The resulting [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) finding has no published fix. This path is used only by the local development server, whose glob patterns are fixed by its dependencies rather than supplied by Zeppelin users.
+
+`npm run audit` continues to reject every other high or critical advisory. It permits this advisory only while the exact lockfile path remains unchanged, and the exception expires on 2026-12-04. Remove the policy and restore the direct audit command when a fixed dependency path is available.
+
 ## React mount infrastructure (Angular side)
 
 The Angular host's `src/app/share/react-mount/` exports two pieces:
@@ -166,4 +172,3 @@ export function mount(element: HTMLElement, props: Props): ReactMountHandle;
    an inline object literal) so identity is stable when nothing changed.
 
 Every exposed module must return the handle contract from `mount`. The directive assigns the return value straight to its handle, so returning a bare unmount function makes the next prop change throw.
-
