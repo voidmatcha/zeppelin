@@ -644,6 +644,63 @@
           "symbol": "Dark Mode Theme Switching"
         }
       ]
+    },
+    {
+      "id": "NB-PARITY-070",
+      "name": "A saved notebook opens in a private read-only view",
+      "area": "navigation",
+      "preconditions": ["A disposable notebook with saved paragraph results and a saved chart configuration exists."],
+      "action": "Open the private read-only notebook route without editing or executing a paragraph.",
+      "observableOutcomes": [
+        {
+          "id": "NB-PARITY-070-OUTCOME-001",
+          "description": "The note heading and saved paragraphs appear in their stored order."
+        },
+        {
+          "id": "NB-PARITY-070-OUTCOME-002",
+          "description": "Saved text and table results, including the selected chart mode and fields, are shown without re-execution."
+        },
+        {
+          "id": "NB-PARITY-070-OUTCOME-003",
+          "description": "No editor or write controls are exposed in the read-only view."
+        },
+        {
+          "id": "NB-PARITY-070-OUTCOME-004",
+          "description": "The note permissions are displayed without granting additional access."
+        },
+        {
+          "id": "NB-PARITY-070-OUTCOME-005",
+          "description": "Saved results remain readable in light, dark and system theme after a live theme change and reload."
+        }
+      ],
+      "interpreter": null,
+      "coverage": {
+        "status": "partial",
+        "tests": [
+          {
+            "path": "zeppelin-web-angular/e2e/tests/notebook/core-read/notebook-react-route.spec.ts",
+            "tag": "@NB-PARITY-070"
+          }
+        ],
+        "issues": ["ZEPPELIN-6729"],
+        "uncoveredOutcomes": ["NB-PARITY-070-OUTCOME-005"]
+      },
+      "implementationEvidence": [
+        {
+          "path": "zeppelin-web-angular/src/app/pages/workspace/notebook/notebook-core-read.component.ts",
+          "symbol": "NotebookCoreReadComponent"
+        },
+        {
+          "path": "zeppelin-web-angular/projects/zeppelin-react/src/pages/NotebookRouteEntry.tsx",
+          "symbol": "NotebookRouteEntry"
+        }
+      ],
+      "verificationEvidence": [
+        {
+          "path": "zeppelin-web-angular/projects/zeppelin-react/src/components/visualizations/readOnlyChartData.spec.ts",
+          "symbol": "readOnlyChartData"
+        }
+      ]
     }
   ]
 }

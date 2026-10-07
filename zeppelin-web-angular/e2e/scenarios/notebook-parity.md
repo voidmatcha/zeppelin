@@ -36,6 +36,7 @@ Coverage note: `covered` mechanically means this registry points to a matching e
 | NB-PARITY-050 | persistence | Notebook editor persists the latest text after typing stops | covered | owner: allow<br>writer: allow<br>reader: deny<br>runner: not-applicable | zeppelin-web-angular/e2e/tests/notebook/persistence/notebook-save-timing.spec.ts<br>@NB-PARITY-050 |  |
 | NB-PARITY-051 | persistence | Notebook editor does not lose an edit made while a prior save is in flight | covered | owner: allow<br>writer: allow<br>reader: deny<br>runner: not-applicable | zeppelin-web-angular/e2e/tests/notebook/persistence/notebook-save-timing.spec.ts<br>@NB-PARITY-051 |  |
 | NB-PARITY-060 | theme | Notebook honors host theme selection | gap | not-applicable |  | ZEPPELIN-6640 |
+| NB-PARITY-070 | navigation | A saved notebook opens in a private read-only view | partial | not-applicable | zeppelin-web-angular/e2e/tests/notebook/core-read/notebook-react-route.spec.ts<br>@NB-PARITY-070 | ZEPPELIN-6729 |
 
 ## Scenario Details
 
@@ -183,3 +184,16 @@ Coverage note: `covered` mechanically means this registry points to a matching e
 - Observable outcomes: NB-PARITY-060-OUTCOME-001: Notebook text remains readable. NB-PARITY-060-OUTCOME-002: Result and chart output inherit the host theme tokens. NB-PARITY-060-OUTCOME-003: The selected theme persists after reload.
 - Implementation evidence: zeppelin-web-angular/projects/zeppelin-react/src/theme/ZeppelinThemeProvider.tsx (ZeppelinThemeProvider)
 - Verification evidence: zeppelin-web-angular/e2e/tests/theme/dark-mode.spec.ts (Dark Mode Theme Switching)
+
+### NB-PARITY-070 A saved notebook opens in a private read-only view
+
+- Area: navigation
+- Coverage: partial
+- Interpreter: not-applicable
+- Role verification: not-applicable
+- Preconditions: A disposable notebook with saved paragraph results and a saved chart configuration exists.
+- Action: Open the private read-only notebook route without editing or executing a paragraph.
+- Observable outcomes: NB-PARITY-070-OUTCOME-001: The note heading and saved paragraphs appear in their stored order. NB-PARITY-070-OUTCOME-002: Saved text and table results, including the selected chart mode and fields, are shown without re-execution. NB-PARITY-070-OUTCOME-003: No editor or write controls are exposed in the read-only view. NB-PARITY-070-OUTCOME-004: The note permissions are displayed without granting additional access. NB-PARITY-070-OUTCOME-005: Saved results remain readable in light, dark and system theme after a live theme change and reload.
+- Implementation evidence: zeppelin-web-angular/src/app/pages/workspace/notebook/notebook-core-read.component.ts (NotebookCoreReadComponent); zeppelin-web-angular/projects/zeppelin-react/src/pages/NotebookRouteEntry.tsx (NotebookRouteEntry)
+- Verification evidence: zeppelin-web-angular/projects/zeppelin-react/src/components/visualizations/readOnlyChartData.spec.ts (readOnlyChartData)
+- Uncovered outcomes: NB-PARITY-070-OUTCOME-005: Saved results remain readable in light, dark and system theme after a live theme change and reload.

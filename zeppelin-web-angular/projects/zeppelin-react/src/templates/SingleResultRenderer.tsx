@@ -19,14 +19,15 @@ interface SingleResultRendererProps {
   result: ParagraphIResultsMsgItem;
   index: number;
   config?: ParagraphConfigResults;
+  readOnly?: boolean;
 }
 
-export const SingleResultRenderer = ({ result, index, config }: SingleResultRendererProps) => {
+export const SingleResultRenderer = ({ result, index, config, readOnly = false }: SingleResultRendererProps) => {
   const resultConfig: ParagraphConfigResult | undefined = config?.[index];
 
   switch (result.type) {
     case DatasetType.TABLE:
-      return <TableVisualization result={result} config={resultConfig} />;
+      return <TableVisualization result={result} config={resultConfig} readOnly={readOnly} />;
     case DatasetType.HTML:
       return <HTMLRenderer html={result.data} />;
     case DatasetType.TEXT:

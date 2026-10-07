@@ -48,7 +48,7 @@ test.describe('Private React notebook route entry', () => {
 
       await test.step('Then React reads the route without enabling the editor', async () => {
         await expect(notebook.entry).toBeVisible();
-        await expect(notebook.entry).toContainText('ready');
+        await expect(notebook.noteHeading).toBeVisible();
         await expect(notebook.legacyNotebook).not.toBeAttached();
         await expect(notebook.fallback.readView).not.toBeAttached();
       });
@@ -79,6 +79,69 @@ test.describe('Private React notebook route entry', () => {
         await expect(notebook.entry).not.toBeAttached();
         await expect(notebook.legacyNotebook).not.toBeAttached();
         await expect(page).toHaveURL(new RegExp(`/notebook/${noteId}\\?notebookReactPrivate=true$`));
+      });
+    } finally {
+      await page.request.delete(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+    }
+  });
+
+  test('shows imported saved results and chart mappings without edit controls', { tag: '@NB-PARITY-070' }, async ({ page }) => {
+    const name = `ReactRead_${Date.now()}`;
+    const imported = await page.request.post('/api/notebook/import', {
+      params: { notePath: `/__react_read__/${name}` },
+      data: {
+        name,
+        paragraphs: [
+          {
+            id: 'paragraph_react_read_1',
+            title: 'Saved output',
+            text: '%md saved code',
+            status: 'FINISHED',
+            config: { editorHide: false, tableHide: false },
+            results: { code: 'SUCCESS', msg: [{ type: 'TEXT', data: 'Persisted result text' }] }
+          },
+          {
+            id: 'paragraph_react_read_2',
+            title: 'Saved chart',
+            text: '%sh saved table',
+            status: 'FINISHED',
+            config: {
+              results: {
+                0: {
+                  graph: {
+                    mode: 'multiBarChart',
+                    keys: [{ name: 'city', index: 2, aggr: 'sum' }],
+                    groups: [],
+                    values: [{ name: 'amount', index: 3, aggr: 'sum' }]
+                  }
+                }
+              }
+            },
+            results: { code: 'SUCCESS', msg: [{ type: 'TABLE', data: 'unused\tother\tcity\tamount\na\t9\tSeoul\t2' }] }
+          }
+        ]
+      }
+    });
+    expect(imported.ok(), `Notebook import failed: ${imported.status()} ${await imported.text()}`).toBe(true);
+    const noteId = (await imported.json()).body as string;
+
+    try {
+      await test.step('When the imported notebook opens on the private React route', async () => {
+        await notebook.open(noteId);
+        await waitForZeppelinReady(page);
+      });
+
+      await test.step('Then saved paragraphs, output, chart and accessible table appear in order', async () => {
+        await expect(notebook.noteHeading).toHaveText(name);
+        await expect(notebook.paragraphs).toHaveCount(2);
+        await expect(notebook.paragraphs.nth(0)).toContainText('Persisted result text');
+        await expect(notebook.paragraphs.nth(1).getByRole('img', { name: 'multiBarChart visualization' })).toBeVisible();
+        await notebook.paragraphs.nth(1).getByText('View chart data as a table').click();
+        await expect(notebook.paragraphs.nth(1).getByRole('table')).toContainText('Seoul');
+        await expect(notebook.permissions).toBeVisible();
+        await expect(notebook.editor).toHaveCount(0);
+        await expect(notebook.writeControls).toHaveCount(0);
+        await expect(notebook.legacyNotebook).not.toBeAttached();
       });
     } finally {
       await page.request.delete(`/api/notebook/${noteId}`, { failOnStatusCode: false });
