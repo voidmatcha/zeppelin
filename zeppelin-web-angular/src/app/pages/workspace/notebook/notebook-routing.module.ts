@@ -13,10 +13,10 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 
-import { NotebookComponent } from './notebook.component';
+import { NotebookRouteHostComponent } from './notebook-route-host.component';
 import { createNotebookChildRoutes } from './notebook-route-boundary';
 
-const routes: Routes = createNotebookChildRoutes(NotebookComponent);
+const routes: Routes = createNotebookChildRoutes(NotebookRouteHostComponent);
 
 @NgModule({
   imports: [RouterModule.forChild(routes)],

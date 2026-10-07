@@ -50,6 +50,7 @@ export const PAGES = {
     NOTEBOOK_SEARCH: 'src/app/pages/workspace/notebook-search/notebook-search.component',
     NOTEBOOK_SEARCH_RESULT: 'src/app/pages/workspace/notebook-search/result-item/result-item.component',
     NOTEBOOK: 'src/app/pages/workspace/notebook/notebook.component',
+    NOTEBOOK_CORE_READ: 'src/app/pages/workspace/notebook/notebook-core-read.component',
     NOTEBOOK_ACTION_BAR: 'src/app/pages/workspace/notebook/action-bar/action-bar.component',
     NOTEBOOK_ADD_PARAGRAPH: 'src/app/pages/workspace/notebook/add-paragraph/add-paragraph.component',
     NOTEBOOK_INTERPRETER_BINDING: 'src/app/pages/workspace/notebook/interpreter-binding/interpreter-binding.component',
@@ -102,6 +103,7 @@ export const PAGES = {
 // These structural/shared components have no page-level behavior and are exercised transitively rather than counted as separate E2E targets.
 export const COVERAGE_EXCLUDED_COMPONENTS = [
   'src/app/core/destroy-hook/destroy-hook.component',
+  'src/app/pages/workspace/notebook/notebook-route-host.component',
   'src/app/share/page-header/page-header.component',
   'src/app/share/resize-handle/resize-handle.component',
   'src/app/share/spin/spin.component'

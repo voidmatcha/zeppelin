@@ -55,12 +55,16 @@ import { NotebookActionBarComponent } from './action-bar/action-bar.component';
 import { NoteFormBlockComponent } from './note-form-block/note-form-block.component';
 import { NotebookRoutingModule } from './notebook-routing.module';
 import { NotebookComponent } from './notebook.component';
+import { NotebookCoreReadComponent } from './notebook-core-read.component';
+import { NotebookRouteHostComponent } from './notebook-route-host.component';
 import { NotebookShareModule } from './share/share.module';
 import { NotebookSidebarComponent } from './sidebar/sidebar.component';
 
 @NgModule({
   declarations: [
     NotebookComponent,
+    NotebookRouteHostComponent,
+    NotebookCoreReadComponent,
     NotebookActionBarComponent,
     NotebookInterpreterBindingComponent,
     NotebookPermissionsComponent,

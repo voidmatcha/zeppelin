@@ -28,8 +28,12 @@ export interface ClientConfigurations {
 
 export interface ErrorInfo {
   info?: string;
+  errorType?: 'FORBIDDEN' | 'NOTE_NOT_FOUND' | 'INTERNAL_ERROR';
+  status?: number;
 }
 
 export interface AuthInfo {
   info?: string;
+  errorType?: 'FORBIDDEN' | 'NOTE_NOT_FOUND' | 'INTERNAL_ERROR';
+  status?: number;
 }

@@ -1,0 +1,149 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { combineLatest, Subscription } from 'rxjs';
+import { distinctUntilChanged, map, startWith } from 'rxjs/operators';
+
+import { NotebookCoreReadSnapshot, NotebookCoreReadState } from '@zeppelin/notebook-core';
+import { MessageService } from '@zeppelin/services';
+import { ParagraphConfigResult, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import { NotebookCoreReadHost } from './notebook-core-read-host';
+
+@Component({
+  selector: 'zeppelin-notebook-core-read',
+  template: `
+    <section class="notebook-core-read" aria-label="Read-only notebook" data-testid="notebook-core-read">
+      <p>Read-only preview</p>
+      @switch (state.status) {
+        @case ('initial') {
+          <p role="status">Loading notebook…</p>
+        }
+        @case ('loading') {
+          <p role="status">Loading notebook…</p>
+        }
+        @case ('notFound') {
+          <p role="alert">Notebook not found.</p>
+        }
+        @case ('accessDenied') {
+          <p role="alert">You do not have access to this notebook.</p>
+        }
+        @case ('failed') {
+          <p role="alert">Could not load the notebook.</p>
+        }
+        @case ('ready') {
+          <h1>{{ readData?.note?.name }}</h1>
+          @if (state.acl.status === 'loading') {
+            <p role="status">Loading permissions…</p>
+          }
+          @if (state.acl.status === 'accessDenied') {
+            <p role="alert">Permissions are unavailable.</p>
+          }
+          @if (state.acl.status === 'failed') {
+            <p role="alert">Could not load permissions.</p>
+          }
+          @for (id of readData?.paragraphOrder; track id) {
+            <article class="notebook-core-read-paragraph">
+              <h2>{{ paragraph(id)?.title || 'Paragraph' }}</h2>
+              <pre>{{ paragraph(id)?.text }}</pre>
+              <p>{{ paragraph(id)?.status }}</p>
+              @for (result of results(id); track $index) {
+                <div class="notebook-core-read-result" [attr.data-result-type]="result.type">
+                  @switch (result.type) {
+                    @case ('TEXT') {
+                      <pre>{{ result.data }}</pre>
+                    }
+                    @case ('TABLE') {
+                      <p>Saved table data</p>
+                      <pre>{{ result.data }}</pre>
+                      @if (resultConfig(id, $index)?.graph?.mode) {
+                        <p>Saved visualization: {{ resultConfig(id, $index)?.graph?.mode }} (preview unavailable)</p>
+                      }
+                    }
+                    @default {
+                      <p>Saved {{ result.type }} result preview is unavailable.</p>
+                    }
+                  }
+                </div>
+              }
+            </article>
+          }
+        }
+      }
+    </section>
+  `,
+  styles: [
+    '.notebook-core-read { margin: 24px auto; max-width: 1100px; padding: 0 24px; }',
+    '.notebook-core-read-paragraph { border: 1px solid #d9d9d9; margin: 16px 0; padding: 16px; }',
+    '.notebook-core-read-paragraph pre { white-space: pre-wrap; overflow-wrap: anywhere; }'
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false
+})
+export class NotebookCoreReadComponent implements OnInit, OnDestroy {
+  @Input({ required: true }) host!: NotebookCoreReadHost;
+  state: NotebookCoreReadState = { status: 'initial', acl: { status: 'loading' } };
+  private readonly subscriptions = new Subscription();
+
+  constructor(
+    private readonly route: ActivatedRoute,
+    private readonly message: MessageService,
+    private readonly cdr: ChangeDetectorRef
+  ) {}
+
+  get readData(): NotebookCoreReadSnapshot | null {
+    return this.state.status === 'ready' ? this.state.data : null;
+  }
+
+  ngOnInit(): void {
+    this.subscriptions.add(
+      this.host.snapshot$.subscribe(snapshot => {
+        this.state = snapshot.readState;
+        this.cdr.markForCheck();
+      })
+    );
+    this.subscriptions.add(
+      combineLatest([
+        this.message.connectedStatus$.pipe(startWith(this.message.connectedStatus), distinctUntilChanged()),
+        this.route.paramMap.pipe(
+          map(params => ({ noteId: params.get('noteId'), revisionId: params.get('revisionId') })),
+          distinctUntilChanged((left, right) => left.noteId === right.noteId && left.revisionId === right.revisionId)
+        )
+      ]).subscribe(([connected, target]) => {
+        if (!connected) {
+          this.host.invalidate();
+        } else if (target.noteId) {
+          this.host.load(target.noteId, target.revisionId);
+        }
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
+
+  paragraph(id: string): (NotebookCoreReadSnapshot['paragraphsById'][string] & { title?: string }) | undefined {
+    return this.readData?.paragraphsById[id];
+  }
+
+  results(id: string): ParagraphIResultsMsgItem[] {
+    const value = this.paragraph(id)?.results as { msg?: ParagraphIResultsMsgItem[] } | undefined;
+    return value?.msg ?? [];
+  }
+
+  resultConfig(id: string, index: number): ParagraphConfigResult | undefined {
+    const config = this.paragraph(id)?.config as { results?: Record<string, ParagraphConfigResult> } | undefined;
+    return config?.results?.[index];
+  }
+}

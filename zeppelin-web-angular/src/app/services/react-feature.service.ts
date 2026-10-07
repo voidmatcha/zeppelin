@@ -10,10 +10,11 @@
  * limitations under the License.
  */
 
-import { Injectable } from '@angular/core';
+import { Injectable, isDevMode } from '@angular/core';
 import { parseBooleanFlag } from './query-flag.util';
 
-export type ReactSurface = 'publishedParagraph' | 'paragraphFooter' | 'configurationTable' | 'notebookRepoList';
+export type ReactSurface =
+  'publishedParagraph' | 'paragraphFooter' | 'configurationTable' | 'notebookRepoList' | 'notebookCoreReadOnly';
 
 interface ReactSurfaceConfig {
   queryParam: string;
@@ -36,6 +37,10 @@ const SURFACES: Record<ReactSurface, ReactSurfaceConfig> = {
   notebookRepoList: {
     queryParam: 'reactNotebookRepos',
     defaultEnabled: false
+  },
+  notebookCoreReadOnly: {
+    queryParam: 'notebookCoreReadOnly',
+    defaultEnabled: false
   }
 };
 
@@ -51,6 +56,10 @@ export interface FlagSource {
 @Injectable({ providedIn: 'root' })
 export class ReactFeatureService {
   isEnabled(surface: ReactSurface, source?: FlagSource | null): boolean {
+    // The read-only Core route is a development proof, not a production surface.
+    if (surface === 'notebookCoreReadOnly' && !isDevMode()) {
+      return false;
+    }
     const config = SURFACES[surface];
 
     const fromQuery = parseBooleanFlag(source?.get(config.queryParam));

@@ -17,7 +17,7 @@ import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterModule, RouterStateSnapshot } from '@angular/router';
 import { TRASH_FOLDER_ID_TOKEN } from '@zeppelin/interfaces';
 import type { NotebookCorePort, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
-import { NotebookComponent } from '@zeppelin/pages/workspace/notebook/notebook.component';
+import { NotebookRouteHostComponent } from '@zeppelin/pages/workspace/notebook/notebook-route-host.component';
 import {
   NOTEBOOK_CHILD_ROUTE_PATHS,
   NOTEBOOK_ROUTE_PATH
@@ -96,7 +96,7 @@ export class NotebookCorePortProofAppComponent {
       this.notebookRouteActive = notebookRoute !== undefined;
       if (notebookRoute) {
         window.__zeppelinNotebookRouteBoundaryProof?.activatedProductionNotebookComponents.push(
-          notebookRoute.component === NotebookComponent
+          notebookRoute.component === NotebookRouteHostComponent
         );
         portHost.publish({
           noteId: notebookRoute.paramMap.get('noteId') ?? '',
@@ -110,7 +110,7 @@ export class NotebookCorePortProofAppComponent {
 const findActivatedNotebookRoute = (root: ActivatedRouteSnapshot): ActivatedRouteSnapshot | undefined => {
   let route: ActivatedRouteSnapshot | null = root;
   while (route) {
-    if (route.component === NotebookComponent) {
+    if (route.component === NotebookRouteHostComponent) {
       return route;
     }
     route = route.firstChild;

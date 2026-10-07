@@ -158,21 +158,15 @@ export class Message {
   }
 
   send<K extends keyof MessageSendDataTypeMap>(...args: SendArgumentsType<K>): string {
-    if (!this.ws) {
-      throw new Error('WebSocket is not connected. Bootstrap first.');
-    }
-    const [op, data] = args;
-    const message = {
-      op,
-      msgId: `${this.uniqueClientId}-${++this.lastMsgIdSeqSent}`,
-      data,
-      ...this.ticket
-    };
-    console.log('Send:', message.op, message.principal);
+    return this.sendRegistered(() => undefined, args);
+  }
 
-    this.ws.next(message);
-    this.sent$.next(message);
-    return message.msgId;
+  /** Give private notebook reads an attributable ID for their entire socket lifetime. */
+  sendNotebookCoreRead<K extends OP.GET_NOTE | OP.NOTE_REVISION>(
+    register: (msgId: string) => void,
+    ...args: SendArgumentsType<K>
+  ): string {
+    return this.sendRegistered(register, args, 'core-read-');
   }
 
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
@@ -558,6 +552,33 @@ export class Message {
       noteId: note.id,
       formName
     });
+  }
+
+  protected isNotebookCoreReadRequestId(msgId: string): boolean {
+    return msgId.startsWith(`${this.uniqueClientId}-core-read-`);
+  }
+
+  private sendRegistered<K extends keyof MessageSendDataTypeMap>(
+    register: (msgId: string) => void,
+    args: SendArgumentsType<K>,
+    namespace = ''
+  ): string {
+    if (!this.ws) {
+      throw new Error('WebSocket is not connected. Bootstrap first.');
+    }
+    const [op, data] = args;
+    const message = {
+      op,
+      msgId: `${this.uniqueClientId}-${namespace}${++this.lastMsgIdSeqSent}`,
+      data,
+      ...this.ticket
+    };
+    console.log('Send:', message.op, message.principal);
+
+    register(message.msgId);
+    this.ws.next(message);
+    this.sent$.next(message);
+    return message.msgId;
   }
 
   private receiveMessage<K extends keyof MessageReceiveDataTypeMap>(op: K) {

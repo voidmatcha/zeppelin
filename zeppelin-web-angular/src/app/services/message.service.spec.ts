@@ -13,6 +13,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { MessageInterceptor } from '@zeppelin/interfaces';
+import { OP } from '@zeppelin/sdk';
 import { BaseUrlService } from './base-url.service';
 import { MessageService } from './message.service';
 import { TicketService } from './ticket.service';
@@ -41,5 +42,26 @@ describe('MessageService local add focus', () => {
     service.insertParagraph(0);
 
     expect(service.consumeLocalAddFocusMsgId('other-client-1')).toBe(false);
+  });
+});
+
+describe('MessageService private notebook reads', () => {
+  it('keeps a delayed correlated read failure out of the global interceptor', () => {
+    const interceptor = { received: vi.fn(message => message) };
+    const service = new MessageService({} as BaseUrlService, {} as TicketService, interceptor);
+    (service as unknown as { ws: { next: () => void; complete: () => void } }).ws = {
+      next: vi.fn(),
+      complete: vi.fn()
+    };
+    const requestId = service.sendNotebookCoreRead(() => undefined, OP.GET_NOTE, { id: 'a' });
+
+    service.interceptReceived({ op: OP.AUTH_INFO, msgId: requestId, data: { info: 'Denied' } });
+    service.interceptReceived({ op: OP.ERROR_INFO, msgId: requestId, data: { info: 'Late failure' } });
+    service.interceptReceived({ op: OP.ERROR_INFO, msgId: 'ordinary-1', data: { info: 'Other failure' } });
+    service.interceptReceived({ op: OP.SESSION_LOGOUT, data: {} });
+
+    expect(interceptor.received).toHaveBeenCalledTimes(2);
+    expect(interceptor.received.mock.calls.map(([message]) => message.op)).toEqual([OP.ERROR_INFO, OP.SESSION_LOGOUT]);
+    service.ngOnDestroy();
   });
 });

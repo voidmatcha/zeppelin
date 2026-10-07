@@ -181,4 +181,23 @@ describe('Message.send', () => {
     expect(next.mock.calls.map(([sent]) => sent.msgId)).toEqual([commitMsgId, insertMsgId, copyMsgId]);
     expect(new Set([commitMsgId, insertMsgId, copyMsgId]).size).toBe(3);
   });
+
+  it('registers a read request before sending it over the WebSocket', () => {
+    const { message, next } = connectedMessage();
+    const registered: string[] = [];
+    next.mockImplementation(sent => expect(registered).toContain(sent.msgId));
+
+    const msgId = message.sendNotebookCoreRead(id => registered.push(id), OP.GET_NOTE, { id: 'n1' });
+
+    expect(registered).toEqual([msgId]);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a stable private-read ID namespace distinct from ordinary requests', () => {
+    const { message } = connectedMessage();
+    const ordinary = message.send(OP.GET_NOTE, { id: 'n1' });
+    const privateRead = message.sendNotebookCoreRead(() => undefined, OP.GET_NOTE, { id: 'n1' });
+    expect(privateRead).toContain('-core-read-');
+    expect(ordinary).not.toContain('-core-read-');
+  });
 });
