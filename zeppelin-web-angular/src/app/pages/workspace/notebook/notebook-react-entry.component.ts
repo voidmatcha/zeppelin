@@ -16,34 +16,18 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
 
 @Component({
   selector: 'zeppelin-notebook-react-entry',
-  template: `
-    <div data-testid="react-notebook-host" zeppelin-react-mount="./NotebookRouteEntry" [reactProps]="reactProps"></div>
-    @if (runtimeError) {
-      <p role="alert">The React notebook encountered an error.</p>
-    }
-  `,
+  template:
+    '<div data-testid="react-notebook-host" zeppelin-react-mount="./NotebookRouteEntry" [reactProps]="reactProps"></div>',
   standalone: false
 })
 export class NotebookReactEntryComponent {
   @Input({ required: true }) onEntryFailure!: () => void;
 
   reactProps: Record<string, unknown> = {};
-  runtimeError = false;
-  private mounted = false;
 
   @Input({ required: true }) set host(value: NotebookCoreReadHost) {
-    this.reactProps = { core: value.port, onReady: this.onReady, onError: this.onError };
+    this.reactProps = { core: value.port, onError: this.onError };
   }
 
-  private readonly onReady = (): void => {
-    this.mounted = true;
-  };
-
-  private readonly onError = (_error: unknown): void => {
-    if (this.mounted) {
-      this.runtimeError = true;
-    } else {
-      this.onEntryFailure();
-    }
-  };
+  private readonly onError = (_error: unknown): void => this.onEntryFailure();
 }
