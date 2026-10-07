@@ -70,6 +70,7 @@ import org.apache.zeppelin.MiniZeppelinServer;
 import org.apache.zeppelin.common.Message;
 import org.apache.zeppelin.common.Message.OP;
 import org.apache.zeppelin.rest.AbstractTestRestApi;
+import org.apache.zeppelin.rest.exception.ForbiddenException;
 import org.apache.zeppelin.scheduler.Job;
 import org.apache.zeppelin.scheduler.Job.Status;
 import org.apache.zeppelin.service.NotebookService;
@@ -1172,6 +1173,151 @@ class NotebookServerTest extends AbstractTestRestApi {
         notebook.removeNote(noteId, anonymous);
       }
     }
+  }
+
+  @Test
+  void getNoteResponsePreservesRequestMessageId() throws IOException {
+    String noteId = notebook.createNote("correlated-get-note", anonymous);
+    try {
+      NotebookSocket socket = createWebSocket();
+      notebookServer.onMessage(socket, new Message(OP.GET_NOTE)
+          .withMsgId("get-note-request")
+          .put("id", noteId)
+          .toJson());
+
+      ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+      verify(socket, Mockito.atLeastOnce()).send(response.capture());
+      Message responseMessage = response.getAllValues().stream()
+          .map(notebookServer::deserializeMessage)
+          .filter(message -> message.op == OP.NOTE)
+          .findFirst()
+          .orElseThrow();
+      assertEquals("get-note-request", responseMessage.msgId);
+
+      reset(socket);
+      notebookServer.onMessage(socket, new Message(OP.GET_NOTE).put("id", noteId).toJson());
+      response = ArgumentCaptor.forClass(String.class);
+      verify(socket, Mockito.atLeastOnce()).send(response.capture());
+      responseMessage = response.getAllValues().stream()
+          .map(notebookServer::deserializeMessage)
+          .filter(message -> message.op == OP.NOTE)
+          .findFirst()
+          .orElseThrow();
+      assertNull(responseMessage.msgId);
+    } finally {
+      notebook.removeNote(noteId, anonymous);
+    }
+  }
+
+  @Test
+  void getNoteFailurePreservesRequestMessageIdAndClassification() throws IOException {
+    NotebookSocket socket = createWebSocket();
+    notebookServer.onMessage(socket, new Message(OP.GET_NOTE)
+        .withMsgId("missing-note-request")
+        .put("id", "missing-note")
+        .toJson());
+
+    ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+    verify(socket).send(response.capture());
+    Message responseMessage = notebookServer.deserializeMessage(response.getValue());
+    assertEquals(OP.ERROR_INFO, responseMessage.op);
+    assertEquals("missing-note-request", responseMessage.msgId);
+    assertEquals("NOTE_NOT_FOUND", responseMessage.data.get("errorType"));
+    assertEquals(404.0, responseMessage.data.get("status"));
+  }
+
+  @Test
+  void noteRevisionResponsePreservesRequestMessageId() throws IOException {
+    String noteId = notebook.createNote("correlated-note-revision", anonymous);
+    try {
+      NotebookRepoWithVersionControl.Revision revision = notebook.processNote(noteId,
+          note -> notebook.checkpointNote(note.getId(), note.getPath(), "revision", anonymous));
+      NotebookSocket socket = createWebSocket();
+      notebookServer.onMessage(socket, new Message(OP.NOTE_REVISION)
+          .withMsgId("note-revision-request")
+          .put("noteId", noteId)
+          .put("revisionId", revision.id)
+          .toJson());
+
+      ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+      verify(socket).send(response.capture());
+      Message responseMessage = notebookServer.deserializeMessage(response.getValue());
+      assertEquals(OP.NOTE_REVISION, responseMessage.op);
+      assertEquals("note-revision-request", responseMessage.msgId);
+      assertEquals(noteId, responseMessage.data.get("noteId"));
+      assertEquals(revision.id, responseMessage.data.get("revisionId"));
+    } finally {
+      notebook.removeNote(noteId, anonymous);
+    }
+  }
+
+  @Test
+  void noteRevisionFailurePreservesRequestMessageIdAndClassification() throws IOException {
+    NotebookSocket socket = createWebSocket();
+    notebookServer.onMessage(socket, new Message(OP.NOTE_REVISION)
+        .withMsgId("missing-revision-request")
+        .put("noteId", "missing-note")
+        .put("revisionId", "missing-revision")
+        .toJson());
+
+    ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+    verify(socket).send(response.capture());
+    Message responseMessage = notebookServer.deserializeMessage(response.getValue());
+    assertEquals(OP.ERROR_INFO, responseMessage.op);
+    assertEquals("missing-revision-request", responseMessage.msgId);
+    assertEquals("NOTE_NOT_FOUND", responseMessage.data.get("errorType"));
+    assertEquals(404.0, responseMessage.data.get("status"));
+  }
+
+  @Test
+  void correlatedForbiddenFailureIncludesRequestMessageIdAndClassification() throws IOException {
+    NotebookSocket socket = createWebSocket();
+    NotebookServer.WebSocketServiceCallback<Note> callback =
+        notebookServer.new WebSocketServiceCallback<>(socket, "forbidden-read-request");
+
+    callback.onFailure(new ForbiddenException("read denied"), serviceContext("reader"));
+
+    ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+    verify(socket).send(response.capture());
+    Message responseMessage = notebookServer.deserializeMessage(response.getValue());
+    assertEquals(OP.AUTH_INFO, responseMessage.op);
+    assertEquals("forbidden-read-request", responseMessage.msgId);
+    assertEquals("FORBIDDEN", responseMessage.data.get("errorType"));
+    assertEquals(403.0, responseMessage.data.get("status"));
+  }
+
+  @Test
+  void uncorrelatedFailureKeepsLegacyPayload() throws IOException {
+    NotebookSocket socket = createWebSocket();
+    NotebookServer.WebSocketServiceCallback<Note> callback =
+        notebookServer.new WebSocketServiceCallback<>(socket);
+
+    callback.onFailure(new ForbiddenException("read denied"), serviceContext("reader"));
+
+    ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+    verify(socket).send(response.capture());
+    Message responseMessage = notebookServer.deserializeMessage(response.getValue());
+    assertEquals(OP.AUTH_INFO, responseMessage.op);
+    assertNull(responseMessage.msgId);
+    assertFalse(responseMessage.data.containsKey("errorType"));
+    assertFalse(responseMessage.data.containsKey("status"));
+  }
+
+  @Test
+  void topLevelFailurePreservesRequestMessageId() throws IOException {
+    NotebookSocket socket = createWebSocket();
+    notebookServer.onMessage(socket, new Message(OP.GET_NOTE)
+        .withMsgId("invalid-get-note-request")
+        .put("id", true)
+        .toJson());
+
+    ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+    verify(socket).send(response.capture());
+    Message responseMessage = notebookServer.deserializeMessage(response.getValue());
+    assertEquals(OP.ERROR_INFO, responseMessage.op);
+    assertEquals("invalid-get-note-request", responseMessage.msgId);
+    assertEquals("INTERNAL_ERROR", responseMessage.data.get("errorType"));
+    assertEquals(500.0, responseMessage.data.get("status"));
   }
 
   @Test

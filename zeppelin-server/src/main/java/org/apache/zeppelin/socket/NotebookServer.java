@@ -87,6 +87,7 @@ import org.apache.zeppelin.notebook.Paragraph;
 import org.apache.zeppelin.notebook.ParagraphJobListener;
 import org.apache.zeppelin.notebook.repo.NotebookRepoWithVersionControl.Revision;
 import org.apache.zeppelin.rest.exception.ForbiddenException;
+import org.apache.zeppelin.rest.exception.NoteNotFoundException;
 import org.apache.zeppelin.scheduler.Job;
 import org.apache.zeppelin.scheduler.Job.Status;
 import org.apache.zeppelin.service.JobManagerService;
@@ -580,7 +581,10 @@ public class NotebookServer implements AngularObjectRegistryListener,
               + "success=false, errorType={}",
           operation, principal, e.getClass().getSimpleName());
       try {
-        conn.send(serializeMessage(new Message(OP.ERROR_INFO).put("info", e.getMessage())));
+        String msgId = receivedMessage != null
+            && (receivedMessage.op == OP.GET_NOTE || receivedMessage.op == OP.NOTE_REVISION)
+            ? receivedMessage.msgId : MSG_ID_NOT_DEFINED;
+        conn.send(serializeMessage(createErrorMessage(OP.ERROR_INFO, e, msgId)));
       } catch (IOException iox) {
         LOGGER.error("Fail to send error info", iox);
       }
@@ -885,13 +889,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
       return;
     }
     getNotebookService().getNote(noteId, context,
-        new WebSocketServiceCallback<Note>(conn) {
+        new WebSocketServiceCallback<Note>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Note note, ServiceContext context)
               throws IOException {
             connectionManager.addNoteConnection(note.getId(), conn);
             conn.send(
-                serializeMessage(new Message(OP.NOTE).put("note", note)));
+                serializeMessage(new Message(OP.NOTE).withMsgId(fromMessage.msgId)
+                    .put("note", note)));
             updateAngularObjectRegistry(conn, note);
             sendAllAngularObjects(note, context.getAutheInfo().getUser(),
                 conn);
@@ -1752,12 +1757,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String noteId = (String) fromMessage.get("noteId");
     String revisionId = (String) fromMessage.get("revisionId");
     getNotebookService().getNotebyRevision(noteId, revisionId, context,
-        new WebSocketServiceCallback<Note>(conn) {
+        new WebSocketServiceCallback<Note>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             super.onSuccess(note, context);
             conn.send(serializeMessage(
                 new Message(OP.NOTE_REVISION)
+                    .withMsgId(fromMessage.msgId)
                     .put("noteId", noteId)
                     .put("revisionId", revisionId)
                     .put("note", note)));
@@ -2458,28 +2464,65 @@ public class NotebookServer implements AngularObjectRegistryListener,
   public class WebSocketServiceCallback<T> extends SimpleServiceCallback<T> {
 
     private final NotebookSocket conn;
+    private final String msgId;
 
     WebSocketServiceCallback(NotebookSocket conn) {
+      this(conn, MSG_ID_NOT_DEFINED);
+    }
+
+    WebSocketServiceCallback(NotebookSocket conn, String msgId) {
       this.conn = conn;
+      this.msgId = msgId;
     }
 
     @Override
     public void onFailure(Exception ex, ServiceContext context) throws IOException {
       super.onFailure(ex, context);
       if (ex instanceof ForbiddenException) {
-        Type type = new TypeToken<Map<String, String>>() {
-        }.getType();
-        Map<String, String> jsonObject =
-            gson.fromJson(((ForbiddenException) ex).getResponse().getEntity().toString(), type);
-        conn.send(serializeMessage(new Message(OP.AUTH_INFO)
-            .put("info", jsonObject.get("message"))));
+        conn.send(serializeMessage(createErrorMessage(OP.AUTH_INFO, ex, msgId)));
       } else {
-        String message = ex.getMessage();
-        if (ex.getCause() != null) {
-          message += ", cause: " + ex.getCause().getMessage();
-        }
-        conn.send(serializeMessage(new Message(OP.ERROR_INFO).put("info", message)));
+        conn.send(serializeMessage(createErrorMessage(OP.ERROR_INFO, ex, msgId)));
       }
     }
+  }
+
+  private Message createErrorMessage(OP op, Exception exception, String msgId) {
+    String info = exception.getMessage();
+    if (exception instanceof ForbiddenException) {
+      info = getWebApplicationExceptionMessage((ForbiddenException) exception);
+    } else if (exception instanceof NoteNotFoundException) {
+      info = getWebApplicationExceptionMessage((NoteNotFoundException) exception);
+    } else if (exception.getCause() != null) {
+      info += ", cause: " + exception.getCause().getMessage();
+    }
+    Message message = new Message(op).withMsgId(msgId).put("info", info);
+    if (msgId == null) {
+      return message;
+    }
+    if (exception instanceof ForbiddenException) {
+      return message.put("errorType", "FORBIDDEN").put("status", 403);
+    }
+    if (exception instanceof NoteNotFoundException) {
+      return message.put("errorType", "NOTE_NOT_FOUND").put("status", 404);
+    }
+    return message.put("errorType", "INTERNAL_ERROR").put("status", 500);
+  }
+
+  private String getWebApplicationExceptionMessage(jakarta.ws.rs.WebApplicationException exception) {
+    if (exception.getResponse() == null || exception.getResponse().getEntity() == null) {
+      return exception.getMessage();
+    }
+    Type type = new TypeToken<Map<String, String>>() {
+    }.getType();
+    try {
+      Map<String, String> jsonObject =
+          gson.fromJson(exception.getResponse().getEntity().toString(), type);
+      if (jsonObject != null && jsonObject.get("message") != null) {
+        return jsonObject.get("message");
+      }
+    } catch (RuntimeException e) {
+      LOGGER.debug("Unable to deserialize WebSocket service error response", e);
+    }
+    return exception.getMessage();
   }
 }
