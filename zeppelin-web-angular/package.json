@@ -19,6 +19,7 @@
     "check:websocket-contract": "node --test scripts/check-websocket-contract.test.js && node scripts/check-websocket-contract.js",
     "generate:notebook-parity-scenarios": "node scripts/generate-notebook-parity-scenarios.mjs",
     "check:notebook-parity-scenarios": "node --test scripts/check-notebook-parity-scenarios.test.mjs && node scripts/check-notebook-parity-scenarios.mjs",
+    "check:notebook-parity-comparison": "node --test e2e/parity/notebook-parity-comparison.test.mjs",
     "build-project:vis": "ng build --project zeppelin-visualization",
     "lint": "cross-env NODE_OPTIONS='--max-old-space-size=8192' ng lint && npm run lint:react && prettier --check \"**/*.{ts,tsx,mts,js,mjs,json,css,html}\"",
     "lint:fix": "cross-env NODE_OPTIONS='--max-old-space-size=8192' ng lint --fix && npm run lint:fix:react && prettier --write \"**/*.{ts,tsx,mts,js,mjs,json,css,html}\"",
