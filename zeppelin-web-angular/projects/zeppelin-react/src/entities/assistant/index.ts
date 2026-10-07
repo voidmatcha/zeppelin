@@ -24,4 +24,6 @@ export type { ComposerInput } from './ui/Composer';
 export { EmptyState } from './ui/EmptyState';
 export { ConversationHeader } from './ui/ConversationHeader';
 export { ConversationList } from './ui/ConversationList';
+export * from './model/assistantTransport';
+export * from './model/assistantSession';
 export type { ConversationOption } from './ui/ConversationList';
