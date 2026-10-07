@@ -20,14 +20,34 @@ interface SingleResultRendererProps {
   index: number;
   config?: ParagraphConfigResults;
   readOnly?: boolean;
+  visualKey?: string;
+  onVisualReady?: (key: string) => void;
+  onVisualError?: (error: unknown) => void;
 }
 
-export const SingleResultRenderer = ({ result, index, config, readOnly = false }: SingleResultRendererProps) => {
+export const SingleResultRenderer = ({
+  result,
+  index,
+  config,
+  readOnly = false,
+  visualKey,
+  onVisualReady,
+  onVisualError
+}: SingleResultRendererProps) => {
   const resultConfig: ParagraphConfigResult | undefined = config?.[index];
 
   switch (result.type) {
     case DatasetType.TABLE:
-      return <TableVisualization result={result} config={resultConfig} readOnly={readOnly} />;
+      return (
+        <TableVisualization
+          result={result}
+          config={resultConfig}
+          readOnly={readOnly}
+          visualKey={visualKey}
+          onVisualReady={onVisualReady}
+          onVisualError={onVisualError}
+        />
+      );
     case DatasetType.HTML:
       return <HTMLRenderer html={result.data} />;
     case DatasetType.TEXT:

@@ -11,10 +11,18 @@
  */
 
 import { act } from 'react';
+import { waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NotebookCoreReadStore } from '@zeppelin/notebook-core';
+import { NotebookCoreReadStore, NotebookCoreWireNote } from '@zeppelin/notebook-core';
 import { DatasetType } from '@zeppelin/sdk';
 import { mount } from './NotebookRouteEntry';
+
+vi.mock('chart.js/auto', () => ({
+  Chart: class {
+    static defaults = { color: '', borderColor: '' };
+    destroy() {}
+  }
+}));
 
 describe('NotebookRouteEntry', () => {
   const element = document.createElement('div');
@@ -26,6 +34,7 @@ describe('NotebookRouteEntry', () => {
       unmount = undefined;
     }
     element.replaceChildren();
+    vi.restoreAllMocks();
   });
 
   it('reports readiness only after the host-owned Core publishes a loaded screen', () => {
@@ -47,7 +56,7 @@ describe('NotebookRouteEntry', () => {
       store.acceptNote(request, { id: 'note-1', name: 'Loaded note', path: '/Loaded note', paragraphs: [] });
     });
     expect(element.querySelector('h1')?.textContent).toBe('Loaded note');
-    expect(onReady).toHaveBeenCalledOnce();
+    expect(onReady).not.toHaveBeenCalled();
     act(() => {
       store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
     });
@@ -92,6 +101,94 @@ describe('NotebookRouteEntry', () => {
     expect(element.textContent).toContain('Revision: revision-1');
     expect(element.textContent).toContain('Readers: reader');
     expect(element.querySelector('button')).toBeNull();
+    store.dispose();
+  });
+
+  it('does not report a saved chart ready when its canvas cannot be rendered', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-chart', null);
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady, onError }).unmount;
+      store.acceptNote(request, {
+        id: 'note-chart',
+        name: 'Saved chart',
+        path: '/Saved chart',
+        paragraphs: [
+          {
+            id: 'paragraph-chart',
+            text: '%sh saved',
+            status: 'FINISHED',
+            config: { results: { 0: { graph: { mode: 'multiBarChart', keys: [], groups: [], values: [] } } } },
+            results: { msg: [{ type: DatasetType.TABLE, data: 'city\tamount\nSeoul\t2' }] }
+          }
+        ]
+      } as unknown as NotebookCoreWireNote);
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+
+    expect(onReady).not.toHaveBeenCalled();
+    await waitFor(() => expect(onError).toHaveBeenCalledOnce());
+    expect(onReady).not.toHaveBeenCalled();
+    store.dispose();
+  });
+
+  it('reports readiness after a saved chart has been constructed', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as CanvasRenderingContext2D);
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-chart', null);
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady, onError }).unmount;
+      store.acceptNote(request, {
+        id: 'note-chart',
+        name: 'Saved chart',
+        path: '/Saved chart',
+        paragraphs: [
+          {
+            id: 'paragraph-chart',
+            text: '%sh saved',
+            status: 'FINISHED',
+            config: { results: { 0: { graph: { mode: 'multiBarChart', keys: [], groups: [], values: [] } } } },
+            results: { msg: [{ type: DatasetType.TABLE, data: 'city\tamount\nSeoul\t2' }] }
+          }
+        ]
+      } as unknown as NotebookCoreWireNote);
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+
+    expect(onReady).not.toHaveBeenCalled();
+    await waitFor(() => expect(onReady).toHaveBeenCalledOnce());
+    expect(onError).not.toHaveBeenCalled();
+    store.dispose();
+  });
+
+  it('reports readiness again for a different route after its note and ACL load', () => {
+    const store = new NotebookCoreReadStore('');
+    const onReady = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady }).unmount;
+    });
+    const first = store.beginRoute('note-1', null);
+    act(() => {
+      store.acceptNote(first, { id: 'note-1', name: 'First', path: '/First', paragraphs: [] });
+      store.acceptPermissions(first, { owners: [], readers: [], writers: [], runners: [] });
+    });
+    expect(onReady).toHaveBeenCalledOnce();
+
+    const second = store.beginRoute('note-2', null);
+    act(() => {
+      store.acceptNote(second, { id: 'note-2', name: 'Second', path: '/Second', paragraphs: [] });
+    });
+    expect(onReady).toHaveBeenCalledOnce();
+    act(() => {
+      store.acceptPermissions(second, { owners: [], readers: [], writers: [], runners: [] });
+    });
+    expect(onReady).toHaveBeenCalledTimes(2);
+    expect(element.querySelector('h1')?.textContent).toBe('Second');
     store.dispose();
   });
 });

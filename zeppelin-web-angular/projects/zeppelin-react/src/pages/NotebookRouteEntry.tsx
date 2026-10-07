@@ -10,10 +10,10 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Alert, Tag, Typography } from 'antd';
-import type { NotebookCoreReadState, NotebookCoreRemoteProps } from '@zeppelin/notebook-core';
+import type { NotebookCoreReadState, NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
 import type { ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import { ReactErrorBoundary } from '@/components';
 import { NotebookCoreProvider, useNotebookSelector } from '@/notebook/NotebookCoreProvider';
@@ -39,7 +39,17 @@ type ReadParagraph = Readonly<{
   results?: { msg?: ParagraphIResultsMsgItem[] };
 }>;
 
-const ReadOnlyParagraph = ({ paragraph, index }: { paragraph: ReadParagraph; index: number }) => (
+const ReadOnlyParagraph = ({
+  paragraph,
+  index,
+  onResultReady,
+  onError
+}: {
+  paragraph: ReadParagraph;
+  index: number;
+  onResultReady: (key: string) => void;
+  onError?: (error: unknown) => void;
+}) => (
   <article id={paragraph.id} className="notebook-react-read-paragraph" data-testid="react-notebook-paragraph">
     <header className="notebook-react-read-paragraph-header">
       <Typography.Title level={2}>{paragraph.title || `Paragraph ${index + 1}`}</Typography.Title>
@@ -49,13 +59,31 @@ const ReadOnlyParagraph = ({ paragraph, index }: { paragraph: ReadParagraph; ind
     {!paragraph.config?.tableHide &&
       paragraph.results?.msg?.map((result, resultIndex) => (
         <div key={resultIndex} className="notebook-react-read-result">
-          <SingleResultRenderer result={result} index={resultIndex} config={paragraph.config?.results} readOnly />
+          <SingleResultRenderer
+            result={result}
+            index={resultIndex}
+            config={paragraph.config?.results}
+            readOnly
+            visualKey={`${paragraph.id}:${resultIndex}`}
+            onVisualReady={result.type === 'TABLE' ? onResultReady : undefined}
+            onVisualError={onError}
+          />
         </div>
       ))}
   </article>
 );
 
-const NotebookReadContent = ({ state, revisionId }: { state: NotebookCoreReadState; revisionId: string | null }) => {
+const NotebookReadContent = ({
+  state,
+  revisionId,
+  onResultReady,
+  onError
+}: {
+  state: NotebookCoreReadState;
+  revisionId: string | null;
+  onResultReady: (key: string) => void;
+  onError?: (error: unknown) => void;
+}) => {
   if (state.status === 'initial' || state.status === 'loading') {
     return <p role="status">Loading notebook…</p>;
   }
@@ -96,28 +124,78 @@ const NotebookReadContent = ({ state, revisionId }: { state: NotebookCoreReadSta
       )}
       {paragraphOrder.map((id, index) => {
         const paragraph = paragraphsById[id] as ReadParagraph | undefined;
-        return paragraph ? <ReadOnlyParagraph key={id} paragraph={paragraph} index={index} /> : null;
+        return paragraph ? (
+          <ReadOnlyParagraph
+            key={id}
+            paragraph={paragraph}
+            index={index}
+            onResultReady={onResultReady}
+            onError={onError}
+          />
+        ) : null;
       })}
     </>
   );
 };
 
-export const NotebookRouteEntry = ({ onReady }: { onReady?: () => void }) => {
-  const snapshot = useNotebookSelector(value => value);
+const NotebookRouteScreen = ({
+  snapshot,
+  onReady,
+  onError
+}: {
+  snapshot: NotebookCoreSnapshot;
+  onReady?: () => void;
+  onError?: (error: unknown) => void;
+}) => {
   const reportedReady = useRef(false);
+  const [readyResults, setReadyResults] = useState<ReadonlySet<string>>(() => new Set());
+  const onResultReady = useCallback((key: string) => {
+    setReadyResults(current => (current.has(key) ? current : new Set(current).add(key)));
+  }, []);
   const state = snapshot.readState ?? { status: 'initial' as const, acl: { status: 'loading' as const } };
+  const requiredResults: string[] = [];
+  if (state.status === 'ready') {
+    for (const id of state.data.paragraphOrder) {
+      const paragraph = state.data.paragraphsById[id] as ReadParagraph | undefined;
+      if (paragraph?.config?.tableHide) continue;
+      paragraph?.results?.msg?.forEach((result, index) => {
+        if (result.type === 'TABLE') requiredResults.push(`${id}:${index}`);
+      });
+    }
+  }
+  const complete =
+    state.status === 'ready'
+      ? state.acl.status !== 'loading' && requiredResults.every(key => readyResults.has(key))
+      : !['initial', 'loading', 'disposed'].includes(state.status);
   useEffect(() => {
-    if (onReady && !reportedReady.current && !['initial', 'loading', 'disposed'].includes(state.status)) {
+    if (onReady && !reportedReady.current && complete) {
       reportedReady.current = true;
       onReady();
     }
-  }, [onReady, state.status]);
+  }, [complete, onReady]);
   return (
     <ZeppelinThemeProvider>
       <main data-testid="react-notebook-entry" aria-label="Read-only notebook" className="notebook-react-read">
-        <NotebookReadContent state={state} revisionId={snapshot.revisionId} />
+        <NotebookReadContent
+          state={state}
+          revisionId={snapshot.revisionId}
+          onResultReady={onResultReady}
+          onError={onError}
+        />
       </main>
     </ZeppelinThemeProvider>
+  );
+};
+
+export const NotebookRouteEntry = ({ onReady, onError }: Pick<NotebookRouteEntryProps, 'onReady' | 'onError'>) => {
+  const snapshot = useNotebookSelector(value => value);
+  return (
+    <NotebookRouteScreen
+      key={`${snapshot.noteId}:${snapshot.revisionId ?? ''}`}
+      snapshot={snapshot}
+      onReady={onReady}
+      onError={onError}
+    />
   );
 };
 
@@ -130,7 +208,7 @@ export const mount = (element: HTMLElement, initialProps: NotebookRouteEntryProp
     root.render(
       <ReactErrorBoundary onError={props.onError}>
         <NotebookCoreProvider core={props.core}>
-          <NotebookRouteEntry onReady={props.onReady} />
+          <NotebookRouteEntry onReady={props.onReady} onError={props.onError} />
         </NotebookCoreProvider>
       </ReactErrorBoundary>
     );
