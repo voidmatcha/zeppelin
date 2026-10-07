@@ -12,7 +12,13 @@
 
 import { act, StrictMode } from 'react';
 import { render, renderHook, screen } from '@testing-library/react';
-import type { NotebookCorePort, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import {
+  NotebookCoreReadStore,
+  selectParagraph,
+  selectReadData,
+  type NotebookCorePort,
+  type NotebookCoreSnapshot
+} from '@zeppelin/notebook-core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   NotebookCoreProvider,
@@ -195,5 +201,36 @@ describe('useNotebookSelector', () => {
     port.publish({ noteId: 'note-b', revisionId: 'revision-1' });
     expect(selectorRenders).toBe(rendersBefore + 1);
     expect(screen.getByTestId('revision').textContent).toBe('revision-1');
+  });
+
+  it('reads the host-owned Core snapshot and clears the selected note on a route change', () => {
+    const store = new NotebookCoreReadStore('note-a');
+    const { result } = renderHook(() => useNotebookSelector(selectReadData), {
+      wrapper: ({ children }) => <NotebookCoreProvider core={store.port}>{children}</NotebookCoreProvider>
+    });
+    expect(result.current).toBeNull();
+
+    let request = store.beginRoute('note-a', null);
+    act(() => {
+      store.acceptNote(request, {
+        id: 'note-a',
+        name: 'First note',
+        path: '/First note',
+        paragraphs: [{ id: 'p1', text: 'saved text', status: 'FINISHED' }]
+      });
+    });
+    expect(result.current?.note.name).toBe('First note');
+    expect(selectParagraph(store.port.getSnapshot(), 'p1')?.text).toBe('saved text');
+
+    act(() => {
+      request = store.beginRoute('note-b', null);
+    });
+    expect(result.current).toBeNull();
+
+    act(() => {
+      store.acceptNote(request, { id: 'note-b', name: 'Second note', path: '/Second note', paragraphs: [] });
+    });
+    expect(result.current?.note.name).toBe('Second note');
+    store.dispose();
   });
 });
