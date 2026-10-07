@@ -25,6 +25,8 @@ export interface ZeppelinThemeProviderProps {
   children: ReactNode;
   /** Extra tokens for a single surface, e.g. a monospace result font. */
   token?: ThemeConfig['token'];
+  /** Isolate a surface from the Angular shell's global Ant Design selectors. */
+  prefixCls?: string;
 }
 
 /**
@@ -33,11 +35,12 @@ export interface ZeppelinThemeProviderProps {
  * dark only for as long as the shell's global `.ant-*` rules happen to cover
  * the components in use.
  */
-export const ZeppelinThemeProvider = ({ children, token }: ZeppelinThemeProviderProps) => {
+export const ZeppelinThemeProvider = ({ children, token, prefixCls }: ZeppelinThemeProviderProps) => {
   const mode = useHostTheme();
 
   return (
     <ConfigProvider
+      prefixCls={prefixCls}
       theme={{
         algorithm: mode === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token

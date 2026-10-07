@@ -1,0 +1,65 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--za-space-2);
+  padding: var(--za-space-5) 0 var(--za-space-3);
+}
+.empty strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.empty p {
+  margin: 0;
+  color: var(--za-text-secondary);
+}
+.empty ul {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: var(--za-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.empty button {
+  width: 100%;
+  padding: 6px var(--za-space-3);
+  border: 1px solid var(--za-border);
+  border-radius: var(--za-radius);
+  background: var(--za-bg);
+  color: var(--za-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--za-duration-fast) var(--za-ease-standard),
+    background-color var(--za-duration-fast) var(--za-ease-standard),
+    transform var(--za-duration-fast) var(--za-ease-standard);
+}
+.empty button:hover {
+  border-color: var(--za-accent-border);
+  background: var(--za-accent-bg);
+}
+
+.empty > * {
+  animation: global(za-enter) var(--za-duration-slow) var(--za-ease-entrance) both;
+}
+/* Suggestions follow the heading one after another. */
+.empty li {
+  animation: global(za-enter) var(--za-duration-slow) var(--za-ease-entrance) both;
+  animation-delay: calc(120ms + var(--za-index, 0) * 60ms);
+}
+.empty button:active {
+  transform: scale(0.99);
+}

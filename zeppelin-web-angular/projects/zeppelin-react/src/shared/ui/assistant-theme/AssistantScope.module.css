@@ -1,0 +1,114 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Rules that name antd classes use the assistant's prefix, `zeppelin-ai` (ASSISTANT_PREFIX_CLS), and antd 5 class
+ * names; they need a look when either changes.
+ *
+ * Type and spacing scale for the assistant. A 370px sidebar reads best one step below the
+ * notebook's 14px body; metadata uses 12px and hints 11px. Spacing is a 4px grid.
+ */
+.scope {
+  --za-font-size: 13px;
+  --za-font-size-sm: 12px;
+  --za-font-size-xs: 11px;
+  --za-line-height: 1.6;
+  --za-space-1: 4px;
+  --za-space-2: 8px;
+  --za-space-3: 12px;
+  --za-space-4: 16px;
+  --za-space-5: 24px;
+  /*
+   * Motion: short, productive curves in the style of IBM Carbon's motion tokens. Entrances ease out
+   * and nothing loops except what shows work in progress: a run's indicator and a loading placeholder.
+   */
+  --za-duration-fast: 110ms;
+  --za-duration-moderate: 240ms;
+  --za-duration-slow: 400ms;
+  --za-ease-standard: cubic-bezier(0.2, 0, 0.38, 0.9);
+  --za-ease-entrance: cubic-bezier(0, 0, 0.38, 0.9);
+  /* The iridescent wash of the sidebar AI mark; used only for the AI identity and active generation. */
+  --za-ai-gradient: linear-gradient(115deg, #64b8ff, #be97ff, #ff99bc, #ffda8c, #86e2c8, #64b8ff);
+
+  box-sizing: border-box;
+  color: var(--za-text);
+  font-family: var(--za-font);
+  font-size: var(--za-font-size);
+  line-height: var(--za-line-height);
+}
+.scope *,
+.scope *::before,
+.scope *::after {
+  box-sizing: inherit;
+}
+/* Keyboard focus only, hugging the control: a 2px ring 1px out, never on mouse clicks. */
+.scope :focus-visible {
+  outline: 2px solid var(--za-focus);
+  outline-offset: 1px;
+}
+/* The dark reset sets buttons to inherit their font size; antd's own size holds in both themes. */
+.scope :global(.zeppelin-ai-btn) {
+  font-size: var(--za-control-font-size);
+}
+/* antd draws its own 4px ring in colorPrimaryBorder (under 3:1 in both themes) and wins on specificity; the
+   panel's ring replaces it on antd buttons too. */
+.scope :global(.zeppelin-ai-btn):not(:disabled):focus-visible {
+  outline: 2px solid var(--za-focus);
+  outline-offset: 1px;
+}
+.scope :focus:not(:focus-visible) {
+  outline: none;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Shared entrances. Content that arrives (a message, a step) rises 4px and fades in. */
+@keyframes :global(za-enter) {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes :global(za-pop) {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* One switch for every piece: motion collapses to an instant change, state stays visible. */
+@media (prefers-reduced-motion: reduce) {
+  .scope *,
+  .scope *::before,
+  .scope *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

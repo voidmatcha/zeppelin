@@ -1,0 +1,87 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value scope as crosszascope from '../../../shared/ui/assistant-theme/AssistantScope.module.css';
+
+.composer {
+  position: relative;
+  display: grid;
+  gap: var(--za-space-2);
+  padding: var(--za-space-2) var(--za-space-3) var(--za-space-3);
+  border-top: 1px solid var(--za-border);
+  background: var(--za-bg);
+}
+.composer-overlay {
+  position: absolute;
+  bottom: calc(100% + var(--za-space-2));
+  left: var(--za-space-3);
+  right: var(--za-space-3);
+}
+.composer-box {
+  border: 1px solid var(--za-border-strong);
+  border-radius: var(--za-radius-lg);
+  background: var(--za-bg);
+  transition:
+    border-color var(--za-duration-fast) var(--za-ease-standard),
+    box-shadow var(--za-duration-fast) var(--za-ease-standard),
+    background-color var(--za-duration-moderate) var(--za-ease-standard);
+}
+.composer-box:focus-within {
+  border-color: var(--za-focus);
+  box-shadow: 0 0 0 3px var(--za-accent-bg);
+}
+/* The box shows focus once; the textarea inside draws no ring of its own. */
+:global(.crosszascope) .composer-box textarea:focus,
+:global(.crosszascope) .composer-box textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.composer-box[data-disabled='true'] {
+  background: var(--za-fill);
+}
+:global(.crosszascope) .composer-box textarea {
+  padding: var(--za-space-2) var(--za-space-3) 0;
+  color: var(--za-text);
+  font-size: var(--za-font-size);
+  resize: none;
+}
+:global(.crosszascope) .composer-box textarea::placeholder {
+  color: var(--za-text-tertiary);
+}
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--za-space-2);
+  padding: var(--za-space-1) var(--za-space-2) var(--za-space-2) var(--za-space-3);
+}
+/* .za-scope first: the host's dark theme puts antd's element reset under html.dark, which outranks a bare class. */
+:global(.crosszascope) .composer-hint,
+:global(.crosszascope) .composer-status {
+  color: var(--za-text-tertiary);
+  font-size: var(--za-font-size-xs);
+}
+.read-only {
+  display: flex;
+  align-items: baseline;
+  gap: var(--za-space-2);
+  margin: 0;
+  padding: 6px var(--za-space-3);
+  border-radius: var(--za-radius);
+  background: var(--za-fill);
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-sm);
+}
+
+.read-only {
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}

@@ -1,0 +1,161 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value scope as crosszascope from '../../../shared/ui/assistant-theme/AssistantScope.module.css';
+
+.run-status {
+  display: flex;
+  align-items: center;
+  gap: var(--za-space-2);
+  padding: var(--za-space-1) 0 var(--za-space-3);
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-sm);
+}
+.run-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.run-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--za-accent);
+  animation: za-dot 1.2s ease-in-out infinite;
+}
+.run-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.run-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes za-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+:global(.crosszascope) .error {
+  margin-bottom: var(--za-space-3);
+  font-size: var(--za-font-size-sm);
+}
+
+.load-earlier {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--za-space-3);
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-sm);
+}
+/* The same raised pill as "New reply", so a load at the top is as easy to see. */
+.load-earlier-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--za-space-2);
+  padding: 4px 12px;
+  border: 1px solid var(--za-border);
+  border-radius: 999px;
+  background: var(--za-bg);
+  box-shadow: var(--za-shadow);
+  color: var(--za-text);
+}
+
+.conversation-start {
+  display: flex;
+  align-items: center;
+  gap: var(--za-space-2);
+  margin: 0 0 var(--za-space-3);
+  color: var(--za-text-tertiary);
+  font-size: var(--za-font-size-xs);
+}
+.conversation-start::before,
+.conversation-start::after {
+  flex: 1;
+  border-top: 1px solid var(--za-border);
+  content: '';
+}
+
+.jump {
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.jump > button {
+  box-shadow: var(--za-shadow);
+  pointer-events: auto;
+}
+
+.run-status,
+:global(.crosszascope) .error,
+.load-earlier {
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+/* The new-reply button rises from the composer edge. */
+.jump > button {
+  animation: za-jump-in var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+@keyframes za-jump-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+
+/* Loading placeholders. They fade in after a beat, so a fast load never flashes, then use antd loading animation. */
+.skeleton {
+  animation: za-skeleton-in var(--za-duration-moderate) var(--za-ease-entrance) 300ms both;
+}
+.skeleton-chrome {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--za-bg);
+}
+.skeleton-header {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: var(--za-space-1) var(--za-space-4);
+  border-bottom: 1px solid var(--za-border);
+}
+.skeleton-log {
+  flex: 1;
+  padding: var(--za-space-4) var(--za-space-3) var(--za-space-2);
+}
+.skeleton-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--za-space-2);
+}
+/* The question sits on the right like a sent message. */
+.skeleton-question {
+  align-self: flex-end;
+  width: 58%;
+  margin-bottom: var(--za-space-3);
+}
+.skeleton-header > div {
+  width: 52%;
+}
+.skeleton-composer {
+  margin: var(--za-space-2) var(--za-space-3) var(--za-space-3);
+}
+@keyframes za-skeleton-in {
+  from {
+    opacity: 0;
+  }
+}

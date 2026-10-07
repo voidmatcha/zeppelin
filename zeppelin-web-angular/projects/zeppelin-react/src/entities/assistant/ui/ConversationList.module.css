@@ -1,0 +1,125 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value scope as crosszascope from '../../../shared/ui/assistant-theme/AssistantScope.module.css';
+
+/* Covers the whole panel; the panel frame (position: relative) holds it. */
+.conversation-list {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--za-bg);
+  animation: za-list-in var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+.conversation-list-header {
+  display: flex;
+  align-items: center;
+  gap: var(--za-space-1);
+  min-height: 40px;
+  padding: var(--za-space-1) var(--za-space-2);
+  border-bottom: 1px solid var(--za-border);
+}
+/* .za-scope first: the host's dark theme puts antd's element reset under html.dark, which outranks a bare class. */
+:global(.crosszascope) .conversation-list-title {
+  flex: 1;
+  margin: 0;
+  color: var(--za-text);
+  font-size: var(--za-font-size);
+  font-weight: 600;
+}
+.conversation-list-search {
+  padding: var(--za-space-3) var(--za-space-3) var(--za-space-2);
+}
+.conversation-list-items {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--za-space-2) var(--za-space-3);
+  overflow-y: auto;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+.conversation-row {
+  position: relative;
+  border-radius: var(--za-radius);
+}
+.conversation-row + .conversation-row {
+  margin-top: 2px;
+}
+.conversation-row:hover,
+.conversation-row:focus-within {
+  background: var(--za-fill);
+}
+/* The open conversation is the row with the stronger fill, like a selected item in a chat sidebar. */
+.conversation-row:has([aria-current='true']) {
+  background: var(--za-fill-strong);
+}
+.conversation-row-open {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--za-space-2);
+  border: 0;
+  border-radius: var(--za-radius);
+  background: transparent;
+  color: var(--za-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.conversation-row-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.conversation-row-open[aria-current='true'] .conversation-row-title {
+  font-weight: 600;
+}
+.conversation-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--za-space-2);
+  color: var(--za-text-tertiary);
+  font-size: var(--za-font-size-xs);
+  line-height: 1.4;
+}
+/* Sits on the meta line's free right end, so it takes no width from the title; shown for the row under the pointer
+   or holding focus, and still in the tab order. */
+.conversation-row-delete:global(.zeppelin-ai-btn) {
+  position: absolute;
+  right: var(--za-space-1);
+  bottom: 3px;
+  color: var(--za-text-tertiary);
+  opacity: 0;
+}
+.conversation-row:hover .conversation-row-delete,
+.conversation-row:focus-within .conversation-row-delete {
+  opacity: 1;
+}
+:global(.crosszascope) .conversation-list-empty {
+  margin: var(--za-space-4) var(--za-space-3);
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-sm);
+}
+@keyframes za-list-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}

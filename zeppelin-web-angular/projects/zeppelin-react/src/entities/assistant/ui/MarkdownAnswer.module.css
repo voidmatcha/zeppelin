@@ -1,0 +1,158 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value scope as crosszascope from '../../../shared/ui/assistant-theme/AssistantScope.module.css';
+
+/* Compact spacing for a narrow panel; headings stay close to body size. */
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote {
+  margin: 0 0 var(--za-space-2);
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 20px;
+}
+.markdown li + li {
+  margin-top: 2px;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: var(--za-space-3) 0 6px;
+  color: var(--za-text);
+  font-size: var(--za-font-size);
+  font-weight: 600;
+}
+.markdown blockquote {
+  padding-left: var(--za-space-3);
+  border-left: 2px solid var(--za-border-strong);
+  color: var(--za-text-secondary);
+}
+/* .za-scope first: the host's dark theme puts antd's element reset under html.dark, which outranks a bare class. */
+:global(.crosszascope) .markdown a {
+  color: var(--za-accent-text);
+}
+/* The dark reset also drops the outline on a focused link. */
+:global(.crosszascope) .markdown a:focus-visible {
+  outline: 2px solid var(--za-focus);
+  outline-offset: 1px;
+}
+.markdown :not(pre) > code {
+  padding: 1px 4px;
+  border-radius: var(--za-radius-sm);
+  background: var(--za-fill-strong);
+  font-family: var(--za-font-mono);
+  font-size: var(--za-font-size-sm);
+}
+.table {
+  overflow-x: auto;
+  margin: 0 0 var(--za-space-2);
+  /* A shade at an edge with more columns past it; the covers scroll with the table and hide it at either end. */
+  background:
+    linear-gradient(to right, var(--za-bg) 30%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--za-bg) 30%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--za-text) 16%, transparent), transparent) left /
+      12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--za-text) 16%, transparent), transparent) right /
+      12px 100% no-repeat scroll;
+}
+.table table {
+  border-collapse: collapse;
+  font-size: var(--za-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+.table th,
+.table td {
+  padding: var(--za-space-1) var(--za-space-2);
+  border: 1px solid var(--za-border);
+  text-align: left;
+  /* The conversation breaks long words anywhere, which would size columns to one letter; the table scrolls instead. */
+  overflow-wrap: break-word;
+}
+.table th {
+  background: var(--za-fill);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Inline in answer text: a quiet chip that keeps the line height of the words around it. */
+:global(.crosszascope) .paragraph-link,
+:global(.crosszascope) .paragraph-link:focus,
+:global(.crosszascope) .paragraph-link:active {
+  height: auto;
+  padding: 0 6px;
+  border-radius: var(--za-radius-sm);
+  background: var(--za-accent-bg);
+  color: var(--za-accent-text);
+  font-size: var(--za-font-size-sm);
+  line-height: 1.5;
+  vertical-align: baseline;
+}
+:global(.crosszascope) .paragraph-link:hover {
+  background: var(--za-accent-bg);
+  color: var(--za-accent-text-hover);
+  box-shadow: inset 0 0 0 1px var(--za-accent-border);
+}
+
+.code {
+  margin: var(--za-space-2) 0;
+  overflow: hidden;
+  border: 1px solid var(--za-border);
+  border-radius: var(--za-radius);
+  background: var(--za-fill);
+}
+.code-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--za-space-1);
+  padding: 2px var(--za-space-1) 2px var(--za-space-3);
+  border-bottom: 1px solid var(--za-border);
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-xs);
+}
+.code-language {
+  margin-right: auto;
+  font-family: var(--za-font-mono);
+}
+.code pre {
+  margin: 0;
+  padding: var(--za-space-2) var(--za-space-3);
+  overflow-x: auto;
+  white-space: pre;
+}
+.code code {
+  font-family: var(--za-font-mono);
+  font-size: var(--za-font-size-sm);
+  line-height: 1.55;
+}
+:global(.crosszascope) .code-status {
+  display: block;
+  padding: 0 var(--za-space-3) var(--za-space-1);
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-xs);
+}
+
+/* A reply that could not render as Markdown. */
+.markdown-fallback {
+  margin: 0;
+  white-space: pre-wrap;
+}

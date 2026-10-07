@@ -1,0 +1,142 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value scope as crosszascope from '../../../shared/ui/assistant-theme/AssistantScope.module.css';
+@value markdown as crosszamarkdown from './MarkdownAnswer.module.css';
+
+.message {
+  display: grid;
+  gap: var(--za-space-1);
+  margin-bottom: var(--za-space-4);
+  min-width: 0;
+}
+.message-user {
+  justify-items: end;
+}
+.user-text {
+  max-width: 88%;
+  padding: 6px var(--za-space-3);
+  border-radius: var(--za-radius-lg) var(--za-radius-lg) var(--za-radius-sm) var(--za-radius-lg);
+  background: var(--za-fill-strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.message-sender {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--za-text-secondary);
+  font-size: var(--za-font-size-sm);
+  font-weight: 600;
+}
+.assistant-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--za-space-1);
+  margin-left: -4px;
+  color: var(--za-text-tertiary);
+  font-size: var(--za-font-size-xs);
+}
+.message-actions button {
+  color: var(--za-text-tertiary);
+}
+
+.ai-mark {
+  position: relative;
+  isolation: isolate;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 16px;
+  border: 1px solid var(--za-border-strong);
+  border-radius: var(--za-radius-sm);
+  background: var(--za-bg);
+  color: var(--za-text);
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.ai-mark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--za-ai-gradient);
+  background-size: 300% 100%;
+  opacity: 0.32;
+}
+.ai-mark-active::before {
+  opacity: 0.7;
+  animation: za-ai-drift 2.4s ease-in-out infinite alternate;
+}
+@keyframes za-ai-drift {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0% 50%;
+  }
+}
+
+/* .za-scope first: the host's dark theme puts antd's element reset under html.dark, which outranks a bare class. */
+:global(.crosszascope) .disclaimer {
+  margin: 0 0 var(--za-space-3);
+  color: var(--za-text-tertiary);
+  font-size: var(--za-font-size-xs);
+}
+
+/* Arrival: every message rises in once; streamed tokens then only grow the text. */
+.message {
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+.message-user {
+  transform-origin: right bottom;
+}
+.message-settled {
+  animation: none;
+}
+/* A caret after the last streamed token, the way the text is being written. */
+.message-assistant[aria-busy='true'] .assistant-body > :global(.crosszamarkdown):last-child > p:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  border-radius: 1px;
+  background: var(--za-accent);
+  vertical-align: text-bottom;
+  animation: za-caret 1s steps(2, jump-none) infinite;
+}
+@keyframes za-caret {
+  to {
+    opacity: 0;
+  }
+}
+.message-actions {
+  opacity: 0;
+  transition: opacity var(--za-duration-fast) var(--za-ease-standard);
+}
+/* Actions show on hover or keyboard focus, and always under the latest answer. */
+.message:hover .message-actions,
+.message:focus-within .message-actions,
+.message-assistant:last-of-type .message-actions {
+  opacity: 1;
+}
+.disclaimer {
+  animation: global(za-enter) var(--za-duration-slow) var(--za-ease-entrance) both;
+}

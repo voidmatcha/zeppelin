@@ -1,0 +1,105 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@value scope as crosszascope from '../../../shared/ui/assistant-theme/AssistantScope.module.css';
+
+.actions {
+  margin: 0 0 var(--za-space-3);
+  border: 1px solid var(--za-border);
+  border-radius: var(--za-radius);
+  background: var(--za-bg);
+  font-size: var(--za-font-size-sm);
+}
+/* .za-scope first: the host's dark theme puts antd's element reset under html.dark, which outranks a bare class. */
+:global(.crosszascope) .actions > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--za-space-2);
+  padding: 6px var(--za-space-3);
+  color: var(--za-text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+.actions > summary::-webkit-details-marker {
+  display: none;
+}
+.actions > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--za-duration-fast) var(--za-ease-standard);
+}
+.actions[open] > summary::before {
+  transform: rotate(45deg);
+}
+:global(.crosszascope) .actions > ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 var(--za-space-3) var(--za-space-2);
+  list-style: none;
+}
+.step {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--za-space-2);
+  min-height: 24px;
+  color: var(--za-text);
+}
+:global(.crosszascope) .step-icon {
+  display: inline-grid;
+  place-items: center;
+  font-size: 12px;
+}
+.step-done {
+  color: var(--za-success);
+}
+
+.actions {
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+/* Open and close smoothly where the browser can animate details content to its natural height. */
+@supports (interpolate-size: allow-keywords) {
+  .actions {
+    interpolate-size: allow-keywords;
+  }
+  .actions::details-content {
+    height: 0;
+    overflow: clip;
+    opacity: 0;
+    transition:
+      height var(--za-duration-moderate) var(--za-ease-standard),
+      opacity var(--za-duration-moderate) var(--za-ease-standard),
+      content-visibility var(--za-duration-moderate) allow-discrete;
+  }
+  .actions[open]::details-content {
+    height: auto;
+    opacity: 1;
+  }
+}
+.step {
+  animation: global(za-enter) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+/* A finished step's icon pops once when its status changes (keyed by status in the markup). */
+.step-icon {
+  animation: global(za-pop) var(--za-duration-moderate) var(--za-ease-entrance) both;
+}
+.step[data-status='running'] .step-icon {
+  animation: none;
+}
+.step-label {
+  transition: color var(--za-duration-moderate) var(--za-ease-standard);
+}

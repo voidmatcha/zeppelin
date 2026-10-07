@@ -1,0 +1,62 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.conversation-header {
+  display: flex;
+  align-items: center;
+  gap: var(--za-space-1);
+  min-height: 40px;
+  padding: var(--za-space-1) var(--za-space-2);
+  border-bottom: 1px solid var(--za-border);
+}
+.conversation-trigger {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--za-space-2);
+  border: 0;
+  border-radius: var(--za-radius);
+  background: transparent;
+  color: var(--za-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--za-duration-fast) var(--za-ease-standard);
+}
+.conversation-trigger:hover:not(:disabled),
+.conversation-trigger[aria-expanded='true'] {
+  background: var(--za-fill-strong);
+}
+.conversation-trigger:disabled {
+  cursor: default;
+}
+.conversation-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-lock {
+  flex: none;
+  color: var(--za-text-tertiary);
+  font-size: 12px;
+}
+.conversation-caret {
+  flex: none;
+  margin-left: auto;
+  color: var(--za-text-tertiary);
+  font-size: 10px;
+}
