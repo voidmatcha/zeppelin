@@ -13,7 +13,12 @@
 import { Injectable } from '@angular/core';
 import { parseBooleanFlag } from './query-flag.util';
 
-export type ReactSurface = 'publishedParagraph' | 'paragraphFooter' | 'configurationTable' | 'notebookRepoList';
+export type ReactSurface =
+  | 'publishedParagraph'
+  | 'paragraphFooter'
+  | 'configurationTable'
+  | 'notebookRepoList'
+  | 'assistantPanel';
 
 interface ReactSurfaceConfig {
   queryParam: string;
@@ -31,6 +36,10 @@ const SURFACES: Record<ReactSurface, ReactSurfaceConfig> = {
   },
   configurationTable: {
     queryParam: 'reactConfiguration',
+    defaultEnabled: false
+  },
+  assistantPanel: {
+    queryParam: 'reactAssistant',
     defaultEnabled: false
   },
   notebookRepoList: {
