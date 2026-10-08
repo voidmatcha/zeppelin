@@ -40,6 +40,12 @@
   overflow-wrap: anywhere;
 }
 
+.notebook-react-edit-source textarea {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+}
+
 .notebook-react-read-result {
   margin-top: 16px;
 }

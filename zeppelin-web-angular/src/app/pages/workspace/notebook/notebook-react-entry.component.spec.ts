@@ -29,6 +29,17 @@ describe('NotebookReactEntryComponent', () => {
     expect(onEntryFailure).toHaveBeenCalledOnce();
   });
 
+  it('passes the command port to React only for private edit mode', () => {
+    const entry = new NotebookReactEntryComponent({ markForCheck: vi.fn() } as unknown as ChangeDetectorRef);
+    const port = { getSnapshot: vi.fn(), subscribe: vi.fn() };
+    const commandPort = { ...port, dispatch: vi.fn() };
+    entry.editable = true;
+    entry.host = { port, commandPort } as unknown as NotebookCoreReadHost;
+    expect(entry.reactProps.core).toBe(port);
+    expect(entry.reactProps.commandPort).toBe(commandPort);
+    entry.ngOnDestroy();
+  });
+
   it('reports ready only after React finishes and clears it for a fresh read', () => {
     const markForCheck = vi.fn();
     const entry = new NotebookReactEntryComponent({ markForCheck } as unknown as ChangeDetectorRef);

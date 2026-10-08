@@ -52,7 +52,7 @@ export class MessageService extends Message implements OnDestroy {
   interceptReceived(data: WebSocketMessage<MessageReceiveDataTypeMap>): WebSocketMessage<MessageReceiveDataTypeMap> {
     if (
       data.msgId &&
-      this.isNotebookCoreReadRequestId(data.msgId) &&
+      (this.isNotebookCoreReadRequestId(data.msgId) || this.isNotebookCoreCommitRequestId(data.msgId)) &&
       (data.op === OP.NOTE || data.op === OP.NOTE_REVISION || data.op === OP.ERROR_INFO || data.op === OP.AUTH_INFO)
     ) {
       // Private read errors belong to its route, not the global login modal or notification.
@@ -99,7 +99,13 @@ export class MessageService extends Message implements OnDestroy {
     // apply a late private reply to whichever editable notebook is now active.
     return super
       .receiveEnvelope(op)
-      .pipe(filter(message => !message.msgId || !this.isNotebookCoreReadRequestId(message.msgId)));
+      .pipe(
+        filter(
+          message =>
+            !message.msgId ||
+            (!this.isNotebookCoreReadRequestId(message.msgId) && !this.isNotebookCoreCommitRequestId(message.msgId))
+        )
+      );
   }
 
   consumeLocalAddFocusMsgId(msgId: string | undefined): boolean {

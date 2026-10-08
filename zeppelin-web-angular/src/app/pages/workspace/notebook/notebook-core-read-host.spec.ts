@@ -32,18 +32,24 @@ const createHost = (
   let sequence = 0;
   const message = {
     received: () => received.asObservable(),
+    isNotebookCoreCommitRequestId: (msgId: string) => msgId.startsWith('commit-'),
     sendNotebookCoreRead: (register: (msgId: string) => void) => {
       const msgId = `request-${++sequence}`;
       register(msgId);
       onSend?.(msgId);
       return msgId;
-    }
+    },
+    sendNotebookCoreCommit: vi.fn((register: (msgId: string) => void) => {
+      const msgId = `commit-${++sequence}`;
+      register(msgId);
+      return msgId;
+    })
   };
   const security = {
     getPermissions: vi.fn(() => permissions$ ?? of({ readers: ['alice'], owners: [], writers: [], runners: [] }))
   };
   const host = new NotebookCoreReadHost(message as unknown as MessageService, security as unknown as SecurityService);
-  return { host, received, security };
+  return { host, received, security, message };
 };
 
 afterEach(() => {
@@ -183,5 +189,154 @@ describe('NotebookCoreReadHost', () => {
     host.destroy();
     received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
     expect(host.store.getSnapshot().readState.status).toBe('disposed');
+  });
+
+  it('publishes attributed paragraph changes to the shared Angular and React port', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+
+    const added = { id: 'p2', text: 'second', status: 'READY' };
+    received.next({ op: OP.PARAGRAPH_ADDED, data: { noteId: 'other', index: 1, paragraph: added } });
+    received.next({ op: OP.PARAGRAPH_ADDED, data: { index: 1, paragraph: added } });
+    const initial = host.store.getSnapshot().readState;
+    expect(initial.status).toBe('ready');
+    expect(initial.status === 'ready' && initial.data.paragraphOrder).toEqual(['p1']);
+
+    received.next({ op: OP.PARAGRAPH_ADDED, data: { noteId: 'a', index: 1, paragraph: added } });
+    received.next({ op: OP.PARAGRAPH_MOVED, data: { noteId: 'a', id: 'p2', index: 0 } });
+    const moved = host.port.getSnapshot().readState;
+    expect(moved?.status === 'ready' && moved.data.paragraphOrder).toEqual(['p2', 'p1']);
+
+    received.next({ op: OP.PARAGRAPH, data: { noteId: 'a', paragraph: { ...added, text: 'updated' } } });
+    const updated = host.port.getSnapshot().readState;
+    expect(updated?.status === 'ready' && updated.data.paragraphsById.p2.text).toBe('updated');
+
+    received.next({ op: OP.PARAGRAPH_REMOVED, data: { noteId: 'a', id: 'p2' } });
+    const removed = host.port.getSnapshot().readState;
+    expect(removed?.status === 'ready' && removed.data.paragraphOrder).toEqual(['p1']);
+    host.destroy();
+  });
+
+  it('normalizes an empty paragraph in a full note and a later insert', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({
+      op: OP.NOTE,
+      msgId: 'request-1',
+      data: { note: { ...note('a'), paragraphs: [{ id: 'p1', status: 'READY' }] } }
+    });
+    const loaded = host.port.getSnapshot().readState;
+    expect(loaded?.status === 'ready' && loaded.data.paragraphsById.p1.text).toBe('');
+    received.next({
+      op: OP.PARAGRAPH_ADDED,
+      data: { noteId: 'a', index: 1, paragraph: { id: 'p2', status: 'READY' } }
+    });
+    const inserted = host.port.getSnapshot().readState;
+    expect(inserted?.status === 'ready' && inserted.data.paragraphsById.p2.text).toBe('');
+    received.next({
+      op: OP.PARAGRAPH,
+      data: { noteId: 'a', paragraph: { id: 'p2', text: 'now edited', status: 'READY' } }
+    });
+    const edited = host.port.getSnapshot().readState;
+    expect(edited?.status === 'ready' && edited.data.paragraphsById.p2.text).toBe('now edited');
+    host.destroy();
+  });
+
+  it('does not apply live paragraph changes to a saved revision', () => {
+    const { host, received } = createHost();
+    host.load('a', 'rev-1');
+    received.next({
+      op: OP.NOTE_REVISION,
+      msgId: 'request-1',
+      data: { noteId: 'a', revisionId: 'rev-1', note: note('a') }
+    });
+    const before = host.port.getSnapshot();
+    received.next({ op: OP.PARAGRAPH_REMOVED, data: { noteId: 'a', id: 'p1' } });
+    expect(host.port.getSnapshot()).toBe(before);
+    host.destroy();
+  });
+
+  it('routes an attributed save response through the Core without losing newer editor text', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+
+    expect(host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first edit' })).toEqual({
+      accepted: true
+    });
+    const save = host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    expect(save.accepted).toBe(true);
+    expect(message.sendNotebookCoreCommit).toHaveBeenCalledWith(
+      expect.any(Function),
+      OP.COMMIT_PARAGRAPH,
+      expect.objectContaining({ id: 'p1', noteId: 'a', paragraph: 'first edit' })
+    );
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'newer edit' });
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'commit-2',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'first edit', status: 'FINISHED' } }
+    });
+
+    const snapshot = host.commandPort.getSnapshot();
+    expect(snapshot.readState?.status === 'ready' && snapshot.readState.data.paragraphsById.p1.text).toBe('first edit');
+    expect(snapshot.draftsById?.p1.text).toBe('newer edit');
+    host.destroy();
+  });
+
+  it('does not let a late save response revert a newer server paragraph', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'saved edit' });
+    host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    received.next({
+      op: OP.PARAGRAPH,
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'collaborator edit', status: 'RUNNING' } }
+    });
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'commit-2',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'saved edit', status: 'READY' } }
+    });
+    const state = host.port.getSnapshot().readState;
+    expect(state?.status === 'ready' && state.data.paragraphsById.p1).toMatchObject({
+      text: 'collaborator edit',
+      status: 'RUNNING'
+    });
+    host.destroy();
+  });
+
+  it('releases a failed save for retry while keeping its local draft', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'unsaved edit' });
+    expect(host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: 'p1' }).accepted).toBe(true);
+
+    received.next({ op: OP.AUTH_INFO, msgId: 'commit-2', data: { errorType: 'FORBIDDEN' } });
+
+    expect(host.commandPort.getSnapshot().draftsById?.p1.text).toBe('unsaved edit');
+    expect(host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: 'p1' }).accepted).toBe(true);
+    host.destroy();
+  });
+
+  it('rejects a delayed save reply after leaving its note', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'old draft' });
+    host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    host.load('b', null);
+    received.next({ op: OP.NOTE, msgId: 'request-3', data: { note: note('b') } });
+    const before = host.commandPort.getSnapshot();
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'commit-2',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'old draft', status: 'FINISHED' } }
+    });
+    expect(host.commandPort.getSnapshot()).toBe(before);
+    host.destroy();
   });
 });

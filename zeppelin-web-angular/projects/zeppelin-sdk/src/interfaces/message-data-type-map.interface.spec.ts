@@ -34,3 +34,20 @@ it('declares the asymmetric paragraph output payloads sent by the server', () =>
     .toHaveProperty('type')
     .toEqualTypeOf<DatasetType>();
 });
+
+it('accepts both attributed and legacy structural paragraph payloads', () => {
+  const added: MessageReceiveDataTypeMap[OP.PARAGRAPH_ADDED] = {
+    noteId: 'note',
+    index: 0,
+    paragraph: {
+      id: 'paragraph',
+      text: '',
+      status: 'READY'
+    } as MessageReceiveDataTypeMap[OP.PARAGRAPH_ADDED]['paragraph']
+  };
+  const moved: MessageReceiveDataTypeMap[OP.PARAGRAPH_MOVED] = { noteId: 'note', id: 'paragraph', index: 1 };
+  const removed: MessageReceiveDataTypeMap[OP.PARAGRAPH_REMOVED] = { id: 'paragraph' };
+  expectTypeOf(added.noteId).toEqualTypeOf<string | undefined>();
+  expectTypeOf(moved.noteId).toEqualTypeOf<string | undefined>();
+  expectTypeOf(removed.noteId).toEqualTypeOf<string | undefined>();
+});

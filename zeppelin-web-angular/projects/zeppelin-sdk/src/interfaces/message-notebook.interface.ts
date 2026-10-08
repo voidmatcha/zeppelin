@@ -145,11 +145,13 @@ export interface CollaborativeModeStatus {
 }
 
 export interface ParagraphMoved {
+  noteId?: string;
   index: number;
   id: string;
 }
 
 export interface UpdateParagraph {
+  noteId?: string;
   paragraph: ParagraphItem;
 }
 
@@ -173,6 +175,7 @@ export interface ImportNoteReceived {
 }
 
 export interface ParagraphAdded {
+  noteId?: string;
   index: number;
   paragraph: ParagraphItem;
 }

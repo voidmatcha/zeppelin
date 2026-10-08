@@ -44,6 +44,264 @@ const note = (id: string) => ({
 const permissions = () => ({ readers: ['reader'], owners: ['owner'], writers: [], runners: [] });
 
 describe('host-owned notebook read store', () => {
+  it('keeps an unsaved draft across a same-note reconnect but not a route change', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const first = store.beginRoute('n1', null);
+    store.acceptNote(first, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'local edit' });
+    const draft = store.getSnapshot().draftsById?.p1;
+
+    const reconnect = store.beginRoute('n1', null);
+    expect(store.getSnapshot().draftsById?.p1).toBe(draft);
+    expect(store.acceptNote(first, note('n1'))).toBe(false);
+    store.acceptNote(reconnect, note('n1'));
+    expect(store.getSnapshot().draftsById?.p1?.text).toBe('local edit');
+
+    store.beginRoute('n1', 'revision-1');
+    expect(store.getSnapshot().draftsById).toBeUndefined();
+  });
+
+  it('keeps edits made after a save began when its delayed acknowledgement arrives', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'sent text' });
+    const result = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!result.accepted || !result.save) {
+      throw new Error('Expected a prepared save');
+    }
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'newer text' });
+    expect(store.acceptSaveAcknowledgement(request, { ...result.save })).toBe(false);
+    expect(store.acceptSaveAcknowledgement(request, result.save)).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('sent text');
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('newer text');
+    const acknowledged = store.getSnapshot();
+    expect(store.acceptSaveAcknowledgement(request, result.save)).toBe(false);
+    expect(store.getSnapshot()).toBe(acknowledged);
+    const newer = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!newer.accepted || !newer.save) {
+      throw new Error('Expected another prepared save');
+    }
+    expect(store.acceptSaveAcknowledgement(request, newer.save)).toBe(true);
+    expect(store.getSnapshot().draftsById?.p1).toBeUndefined();
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('newer text');
+  });
+
+  it('preserves an edit back to original text and newer server data across old save acknowledgements', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'sent' });
+    const result = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!result.accepted || !result.save) {
+      throw new Error('Expected a prepared save');
+    }
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first' });
+    store.acceptParagraphEvent(request, {
+      noteId: 'n1',
+      sequence: 1,
+      type: 'update',
+      paragraph: { id: 'p1', text: 'collaborator', status: 'READY' }
+    });
+    expect(store.acceptSaveAcknowledgement(request, result.save, { id: 'p1', text: 'sent', status: 'READY' })).toBe(
+      true
+    );
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('collaborator');
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('first');
+  });
+
+  it('normalizes structural events without replacing unaffected paragraphs or local drafts', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const untouched = selectParagraph(store.getSnapshot(), 'p2');
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'local' });
+    const inserted = { id: 'p3', text: 'third', status: 'READY' };
+    expect(
+      store.acceptParagraphEvent(request, { noteId: 'n1', sequence: 1, type: 'insert', paragraph: inserted, index: 1 })
+    ).toBe(true);
+    inserted.text = 'mutated outside';
+    expect(selectParagraph(store.getSnapshot(), 'p3')?.text).toBe('third');
+    expect(selectParagraphOrder(store.getSnapshot())).toEqual(['p1', 'p3', 'p2']);
+    expect(
+      store.acceptParagraphEvent(request, { noteId: 'n1', sequence: 2, type: 'move', paragraphId: 'p2', index: 0 })
+    ).toBe(true);
+    expect(selectParagraphOrder(store.getSnapshot())).toEqual(['p2', 'p1', 'p3']);
+    expect(
+      store.acceptParagraphEvent(request, {
+        noteId: 'n1',
+        sequence: 3,
+        type: 'update',
+        paragraph: { id: 'p1', text: 'remote', status: 'READY' }
+      })
+    ).toBe(true);
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('local');
+    expect(selectParagraph(store.getSnapshot(), 'p2')).toBe(untouched);
+    expect(store.acceptParagraphEvent(request, { noteId: 'n1', sequence: 4, type: 'remove', paragraphId: 'p1' })).toBe(
+      true
+    );
+    expect(selectParagraphOrder(store.getSnapshot())).toEqual(['p2', 'p3']);
+    expect(selectParagraph(store.getSnapshot(), 'p1')).toBeNull();
+    expect(store.getSnapshot().draftsById?.p1).toBeUndefined();
+  });
+
+  it('applies acknowledged text while retaining newer execution status', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'saved edit' });
+    const result = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!result.accepted || !result.save) {
+      throw new Error('Expected a prepared save');
+    }
+    store.acceptParagraphEvent(request, {
+      noteId: 'n1',
+      sequence: 1,
+      type: 'update',
+      paragraph: { id: 'p1', text: 'first', status: 'RUNNING' }
+    });
+    expect(
+      store.acceptSaveAcknowledgement(request, result.save, { id: 'p1', text: 'saved edit', status: 'READY' })
+    ).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), 'p1')).toMatchObject({ text: 'saved edit', status: 'RUNNING' });
+    expect(store.getSnapshot().draftsById?.p1).toBeUndefined();
+  });
+
+  it('uses the server save payload when no newer paragraph event arrived', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'saved edit' });
+    const result = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!result.accepted || !result.save) {
+      throw new Error('Expected a prepared save');
+    }
+    const response = { id: 'p1', text: 'saved edit', status: 'READY', title: 'server title' };
+    expect(store.acceptSaveAcknowledgement(request, result.save, response)).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), 'p1')).toMatchObject({
+      text: 'saved edit',
+      status: 'READY',
+      title: 'server title'
+    });
+  });
+
+  it('rejects duplicate, stale, wrong-note and invalid structural events with stable no-op snapshots', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const event = { noteId: 'n1', sequence: 2, type: 'move' as const, paragraphId: 'p1', index: 0 };
+    const loaded = store.getSnapshot();
+    expect(store.acceptParagraphEvent(request, event)).toBe(true);
+    expect(store.acceptParagraphEvent(request, event)).toBe(false);
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 1 })).toBe(false);
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 3, noteId: 'n2' })).toBe(false);
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 3, index: -1 })).toBe(false);
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 3, index: 2 })).toBe(false);
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: NaN })).toBe(false);
+    expect(
+      store.acceptParagraphEvent(request, { noteId: 'n1', sequence: 3, type: 'remove', paragraphId: 'missing' })
+    ).toBe(true);
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first' })).toEqual({ accepted: true });
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'toString', text: 'invalid' })).toEqual({
+      accepted: false
+    });
+    expect(store.getSnapshot()).toBe(loaded);
+    store.beginRoute('n2', null);
+    const back = store.beginRoute('n1', null);
+    store.acceptNote(back, note('n1'));
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 4 })).toBe(false);
+  });
+
+  it('keeps revisions and disposed stores immune to edits, save acknowledgements and live events', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const save = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!save.accepted || !save.save) {
+      throw new Error('Expected a prepared save');
+    }
+    const revision = store.beginRoute('n1', 'r1');
+    store.acceptRevision(revision, { noteId: 'n1', revisionId: 'r1', note: note('n1') });
+    const loaded = store.getSnapshot();
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'revision edit' })).toEqual({
+      accepted: false
+    });
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(store.acceptSaveAcknowledgement(request, save.save)).toBe(false);
+    expect(store.acceptParagraphEvent(revision, { noteId: 'n1', sequence: 1, type: 'remove', paragraphId: 'p1' })).toBe(
+      false
+    );
+    expect(store.getSnapshot()).toBe(loaded);
+    store.dispose();
+    const disposed = store.getSnapshot();
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'disposed' })).toEqual({ accepted: false });
+    expect(store.acceptSaveAcknowledgement(request, save.save)).toBe(false);
+    expect(store.acceptParagraphEvent(request, { noteId: 'n1', sequence: 2, type: 'remove', paragraphId: 'p1' })).toBe(
+      false
+    );
+    expect(store.getSnapshot()).toBe(disposed);
+  });
+
+  it('preserves drafts on failed sends and invalidates pending saves when a paragraph is removed', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'unsaved' });
+    const first = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!first.accepted || !first.save) {
+      throw new Error('Expected a prepared save');
+    }
+    const snapshot = store.getSnapshot();
+    expect(store.rejectSave(request, first.save)).toBe(true);
+    expect(store.rejectSave(request, first.save)).toBe(false);
+    expect(store.getSnapshot()).toBe(snapshot);
+    const retry = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!retry.accepted || !retry.save) {
+      throw new Error('Expected a retry save');
+    }
+    store.acceptParagraphEvent(request, { noteId: 'n1', sequence: 1, type: 'remove', paragraphId: 'p1' });
+    expect(store.acceptSaveAcknowledgement(request, retry.save)).toBe(false);
+    expect(store.getSnapshot().draftsById?.p1).toBeUndefined();
+  });
+
+  it('discards drafts and pending saves for paragraphs removed by a full refresh', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'removed draft' });
+    const result = store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' });
+    if (!result.accepted || !result.save) {
+      throw new Error('Expected a prepared save');
+    }
+    store.acceptNote(request, { ...note('n1'), paragraphs: [note('n1').paragraphs[1]] });
+    expect(store.getSnapshot().draftsById?.p1).toBeUndefined();
+    store.acceptNote(request, note('n1'));
+    expect(store.acceptSaveAcknowledgement(request, result.save)).toBe(false);
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first');
+  });
+
+  it('preserves null-prototype paragraph lookup after insertion and rejects conflicting inserts', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const event = {
+      noteId: 'n1',
+      sequence: 1,
+      type: 'insert' as const,
+      paragraph: { id: '__proto__', text: 'safe key', status: 'READY' },
+      index: 1
+    };
+    expect(store.acceptParagraphEvent(request, event)).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), '__proto__')?.text).toBe('safe key');
+    expect(selectParagraph(store.getSnapshot(), 'toString')).toBeNull();
+    const inserted = store.getSnapshot();
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 2 })).toBe(true);
+    expect(store.getSnapshot()).toBe(inserted);
+    expect(store.acceptParagraphEvent(request, { ...event, sequence: 3, index: 0 })).toBe(false);
+    expect(store.getSnapshot()).toBe(inserted);
+  });
+
   it('normalizes and isolates the note, results, chart config and ACL from mutable wire payloads', () => {
     const store = new NotebookCoreReadStore('n1');
     const request = store.beginRoute('n1', null);

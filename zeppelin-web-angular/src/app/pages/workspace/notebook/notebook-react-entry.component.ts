@@ -27,13 +27,22 @@ export class NotebookReactEntryComponent implements OnDestroy {
   @HostBinding('attr.data-read-ready') ready = false;
 
   reactProps: Record<string, unknown> = {};
+  private isEditable = false;
+  private currentHost?: NotebookCoreReadHost;
   private port?: NotebookCorePort;
   private unsubscribe?: () => void;
 
   constructor(private readonly cdr: ChangeDetectorRef) {}
 
+  @Input() set editable(value: boolean) {
+    this.isEditable = value;
+    this.updateReactProps();
+    this.cdr.markForCheck();
+  }
+
   @Input({ required: true }) set host(value: NotebookCoreReadHost) {
     this.unsubscribe?.();
+    this.currentHost = value;
     this.port = value.port;
     this.ready = false;
     this.cdr.markForCheck();
@@ -44,8 +53,24 @@ export class NotebookReactEntryComponent implements OnDestroy {
         this.cdr.markForCheck();
       }
     });
+    this.updateReactProps();
+  }
+
+  ngOnDestroy(): void {
+    this.unsubscribe?.();
+    this.currentHost = undefined;
+    this.port = undefined;
+    this.ready = false;
+  }
+
+  private updateReactProps(): void {
+    const value = this.currentHost;
+    if (!value) {
+      return;
+    }
     this.reactProps = {
       core: value.port,
+      ...(this.isEditable ? { commandPort: value.commandPort } : {}),
       onError: this.onError,
       onReady: () => {
         const state = value.port.getSnapshot().readState;
@@ -55,12 +80,6 @@ export class NotebookReactEntryComponent implements OnDestroy {
         }
       }
     };
-  }
-
-  ngOnDestroy(): void {
-    this.unsubscribe?.();
-    this.port = undefined;
-    this.ready = false;
   }
 
   private readonly onError = (_error: unknown): void => this.onEntryFailure();

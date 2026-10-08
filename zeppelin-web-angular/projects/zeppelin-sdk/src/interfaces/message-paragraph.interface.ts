@@ -324,6 +324,7 @@ export interface PatchParagraphSend {
 }
 
 export interface ParagraphRemoved {
+  noteId?: string;
   id: string;
 }
 

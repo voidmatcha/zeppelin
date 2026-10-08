@@ -13,7 +13,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Alert, Tag, Typography } from 'antd';
-import type { NotebookCoreReadState, NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
+import type {
+  NotebookCoreCommandPort,
+  NotebookCoreReadState,
+  NotebookCoreRemoteProps,
+  NotebookCoreSnapshot
+} from '@zeppelin/notebook-core';
 import { ReactErrorBoundary } from '@/components';
 import type { ResultConfigs, ResultMessage } from '@/components/visualizations/result-types';
 import { supportsReadOnlyChart } from '@/components/visualizations/readOnlyChartData';
@@ -23,6 +28,7 @@ import { ZeppelinThemeProvider } from '@/theme';
 import './NotebookRouteEntry.css';
 
 export type NotebookRouteEntryProps = NotebookCoreRemoteProps & {
+  commandPort?: NotebookCoreCommandPort;
   onError?: (error: unknown) => void;
   onReady?: () => void;
 };
@@ -42,12 +48,16 @@ type ReadParagraph = Readonly<{
 
 const ReadOnlyParagraph = ({
   paragraph,
+  draft,
   index,
+  commandPort,
   onResultReady,
   onError
 }: {
   paragraph: ReadParagraph;
+  draft?: string;
   index: number;
+  commandPort?: NotebookCoreCommandPort;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
 }) => (
@@ -56,7 +66,26 @@ const ReadOnlyParagraph = ({
       <Typography.Title level={2}>{paragraph.title || `Paragraph ${index + 1}`}</Typography.Title>
       <Tag>{paragraph.status}</Tag>
     </header>
-    {!paragraph.config?.editorHide && <pre className="notebook-react-read-source">{paragraph.text}</pre>}
+    {commandPort ? (
+      <div className="notebook-react-edit-source">
+        <label htmlFor={`react-core-editor-${paragraph.id}`}>Paragraph source</label>
+        <textarea
+          id={`react-core-editor-${paragraph.id}`}
+          value={draft ?? paragraph.text}
+          onChange={event =>
+            commandPort.dispatch({ type: 'editParagraph', paragraphId: paragraph.id, text: event.target.value })
+          }
+        />
+        <button
+          type="button"
+          onClick={() => commandPort.dispatch({ type: 'saveParagraph', paragraphId: paragraph.id })}
+        >
+          Save paragraph
+        </button>
+      </div>
+    ) : (
+      !paragraph.config?.editorHide && <pre className="notebook-react-read-source">{paragraph.text}</pre>
+    )}
     {!paragraph.config?.tableHide &&
       paragraph.results?.msg?.map((result, resultIndex) => (
         <div key={resultIndex} className="notebook-react-read-result">
@@ -77,11 +106,15 @@ const ReadOnlyParagraph = ({
 const NotebookReadContent = ({
   state,
   revisionId,
+  draftsById,
+  commandPort,
   onResultReady,
   onError
 }: {
   state: NotebookCoreReadState;
   revisionId: string | null;
+  draftsById?: NotebookCoreSnapshot['draftsById'];
+  commandPort?: NotebookCoreCommandPort;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
 }) => {
@@ -103,7 +136,7 @@ const NotebookReadContent = ({
     <>
       <header className="notebook-react-read-header">
         <div>
-          <p className="notebook-react-read-label">Read-only notebook</p>
+          <p className="notebook-react-read-label">{commandPort ? 'Private editor preview' : 'Read-only notebook'}</p>
           <Typography.Title level={1}>{note.name}</Typography.Title>
           {typeof note.path === 'string' && <p>{note.path}</p>}
           {revisionId && <p>Revision: {revisionId}</p>}
@@ -129,7 +162,9 @@ const NotebookReadContent = ({
           <ReadOnlyParagraph
             key={id}
             paragraph={paragraph}
+            draft={draftsById?.[id]?.text}
             index={index}
+            commandPort={revisionId ? undefined : commandPort}
             onResultReady={onResultReady}
             onError={onError}
           />
@@ -141,10 +176,12 @@ const NotebookReadContent = ({
 
 const NotebookRouteScreen = ({
   snapshot,
+  commandPort,
   onReady,
   onError
 }: {
   snapshot: NotebookCoreSnapshot;
+  commandPort?: NotebookCoreCommandPort;
   onReady?: () => void;
   onError?: (error: unknown) => void;
 }) => {
@@ -154,6 +191,7 @@ const NotebookRouteScreen = ({
     setReadyResults(current => (current.has(key) ? current : new Set(current).add(key)));
   }, []);
   const state = snapshot.readState ?? { status: 'initial' as const, acl: { status: 'loading' as const } };
+  const activeCommandPort = snapshot.revisionId === null ? commandPort : undefined;
   useEffect(() => {
     if (state.status !== 'ready') {
       reportedReady.current = false;
@@ -192,11 +230,17 @@ const NotebookRouteScreen = ({
     const params = new URLSearchParams(query);
     params.delete('notebookReactPrivate');
     params.delete('notebookCoreReadOnly');
+    params.delete('notebookReactEditPrivate');
+    params.delete('notebookCoreEditPrivate');
     return `${path}${params.size ? `?${params}` : ''}`;
   })();
   return (
     <ZeppelinThemeProvider>
-      <main data-testid="react-notebook-entry" aria-label="Read-only notebook" className="notebook-react-read">
+      <main
+        data-testid="react-notebook-entry"
+        aria-label={activeCommandPort ? 'Notebook editor preview' : 'Read-only notebook'}
+        className="notebook-react-read"
+      >
         {hasUnsupportedResult ? (
           <Alert
             type="warning"
@@ -208,6 +252,8 @@ const NotebookRouteScreen = ({
           <NotebookReadContent
             state={state}
             revisionId={snapshot.revisionId}
+            draftsById={snapshot.draftsById}
+            commandPort={activeCommandPort}
             onResultReady={onResultReady}
             onError={onError}
           />
@@ -217,12 +263,17 @@ const NotebookRouteScreen = ({
   );
 };
 
-export const NotebookRouteEntry = ({ onReady, onError }: Pick<NotebookRouteEntryProps, 'onReady' | 'onError'>) => {
+export const NotebookRouteEntry = ({
+  commandPort,
+  onReady,
+  onError
+}: Pick<NotebookRouteEntryProps, 'commandPort' | 'onReady' | 'onError'>) => {
   const snapshot = useNotebookSelector(value => value);
   return (
     <NotebookRouteScreen
       key={`${snapshot.noteId}:${snapshot.revisionId ?? ''}`}
       snapshot={snapshot}
+      commandPort={commandPort}
       onReady={onReady}
       onError={onError}
     />
@@ -238,7 +289,7 @@ export const mount = (element: HTMLElement, initialProps: NotebookRouteEntryProp
     root.render(
       <ReactErrorBoundary onError={props.onError}>
         <NotebookCoreProvider core={props.core}>
-          <NotebookRouteEntry onReady={props.onReady} onError={props.onError} />
+          <NotebookRouteEntry commandPort={props.commandPort} onReady={props.onReady} onError={props.onError} />
         </NotebookCoreProvider>
       </ReactErrorBoundary>
     );

@@ -14,8 +14,16 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, Subscription } from 'rxjs';
 import { take, timeout } from 'rxjs/operators';
 
-import { NotebookCoreReadRequest, NotebookCoreReadStore } from '@zeppelin/notebook-core';
-import { Note, NoteRevision, OP } from '@zeppelin/sdk';
+import {
+  NotebookCoreCommand,
+  NotebookCoreCommandPort,
+  NotebookCoreCommandResult,
+  NotebookCoreReadRequest,
+  NotebookCoreReadStore,
+  NotebookCoreSaveIntent,
+  NotebookCoreWireNote
+} from '@zeppelin/notebook-core';
+import { Note, NoteRevision, OP, ParagraphConfig } from '@zeppelin/sdk';
 import { MessageService, SecurityService } from '@zeppelin/services';
 
 const READ_TIMEOUT_MS = 10000;
@@ -24,6 +32,10 @@ const READ_TIMEOUT_MS = 10000;
 export class NotebookCoreReadHost {
   readonly store = new NotebookCoreReadStore('');
   readonly port = this.store.port;
+  readonly commandPort: NotebookCoreCommandPort = Object.freeze({
+    ...this.store.port,
+    dispatch: (command: NotebookCoreCommand) => this.dispatch(command)
+  });
   readonly snapshot$ = new Observable<ReturnType<NotebookCoreReadStore['getSnapshot']>>(subscriber => {
     subscriber.next(this.store.getSnapshot());
     return this.store.port.subscribe(() => subscriber.next(this.store.getSnapshot()));
@@ -32,7 +44,12 @@ export class NotebookCoreReadHost {
   private readonly subscriptions = new Subscription();
   private permissionSubscription?: Subscription;
   private pending = new Map<string, { request: NotebookCoreReadRequest; timeout: ReturnType<typeof setTimeout> }>();
+  private pendingSaves = new Map<
+    string,
+    { request: NotebookCoreReadRequest; save: NotebookCoreSaveIntent; timeout: ReturnType<typeof setTimeout> }
+  >();
   private currentRequest?: NotebookCoreReadRequest;
+  private wireSequence = 0;
 
   constructor(
     private readonly message: MessageService,
@@ -44,6 +61,7 @@ export class NotebookCoreReadHost {
 
   load(noteId: string, revisionId: string | null): void {
     this.clearPending();
+    this.clearPendingSaves();
     this.permissionSubscription?.unsubscribe();
     const request = this.store.beginRoute(noteId, revisionId);
     this.currentRequest = request;
@@ -80,6 +98,7 @@ export class NotebookCoreReadHost {
 
   invalidate(): void {
     this.clearPending();
+    this.clearPendingSaves();
     this.permissionSubscription?.unsubscribe();
     if (this.currentRequest) {
       this.store.acceptNoteFailure(this.currentRequest, 'failed');
@@ -88,12 +107,18 @@ export class NotebookCoreReadHost {
 
   destroy(): void {
     this.clearPending();
+    this.clearPendingSaves();
     this.permissionSubscription?.unsubscribe();
     this.subscriptions.unsubscribe();
     this.store.dispose();
   }
 
   private receive(envelope: { op: OP; msgId?: string; data?: unknown }): void {
+    if (envelope.msgId && this.message.isNotebookCoreCommitRequestId(envelope.msgId)) {
+      this.receiveSaveResponse(envelope);
+      return;
+    }
+    this.receiveParagraphChange(envelope);
     if (!envelope.msgId) {
       return;
     }
@@ -103,22 +128,23 @@ export class NotebookCoreReadHost {
     }
     const { request, timeout } = pending;
     if (envelope.op === OP.NOTE && request.revisionId === null) {
-      const note = (envelope.data as Note | undefined)?.note;
-      if (note && isReadNote(note) && !this.store.acceptNote(request, note)) {
+      const note = normalizeReadNote((envelope.data as Note | undefined)?.note);
+      if (note && !this.store.acceptNote(request, note)) {
         return;
       }
       this.pending.delete(envelope.msgId);
       clearTimeout(timeout);
-      if (!isReadNote(note)) {
+      if (!note) {
         this.store.acceptNoteFailure(request, 'failed');
       }
     } else if (envelope.op === OP.NOTE_REVISION && request.revisionId !== null) {
       const revision = envelope.data as NoteRevision | undefined;
-      if (!revision || !isReadNote(revision.note)) {
+      const note = normalizeReadNote(revision?.note);
+      if (!revision || !note) {
         this.pending.delete(envelope.msgId);
         clearTimeout(timeout);
         this.store.acceptNoteFailure(request, 'failed');
-      } else if (this.store.acceptRevision(request, revision)) {
+      } else if (this.store.acceptRevision(request, { ...revision, note })) {
         this.pending.delete(envelope.msgId);
         clearTimeout(timeout);
       }
@@ -136,16 +162,183 @@ export class NotebookCoreReadHost {
     }
   }
 
+  private dispatch(command: NotebookCoreCommand): NotebookCoreCommandResult {
+    const request = this.currentRequest;
+    if (!request || request.revisionId !== null) {
+      return Object.freeze({ accepted: false });
+    }
+    const state = this.store.getSnapshot().readState;
+    if (state.status !== 'ready') {
+      return Object.freeze({ accepted: false });
+    }
+    const paragraph = state.data.paragraphsById[command.paragraphId];
+    if (!paragraph) {
+      return Object.freeze({ accepted: false });
+    }
+    const result = this.store.dispatch(command);
+    if (!result.accepted || !result.save) {
+      return result;
+    }
+    const save = result.save;
+    const title = typeof paragraph.title === 'string' ? paragraph.title : undefined;
+    const config = (paragraph.config ?? {}) as ParagraphConfig;
+    const settings = paragraph.settings as { params?: ParagraphConfig } | undefined;
+    let registeredMsgId: string | undefined;
+    try {
+      this.message.sendNotebookCoreCommit(
+        msgId => {
+          registeredMsgId = msgId;
+          const timeout = setTimeout(() => {
+            this.pendingSaves.delete(msgId);
+            this.store.rejectSave(request, save);
+          }, READ_TIMEOUT_MS);
+          this.pendingSaves.set(msgId, { request, save, timeout });
+        },
+        OP.COMMIT_PARAGRAPH,
+        {
+          id: save.paragraphId,
+          noteId: save.noteId,
+          title,
+          paragraph: save.text,
+          config,
+          params: settings?.params ?? {}
+        }
+      );
+      return result;
+    } catch {
+      if (registeredMsgId) {
+        const pending = this.pendingSaves.get(registeredMsgId);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingSaves.delete(registeredMsgId);
+        }
+      }
+      this.store.rejectSave(request, save);
+      return Object.freeze({ accepted: false });
+    }
+  }
+
+  private receiveSaveResponse(envelope: { op: OP; msgId?: string; data?: unknown }): void {
+    const pending = envelope.msgId && this.pendingSaves.get(envelope.msgId);
+    if (!pending || !envelope.msgId) {
+      return;
+    }
+    if (envelope.op === OP.PARAGRAPH) {
+      const change = envelope.data as { noteId?: unknown; paragraph?: unknown } | undefined;
+      const paragraph = normalizeReadParagraph(change?.paragraph);
+      if (change?.noteId !== pending.request.noteId || !paragraph || paragraph.id !== pending.save.paragraphId) {
+        return;
+      }
+      this.store.acceptSaveAcknowledgement(pending.request, pending.save, paragraph);
+    } else if (envelope.op === OP.ERROR_INFO || envelope.op === OP.AUTH_INFO) {
+      this.store.rejectSave(pending.request, pending.save);
+    } else {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pendingSaves.delete(envelope.msgId);
+  }
+
+  private receiveParagraphChange(envelope: { op: OP; data?: unknown }): void {
+    const request = this.currentRequest;
+    const data = envelope.data;
+    if (!request || request.revisionId !== null || !data || typeof data !== 'object') {
+      return;
+    }
+    const change = data as Record<string, unknown>;
+    // Older servers omit noteId. Do not infer it from the currently open route:
+    // a delayed broadcast from a previous visit could otherwise mutate this Core.
+    if (change.noteId !== request.noteId) {
+      return;
+    }
+    const sequence = ++this.wireSequence;
+    const paragraph = normalizeReadParagraph(change.paragraph);
+    if (envelope.op === OP.PARAGRAPH_ADDED && Number.isInteger(change.index) && paragraph) {
+      this.store.acceptParagraphEvent(request, {
+        type: 'insert',
+        noteId: request.noteId,
+        sequence,
+        index: change.index as number,
+        paragraph
+      });
+    } else if (envelope.op === OP.PARAGRAPH && paragraph) {
+      this.store.acceptParagraphEvent(request, {
+        type: 'update',
+        noteId: request.noteId,
+        sequence,
+        paragraph
+      });
+    } else if (envelope.op === OP.PARAGRAPH_REMOVED && typeof change.id === 'string') {
+      this.store.acceptParagraphEvent(request, {
+        type: 'remove',
+        noteId: request.noteId,
+        sequence,
+        paragraphId: change.id
+      });
+    } else if (envelope.op === OP.PARAGRAPH_MOVED && typeof change.id === 'string' && Number.isInteger(change.index)) {
+      this.store.acceptParagraphEvent(request, {
+        type: 'move',
+        noteId: request.noteId,
+        sequence,
+        paragraphId: change.id,
+        index: change.index as number
+      });
+    }
+  }
+
   private clearPending(): void {
     for (const { timeout } of this.pending.values()) {
       clearTimeout(timeout);
     }
     this.pending.clear();
   }
+
+  private clearPendingSaves(): void {
+    for (const { request, save, timeout } of this.pendingSaves.values()) {
+      clearTimeout(timeout);
+      this.store.rejectSave(request, save);
+    }
+    this.pendingSaves.clear();
+  }
 }
 
-const isReadNote = (note: unknown): note is NonNullable<Note['note']> =>
-  !!note &&
-  typeof note === 'object' &&
-  typeof (note as NonNullable<Note['note']>).id === 'string' &&
-  Array.isArray((note as NonNullable<Note['note']>).paragraphs);
+const normalizeReadParagraph = (paragraph: unknown): NotebookCoreWireNote['paragraphs'][number] | null => {
+  if (!paragraph || typeof paragraph !== 'object') {
+    return null;
+  }
+  const value = paragraph as Record<string, unknown>;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.status !== 'string' ||
+    (value.text != null && typeof value.text !== 'string')
+  ) {
+    return null;
+  }
+  return { ...value, id: value.id, status: value.status, text: (value.text as string | null | undefined) ?? '' };
+};
+
+const normalizeReadNote = (note: unknown): NotebookCoreWireNote | null => {
+  if (!note || typeof note !== 'object') {
+    return null;
+  }
+  const value = note as Record<string, unknown>;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.path !== 'string' ||
+    !Array.isArray(value.paragraphs)
+  ) {
+    return null;
+  }
+  const paragraphs = value.paragraphs.map(normalizeReadParagraph);
+  if (paragraphs.some(paragraph => !paragraph)) {
+    return null;
+  }
+  return {
+    ...value,
+    id: value.id,
+    name: value.name,
+    path: value.path,
+    paragraphs: paragraphs as NotebookCoreWireNote['paragraphs']
+  };
+};

@@ -49,6 +49,39 @@ describe('MessageService local add focus', () => {
 });
 
 describe('MessageService private notebook reads', () => {
+  it('keeps Core save replies and failures out of legacy listeners', () => {
+    const interceptor = { received: vi.fn(message => message) };
+    const service = new MessageService({} as BaseUrlService, {} as TicketService, interceptor);
+    (service as unknown as { ws: { next: () => void; complete: () => void } }).ws = {
+      next: vi.fn(),
+      complete: vi.fn()
+    };
+    const msgId = service.sendNotebookCoreCommit(() => undefined, OP.COMMIT_PARAGRAPH, {
+      id: 'p1',
+      noteId: 'a',
+      paragraph: 'edited',
+      config: {},
+      params: {}
+    });
+    const raw = vi.fn();
+    const legacy = vi.fn();
+    service.received().subscribe(raw);
+    service.receiveEnvelope(OP.PARAGRAPH).subscribe(legacy);
+
+    const reply = {
+      op: OP.PARAGRAPH,
+      msgId,
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'edited', status: 'READY' } }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>;
+    service.shortCircuit(reply);
+    service.interceptReceived({ op: OP.ERROR_INFO, msgId, data: { info: 'Denied' } });
+
+    expect(raw).toHaveBeenCalledExactlyOnceWith(reply);
+    expect(legacy).not.toHaveBeenCalled();
+    expect(interceptor.received).toHaveBeenCalledExactlyOnceWith(reply);
+    service.ngOnDestroy();
+  });
+
   it('delivers private replies to the Core host without updating legacy notebook listeners', () => {
     const service = connectedMessageService();
     const requestId = service.sendNotebookCoreRead(() => undefined, OP.GET_NOTE, { id: 'a' });

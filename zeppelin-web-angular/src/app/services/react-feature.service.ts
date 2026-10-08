@@ -19,7 +19,9 @@ export type ReactSurface =
   | 'configurationTable'
   | 'notebookRepoList'
   | 'notebookCoreReadOnly'
-  | 'notebookReactPrivate';
+  | 'notebookReactPrivate'
+  | 'notebookCoreEditPrivate'
+  | 'notebookReactEditPrivate';
 
 interface ReactSurfaceConfig {
   queryParam: string;
@@ -50,6 +52,14 @@ const SURFACES: Record<ReactSurface, ReactSurfaceConfig> = {
   notebookReactPrivate: {
     queryParam: 'notebookReactPrivate',
     defaultEnabled: false
+  },
+  notebookCoreEditPrivate: {
+    queryParam: 'notebookCoreEditPrivate',
+    defaultEnabled: false
+  },
+  notebookReactEditPrivate: {
+    queryParam: 'notebookReactEditPrivate',
+    defaultEnabled: false
   }
 };
 
@@ -66,7 +76,13 @@ export interface FlagSource {
 export class ReactFeatureService {
   isEnabled(surface: ReactSurface, source?: FlagSource | null): boolean {
     // The read-only Core route is a development proof, not a production surface.
-    if ((surface === 'notebookCoreReadOnly' || surface === 'notebookReactPrivate') && !isDevMode()) {
+    if (
+      (surface === 'notebookCoreReadOnly' ||
+        surface === 'notebookReactPrivate' ||
+        surface === 'notebookCoreEditPrivate' ||
+        surface === 'notebookReactEditPrivate') &&
+      !isDevMode()
+    ) {
       return false;
     }
     const config = SURFACES[surface];

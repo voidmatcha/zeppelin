@@ -11,7 +11,7 @@
  */
 
 import { act } from 'react';
-import { waitFor } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NotebookCoreReadStore, NotebookCoreWireNote } from '@zeppelin/notebook-core';
 import { DatasetType } from '@zeppelin/sdk';
@@ -131,6 +131,59 @@ describe('NotebookRouteEntry', () => {
     expect(element.textContent).toContain('Revision: revision-1');
     expect(element.textContent).toContain('Readers: reader');
     expect(element.querySelector('button')).toBeNull();
+    store.dispose();
+  });
+
+  it('edits through the host-owned command port only in the private editor preview', () => {
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-1', null);
+    const commandPort = Object.freeze({ ...store.port, dispatch: store.dispatch.bind(store) });
+    act(() => {
+      unmount = mount(element, { core: store.port, commandPort }).unmount;
+      store.acceptNote(request, {
+        id: 'note-1',
+        name: 'Editable note',
+        path: '/Editable note',
+        paragraphs: [{ id: 'p1', text: 'initial', status: 'READY', config: { editorHide: true } }]
+      } as unknown as NotebookCoreWireNote);
+      store.acceptPermissions(request, { owners: [], readers: [], writers: ['editor'], runners: [] });
+    });
+
+    const editor = element.querySelector('textarea');
+    expect(editor?.value).toBe('initial');
+    act(() => fireEvent.change(editor!, { target: { value: 'local edit' } }));
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('local edit');
+    expect(editor?.value).toBe('local edit');
+    act(() =>
+      fireEvent.click(
+        Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Save paragraph')!
+      )
+    );
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    store.dispose();
+  });
+
+  it('keeps a saved revision read-only even when an edit command port is available', () => {
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-1', 'revision-1');
+    const commandPort = Object.freeze({ ...store.port, dispatch: store.dispatch.bind(store) });
+    act(() => {
+      unmount = mount(element, { core: store.port, commandPort }).unmount;
+      store.acceptRevision(request, {
+        noteId: 'note-1',
+        revisionId: 'revision-1',
+        note: {
+          id: 'note-1',
+          name: 'Saved note',
+          path: '/Saved note',
+          paragraphs: [{ id: 'p1', text: 'saved', status: 'READY' }]
+        }
+      });
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+    expect(element.querySelector('textarea')).toBeNull();
+    expect(element.querySelector('button')).toBeNull();
+    expect(element.querySelector('main')?.getAttribute('aria-label')).toBe('Read-only notebook');
     store.dispose();
   });
 

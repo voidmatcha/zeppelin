@@ -21,7 +21,7 @@ import { NotebookCoreReadComponent } from './notebook-core-read.component';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 import { NotebookReactEntryComponent } from './notebook-react-entry.component';
 
-type NotebookRouteMode = 'editable' | 'angular-read' | 'react-read' | 'fallback';
+type NotebookRouteMode = 'editable' | 'angular-read' | 'react-read' | 'angular-edit' | 'react-edit' | 'fallback';
 
 @Component({
   selector: 'zeppelin-notebook-route-host',
@@ -47,11 +47,15 @@ export class NotebookRouteHostComponent implements OnInit, OnDestroy {
       this.route.queryParamMap
         .pipe(
           map(params =>
-            this.features.isEnabled('notebookReactPrivate', params)
-              ? 'react-read'
-              : this.features.isEnabled('notebookCoreReadOnly', params)
-                ? 'angular-read'
-                : 'editable'
+            this.features.isEnabled('notebookReactEditPrivate', params)
+              ? 'react-edit'
+              : this.features.isEnabled('notebookCoreEditPrivate', params)
+                ? 'angular-edit'
+                : this.features.isEnabled('notebookReactPrivate', params)
+                  ? 'react-read'
+                  : this.features.isEnabled('notebookCoreReadOnly', params)
+                    ? 'angular-read'
+                    : 'editable'
           ),
           distinctUntilChanged()
         )
@@ -84,12 +88,15 @@ export class NotebookRouteHostComponent implements OnInit, OnDestroy {
             }
           });
 
-          if (mode === 'react-read') {
+          if (mode === 'react-read' || mode === 'react-edit') {
             const entry = this.outlet.createComponent(NotebookReactEntryComponent);
+            entry.setInput('editable', mode === 'react-edit');
             entry.setInput('host', host);
             entry.setInput('onEntryFailure', () => this.fallbackToAngular(host));
           } else {
-            this.outlet.createComponent(NotebookCoreReadComponent).setInput('host', host);
+            const entry = this.outlet.createComponent(NotebookCoreReadComponent);
+            entry.setInput('host', host);
+            entry.setInput('editable', mode === 'angular-edit');
           }
         })
     );
@@ -103,11 +110,14 @@ export class NotebookRouteHostComponent implements OnInit, OnDestroy {
   }
 
   private fallbackToAngular(host: NotebookCoreReadHost): void {
-    if (this.readHost !== host || this.mode !== 'react-read') {
+    if (this.readHost !== host || (this.mode !== 'react-read' && this.mode !== 'react-edit')) {
       return;
     }
+    const editable = this.mode === 'react-edit';
     this.mode = 'fallback';
     this.outlet.clear();
-    this.outlet.createComponent(NotebookCoreReadComponent).setInput('host', host);
+    const entry = this.outlet.createComponent(NotebookCoreReadComponent);
+    entry.setInput('host', host);
+    entry.setInput('editable', editable);
   }
 }

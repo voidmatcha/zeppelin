@@ -785,7 +785,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
     if (note.isPersonalizedMode()) {
       broadcastParagraphs(p.getUserParagraphMap(), p, msgId);
     } else {
-      Message message = new Message(OP.PARAGRAPH).withMsgId(msgId).put("paragraph", p);
+      Message message = new Message(OP.PARAGRAPH).withMsgId(msgId)
+          .put("noteId", note.getId()).put("paragraph", p);
       connectionManager.broadcast(note.getId(), message);
     }
   }
@@ -794,17 +795,19 @@ public class NotebookServer implements AngularObjectRegistryListener,
     inlineBroadcastParagraph(note, p, msgId);
   }
 
-  private void inlineBroadcastParagraphs(Map<String, Paragraph> userParagraphMap, String msgId) {
+  private void inlineBroadcastParagraphs(Map<String, Paragraph> userParagraphMap,
+                                         String noteId, String msgId) {
     if (null != userParagraphMap) {
       for (String user : userParagraphMap.keySet()) {
-        Message message = new Message(OP.PARAGRAPH).withMsgId(msgId).put("paragraph", userParagraphMap.get(user));
+        Message message = new Message(OP.PARAGRAPH).withMsgId(msgId)
+            .put("noteId", noteId).put("paragraph", userParagraphMap.get(user));
         connectionManager.multicastToUser(user, message);
       }
     }
   }
 
   private void broadcastParagraphs(Map<String, Paragraph> userParagraphMap, Paragraph defaultParagraph, String msgId) {
-    inlineBroadcastParagraphs(userParagraphMap, msgId);
+    inlineBroadcastParagraphs(userParagraphMap, defaultParagraph.getNote().getId(), msgId);
   }
 
   private void inlineBroadcastNewParagraph(Note note, Paragraph para, String msgId) {
@@ -812,7 +815,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
     int paraIndex = note.getParagraphs().indexOf(para);
 
     Message message =
-        new Message(OP.PARAGRAPH_ADDED).withMsgId(msgId).put("paragraph", para).put("index", paraIndex);
+        new Message(OP.PARAGRAPH_ADDED).withMsgId(msgId).put("noteId", note.getId())
+            .put("paragraph", para).put("index", paraIndex);
     connectionManager.broadcast(note.getId(), message);
   }
 
@@ -1199,7 +1203,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
     Map<String, Object> config = (Map<String, Object>) fromMessage.get("config");
 
     getNotebookService().updateParagraph(noteId, paragraphId, title, text, params, config, context,
-        new WebSocketServiceCallback<Paragraph>(conn) {
+        new WebSocketServiceCallback<Paragraph>(conn, fromMessage.msgId) {
           @Override
           public void onSuccess(Paragraph p, ServiceContext context) throws IOException {
             super.onSuccess(p, context);
@@ -1338,7 +1342,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
           @Override
           public void onSuccess(Paragraph p, ServiceContext context) throws IOException {
             super.onSuccess(p, context);
-            connectionManager.broadcast(p.getNote().getId(), new Message(OP.PARAGRAPH_REMOVED).put("id", p.getId()));
+            connectionManager.broadcast(p.getNote().getId(),
+                new Message(OP.PARAGRAPH_REMOVED).put("noteId", p.getNote().getId()).put("id", p.getId()));
           }
         });
   }
@@ -1546,6 +1551,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
             super.onSuccess(result, context);
             connectionManager.broadcast(result.getNote().getId(),
                 new Message(OP.PARAGRAPH_MOVED)
+                    .put("noteId", result.getNote().getId())
                     .put("id", paragraphId)
                     .put("index", newIndex));
           }
@@ -1906,7 +1912,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
               Paragraph userParagraph =
                   note.clearPersonalizedParagraphOutput(paragraphId, executionOwner);
               connectionManager.multicastToUser(executionOwner, new Message(OP.PARAGRAPH)
-                  .withMsgId(MSG_ID_NOT_DEFINED).put("paragraph", userParagraph));
+                  .withMsgId(MSG_ID_NOT_DEFINED).put("noteId", noteId)
+                  .put("paragraph", userParagraph));
             }
             return null;
           }

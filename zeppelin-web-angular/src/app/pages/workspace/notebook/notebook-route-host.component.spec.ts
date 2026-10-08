@@ -94,4 +94,39 @@ describe('NotebookRouteHostComponent', () => {
     expect(mounted[2].component).toBe(NotebookComponent);
     host.ngOnDestroy();
   });
+
+  it('keeps the private editor enabled when the React editor falls back to Angular', () => {
+    const queryParamMap = new Subject<ParamMap>();
+    const paramMap = new BehaviorSubject({ get: () => 'note-1' } as unknown as ParamMap);
+    const mounted: Array<{ component: unknown; inputs: Record<string, unknown> }> = [];
+    const host = new NotebookRouteHostComponent(
+      { queryParamMap, paramMap } as unknown as ActivatedRoute,
+      new ReactFeatureService(),
+      {
+        received: () => new Subject(),
+        connectedStatus$: new BehaviorSubject(false),
+        connectedStatus: false
+      } as unknown as MessageService,
+      {} as SecurityService
+    );
+    (host as unknown as { outlet: unknown }).outlet = {
+      clear: vi.fn(),
+      createComponent: vi.fn(component => {
+        const entry = { component, inputs: {} as Record<string, unknown> };
+        mounted.push(entry);
+        return { setInput: vi.fn((key: string, value: unknown) => (entry.inputs[key] = value)) };
+      })
+    };
+
+    host.ngOnInit();
+    queryParamMap.next({ get: (name: string) => (name === 'notebookReactEditPrivate' ? 'true' : null) } as ParamMap);
+    expect(mounted[0].component).toBe(NotebookReactEntryComponent);
+    expect(mounted[0].inputs.editable).toBe(true);
+    const core = mounted[0].inputs.host;
+    (mounted[0].inputs.onEntryFailure as () => void)();
+    expect(mounted[1].component).toBe(NotebookCoreReadComponent);
+    expect(mounted[1].inputs.host).toBe(core);
+    expect(mounted[1].inputs.editable).toBe(true);
+    host.ngOnDestroy();
+  });
 });

@@ -169,6 +169,11 @@ export class Message {
     return this.sendRegistered(register, args, 'core-read-');
   }
 
+  /** Register a paragraph save before the socket can deliver its response. */
+  sendNotebookCoreCommit(register: (msgId: string) => void, ...args: SendArgumentsType<OP.COMMIT_PARAGRAPH>): string {
+    return this.sendRegistered(register, args, 'core-commit-');
+  }
+
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
     return this.receiveMessage(op).pipe(map(message => message.data)) as Observable<
       Record<K, MessageReceiveDataTypeMap[K]>[K]
@@ -552,6 +557,10 @@ export class Message {
       noteId: note.id,
       formName
     });
+  }
+
+  isNotebookCoreCommitRequestId(msgId: string): boolean {
+    return msgId.startsWith(`${this.uniqueClientId}-core-commit-`);
   }
 
   protected isNotebookCoreReadRequestId(msgId: string): boolean {

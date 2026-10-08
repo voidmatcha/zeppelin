@@ -15,7 +15,31 @@ export type NotebookCoreSnapshot = Readonly<{
   revisionId: string | null;
   /** Optional while earlier host/remote contract probes still publish identity only. */
   readState?: NotebookCoreReadState;
+  /** Local editor text is independent of the last server-owned paragraph snapshot. */
+  draftsById?: Readonly<Record<string, NotebookCoreParagraphDraft>>;
 }>;
+
+export type NotebookCoreParagraphDraft = Readonly<{ text: string; version: number }>;
+
+export type NotebookCoreCommand =
+  | Readonly<{ type: 'editParagraph'; paragraphId: string; text: string }>
+  | Readonly<{ type: 'saveParagraph'; paragraphId: string }>;
+
+/** Opaque identity: only the exact intent returned by this store can acknowledge a save. */
+export type NotebookCoreSaveIntent = Readonly<{
+  noteId: string;
+  paragraphId: string;
+  text: string;
+  version: number;
+  token: symbol;
+}>;
+
+export type NotebookCoreCommandResult =
+  Readonly<{ accepted: false }> | Readonly<{ accepted: true; save?: NotebookCoreSaveIntent }>;
+
+/** The host sends returned save intents; the server remains the authority for writes. */
+export type NotebookCoreCommandPort = NotebookCorePort &
+  Readonly<{ dispatch: (command: NotebookCoreCommand) => NotebookCoreCommandResult }>;
 
 /** The wire note's paragraph collection is stored once, by ID, in the Core. */
 export type NotebookCoreReadSnapshot = Readonly<{

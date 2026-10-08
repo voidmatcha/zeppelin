@@ -20,6 +20,30 @@ import { NotebookCoreReadComponent } from './notebook-core-read.component';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 
 describe('NotebookCoreReadComponent', () => {
+  it('sends editor changes through the Core command port only for the private edit mode', () => {
+    const dispatch = vi.fn();
+    const component = new NotebookCoreReadComponent({ markForCheck: vi.fn() } as unknown as ChangeDetectorRef);
+    component.host = { commandPort: { dispatch } } as unknown as NotebookCoreReadHost;
+    const textarea = document.createElement('textarea');
+    textarea.value = 'local edit';
+
+    component.editParagraph('p1', { target: textarea } as unknown as Event);
+    component.saveParagraph('p1');
+    expect(dispatch).not.toHaveBeenCalled();
+
+    component.editable = true;
+    component.editParagraph('p1', { target: textarea } as unknown as Event);
+    component.saveParagraph('p1');
+    expect(dispatch).toHaveBeenNthCalledWith(1, { type: 'editParagraph', paragraphId: 'p1', text: 'local edit' });
+    expect(dispatch).toHaveBeenNthCalledWith(2, { type: 'saveParagraph', paragraphId: 'p1' });
+
+    component.revisionId = 'saved-revision';
+    expect(component.canEdit).toBe(false);
+    component.editParagraph('p1', { target: textarea } as unknown as Event);
+    component.saveParagraph('p1');
+    expect(dispatch).toHaveBeenCalledTimes(2);
+  });
+
   it('passes a mutable copy of saved chart config to the Angular renderer', () => {
     const store = new NotebookCoreReadStore('');
     const request = store.beginRoute('note-1', null);

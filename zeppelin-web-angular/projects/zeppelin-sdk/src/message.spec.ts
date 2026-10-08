@@ -200,4 +200,22 @@ describe('Message.send', () => {
     expect(privateRead).toContain('-core-read-');
     expect(ordinary).not.toContain('-core-read-');
   });
+
+  it('registers a Core commit before sending and identifies its reply namespace', () => {
+    const { message, next } = connectedMessage();
+    const registered: string[] = [];
+    next.mockImplementation(sent => expect(registered).toContain(sent.msgId));
+
+    const msgId = message.sendNotebookCoreCommit(id => registered.push(id), OP.COMMIT_PARAGRAPH, {
+      id: 'p1',
+      noteId: 'n1',
+      paragraph: 'edited',
+      config: {},
+      params: {}
+    });
+
+    expect(registered).toEqual([msgId]);
+    expect(message.isNotebookCoreCommitRequestId(msgId)).toBe(true);
+    expect(message.isNotebookCoreCommitRequestId('another-client-core-commit-1')).toBe(false);
+  });
 });
