@@ -1,0 +1,1 @@
+{"v":5,"entries":{"assistant-setup--temporary-theme-check":{"type":"story","subtype":"story","id":"assistant-setup--temporary-theme-check","name":"Temporary Theme Check","title":"Assistant/Setup","importPath":"./src/shared/ui/assistant-theme/AssistantScope.stories.tsx","tags":["dev","test","manifest"],"exportName":"TemporaryThemeCheck"}}}
