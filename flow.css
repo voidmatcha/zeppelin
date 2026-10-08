@@ -52,3 +52,9 @@
 .flow-empty p:last-child { margin-top:28px; text-align:left; border:1px solid #eee; border-radius:4px; padding:12px; }
 .flow [data-role="assistant"] table { width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; }
 .flow [data-role="assistant"] th,.flow [data-role="assistant"] td { border-bottom:1px solid #e8e8e8; padding:5px; text-align:left; }
+.flow-list { transform-origin: top center; animation: flow-open 280ms ease-out both; }
+.flow-approval, .flow-diff { animation: flow-enter 350ms ease-out both; }
+.flow [data-role="assistant"] tbody tr { animation: flow-enter 300ms ease-out both; }
+.flow-empty { animation: flow-enter 300ms ease-out both; }
+@keyframes flow-open { from { opacity: 0; transform: translateY(-8px) scaleY(.96); } to { opacity: 1; transform: none; } }
+@keyframes flow-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
