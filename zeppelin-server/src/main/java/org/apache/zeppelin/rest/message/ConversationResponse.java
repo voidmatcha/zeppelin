@@ -29,9 +29,10 @@ public final class ConversationResponse {
   private final String createdAt;
   private final String updatedAt;
   private final boolean canSendMessage;
+  private final boolean running;
   private final List<Message> messages;
 
-  private ConversationResponse(Conversation conversation, String userId) {
+  private ConversationResponse(Conversation conversation, String userId, boolean running) {
     this.id = conversation.getId();
     this.noteId = conversation.getNoteId();
     this.ownerId = conversation.getOwnerId();
@@ -39,10 +40,11 @@ public final class ConversationResponse {
     this.createdAt = conversation.getCreatedAt();
     this.updatedAt = conversation.getUpdatedAt();
     this.canSendMessage = conversation.isOwner(userId);
+    this.running = running;
     this.messages = List.copyOf(conversation.getMessages());
   }
 
-  public static ConversationResponse of(Conversation conversation, String userId) {
-    return new ConversationResponse(conversation, userId);
+  public static ConversationResponse of(Conversation conversation, String userId, boolean running) {
+    return new ConversationResponse(conversation, userId, running);
   }
 }

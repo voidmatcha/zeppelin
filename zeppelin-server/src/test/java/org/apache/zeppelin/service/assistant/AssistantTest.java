@@ -50,6 +50,8 @@ import org.apache.zeppelin.user.AuthenticationInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class AssistantTest {
 
@@ -431,7 +433,24 @@ class AssistantTest {
   }
 
   @Test
-  void guardsRunningConversation() throws Exception {
+  void pendingRequestCountsRemainRunningUntilEveryRequestFinishes() {
+    var sut = new AssistantService(true, null, null, null, null, null);
+    sut.registerPendingRequest("conversation");
+    sut.registerPendingRequest("conversation");
+    assertTrue(sut.isConversationRunning("conversation"));
+    sut.releasePendingRequest("conversation");
+    assertTrue(sut.isConversationRunning("conversation"));
+    sut.releasePendingRequest("conversation");
+    assertFalse(sut.isConversationRunning("conversation"));
+    sut.registerPendingRequest("conversation");
+    sut.close();
+    assertFalse(sut.isConversationRunning("conversation"));
+    sut.releasePendingRequest("conversation");
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void guardsRunningConversation(boolean modelFails) throws Exception {
     var notebook = mock(Notebook.class);
     when(notebook.processNote(eq("noteId"), any())).thenAnswer(invocation ->
         ((NoteProcessor<?>) invocation.getArgument(1)).process(new Note()));
@@ -454,19 +473,26 @@ class AssistantTest {
     doAnswer(invocation -> {
       streaming.countDown(); // signal streaming has started
       assertTrue(finish.await(5, TimeUnit.SECONDS)); // wait for finish
+      if (modelFails) throw new IOException("Model failed");
       return null;
     }).when(chatModel).stream(any(), any(), any(), any());
 
     try {
+      sut.registerPendingRequest(conversation.getId());
+      assertTrue(sut.isConversationRunning(conversation.getId()));
+      var runEvents = new ArrayList<AssistantEventType>();
       var running = sut.sendMessage(
           "noteId", conversation.getId(), "hi", authInfo, userAndRoles,
-          (type, payload) -> { }
+          (type, payload) -> runEvents.add(type)
       );
       assertTrue(streaming.await(5, TimeUnit.SECONDS));
+      sut.releasePendingRequest(conversation.getId());
+      assertTrue(sut.isConversationRunning(conversation.getId()));
 
       // other conversations can be mutated.
       var second = Conversation.create("noteId", "independent", authInfo.getUser());
       when(repository.find("noteId", second.getId())).thenReturn(Optional.of(second));
+      assertFalse(sut.isConversationRunning(second.getId()));
       assertEquals("updated",
           sut.updateTitle("noteId", second.getId(), "updated", authInfo.getUser(), userAndRoles)
               .getTitle()
@@ -487,9 +513,13 @@ class AssistantTest {
           (type, payload) -> events.add(payload)
       ).get(5, TimeUnit.SECONDS);
       assertEquals(409, ((AssistantEventPayload.RunFailed) events.get(0)).error.status);
+      assertTrue(sut.isConversationRunning(conversation.getId()));
 
       finish.countDown();
       running.get(5, TimeUnit.SECONDS); //  wait for message processing to complete.
+      assertFalse(sut.isConversationRunning(conversation.getId()));
+      assertEquals(modelFails ? AssistantEventType.RUN_FAILED : AssistantEventType.RUN_COMPLETED,
+          runEvents.get(runEvents.size() - 1));
 
       assertEquals("released",
           sut.updateTitle("noteId", conversation.getId(), "released", authInfo.getUser(), userAndRoles)

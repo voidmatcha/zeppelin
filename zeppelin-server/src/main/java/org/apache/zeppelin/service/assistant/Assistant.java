@@ -67,6 +67,8 @@ public interface Assistant {
       Set<String> userAndRoles
   ) throws IOException;
 
+  boolean isConversationRunning(String conversationId);
+
   Future<?> sendMessage(
       String noteId,
       String conversationId,

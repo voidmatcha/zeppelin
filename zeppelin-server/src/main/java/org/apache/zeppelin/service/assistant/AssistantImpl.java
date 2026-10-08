@@ -63,6 +63,7 @@ public class AssistantImpl implements Assistant, AutoCloseable {
   private final ExecutorService assistantExecutor;
 
   private final Set<String> busyConversations = ConcurrentHashMap.newKeySet();
+  private final Map<String, Integer> pendingRequests = new ConcurrentHashMap<>();
 
   private final AtomicBoolean closed = new AtomicBoolean();
   private final Notebook notebook;
@@ -93,8 +94,9 @@ public class AssistantImpl implements Assistant, AutoCloseable {
 
   @Override
   public void close() {
-    if (closed.compareAndSet(false, true) && modelClient != null) {
-      modelClient.close();
+    if (closed.compareAndSet(false, true)) {
+      pendingRequests.clear();
+      if (modelClient != null) modelClient.close();
     }
   }
 
@@ -153,6 +155,23 @@ public class AssistantImpl implements Assistant, AutoCloseable {
       return conversationRepository.find(noteId, conversationId)
           .orElseThrow(NotFoundException::new);
     });
+  }
+
+  @Override
+  public boolean isConversationRunning(String conversationId) {
+    return !closed.get() && (busyConversations.contains(conversationId)
+        || pendingRequests.containsKey(conversationId));
+  }
+
+  public void registerPendingRequest(String conversationId) {
+    if (conversationId == null) return;
+    pendingRequests.compute(conversationId,
+        (id, count) -> closed.get() ? null : count == null ? 1 : count + 1);
+  }
+
+  public void releasePendingRequest(String conversationId) {
+    if (conversationId == null) return;
+    pendingRequests.computeIfPresent(conversationId, (id, count) -> count == 1 ? null : count - 1);
   }
 
   @Override
@@ -241,9 +260,20 @@ public class AssistantImpl implements Assistant, AutoCloseable {
       Set<String> userAndRoles,
       AssistantEventListener sink
   ) {
-    return assistantExecutor.submit(() -> runMessage(
-        noteId, conversationId, userContent, authInfo, userAndRoles, sink)
-    );
+    if (closed.get()) throw new ServiceUnavailableException();
+    registerPendingRequest(conversationId);
+    try {
+      return assistantExecutor.submit(() -> {
+        try {
+          runMessage(noteId, conversationId, userContent, authInfo, userAndRoles, sink);
+        } finally {
+          releasePendingRequest(conversationId);
+        }
+      });
+    } catch (RuntimeException e) {
+      releasePendingRequest(conversationId);
+      throw e;
+    }
   }
 
   private void runMessage(

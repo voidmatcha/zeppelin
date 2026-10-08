@@ -88,6 +88,11 @@ public class DisabledAssistant implements Assistant {
   }
 
   @Override
+  public boolean isConversationRunning(String conversationId) {
+    return false;
+  }
+
+  @Override
   public Future<?> sendMessage(
       String noteId,
       String conversationId,
