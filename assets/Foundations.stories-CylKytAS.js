@@ -1,0 +1,1 @@
+import{t as e}from"./rolldown-runtime-Dh6celcD.js";import{n as t,t as n}from"./reference-BN8327EW.js";var r,i,a;function o(){return(o=e((()=>{n(),r={title:`Assistant/Foundations`},i={name:`Theme`,render:(e,n)=>t(`assistant-foundations--theme`,n.globals.theme)},a=[`Theme`]})))()}o();export{i as Theme,a as __namedExportsOrder,r as default};
