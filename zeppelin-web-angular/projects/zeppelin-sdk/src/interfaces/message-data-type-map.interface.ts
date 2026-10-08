@@ -75,6 +75,7 @@ import {
   ParagraphRemoved,
   ParagraphStatus,
   ParagraphUpdateOutput,
+  GetParagraph,
   ParasInfo,
   PatchParagraphReceived,
   PatchParagraphSend,
@@ -164,6 +165,7 @@ export interface MessageSendDataTypeMap {
   [OP.COMPLETION]: Completion;
   [OP.COMMIT_PARAGRAPH]: CommitParagraph;
   [OP.PATCH_PARAGRAPH]: PatchParagraphSend;
+  [OP.GET_PARAGRAPH]: GetParagraph;
   [OP.IMPORT_NOTE]: ImportNote;
   [OP.CHECKPOINT_NOTE]: CheckpointNote;
   [OP.SET_NOTE_REVISION]: SetNoteRevision;

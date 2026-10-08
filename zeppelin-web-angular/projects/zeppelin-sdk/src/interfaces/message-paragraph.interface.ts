@@ -213,6 +213,8 @@ export interface RunParagraph extends SendParagraph {
 
 export interface CommitParagraph extends SendParagraph {
   noteId: string;
+  // checksum of the text this client believed the server held; absent for older clients
+  baseChecksum?: number;
 }
 
 export interface RunAllParagraphs {
@@ -315,16 +317,26 @@ export interface CompletionReceived {
 
 export interface PatchParagraphReceived {
   paragraphId: string;
-  noteId?: string;
+  noteId: string;
   patch: string;
+  // checksums of the sender's text before and after the patch; absent for older clients
+  baseChecksum?: number;
+  afterChecksum?: number;
+}
+
+export interface GetParagraph {
+  id: string;
+  noteId: string;
 }
 
 export interface PatchParagraphSend {
   id: string;
   noteId: string;
   patch: string;
+  // checksums of this client's text before and after the patch; let receivers verify the result
+  baseChecksum?: number;
+  afterChecksum?: number;
 }
-
 export interface ParagraphRemoved {
   noteId?: string;
   id: string;
