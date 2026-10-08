@@ -167,3 +167,23 @@ export function mount(element: HTMLElement, props: Props): ReactMountHandle;
 
 Every exposed module must return the handle contract from `mount`. The directive assigns the return value straight to its handle, so returning a bare unmount function makes the next prop change throw.
 
+
+## Assistant Storybook
+
+The Assistant stories run without the Zeppelin backend. From this directory:
+
+```bash
+npm ci
+npm run storybook
+```
+
+The toolbar switches between light and dark themes. Component stories cover Markdown,
+messages, run states, the composer, and conversation selection. Panel stories use an
+in-memory transport; interaction stories exercise sending and conversation actions.
+
+```bash
+npm run build:storybook
+```
+
+The static output is written to `storybook-static/`. Stories are development-only
+and are not entry points of the production remote.

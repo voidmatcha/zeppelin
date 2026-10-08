@@ -137,6 +137,11 @@ In addition:
 - We use [G2](https://github.com/antvis/g2) [(MIT)](https://github.com/antvis/g2/blob/master/LICENSE) visualization
 - We use [Lodash](https://lodash.com/) [(MIT)](https://github.com/lodash/lodash/blob/master/LICENSE) to process complex data
 - We use [Monaco Editor](https://github.com/microsoft/monaco-editor) [(MIT)](https://github.com/microsoft/monaco-editor/blob/master/LICENSE.md) to make code editor
+- We use [vanilla-extract](https://vanilla-extract.style/) [(MIT)](https://github.com/vanilla-extract-css/vanilla-extract/blob/master/LICENSE) for typed styles in the React Assistant
+- We use [react-markdown](https://github.com/remarkjs/react-markdown) [(MIT)](https://github.com/remarkjs/react-markdown/blob/main/license) to render Assistant answers
+- We use [remark-gfm](https://github.com/remarkjs/remark-gfm) [(MIT)](https://github.com/remarkjs/remark-gfm/blob/main/license) for GitHub Flavored Markdown in Assistant answers
+
+- We use [Storybook](https://storybook.js.org/) [(MIT)](https://github.com/storybookjs/storybook/blob/v10.6.1/LICENSE) to review Assistant components without a server
 
 ### Coding Style
 
