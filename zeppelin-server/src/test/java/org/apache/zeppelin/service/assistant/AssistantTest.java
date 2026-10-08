@@ -21,10 +21,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.google.gson.JsonParser;
+
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -338,50 +342,92 @@ class AssistantTest {
   }
 
   @Test
-  void completesToolTurn() throws Exception {
+  void completesToolTurnWithoutDuplicatingStoredResult(@TempDir File tempDir) throws Exception {
     var notebook = mock(Notebook.class);
     when(notebook.processNote(eq("noteId"), any()))
         .thenAnswer(invocation -> ((NoteProcessor<?>) invocation.getArgument(1))
             .process(new Note()));
     var authorization = mock(AuthorizationService.class);
     when(authorization.isReader("noteId", userAndRoles)).thenReturn(true);
-    var repository = mock(ConversationRepository.class);
-
+    var repository = new FileConversationRepository(tempDir);
     var conversation = Conversation.create("noteId", "test", authInfo.getUser());
-    when(repository.find("noteId", conversation.getId())).thenReturn(Optional.of(conversation));
-    doAnswer(invocation -> {
-      invocation.<Consumer<Conversation>>getArgument(1).accept(invocation.getArgument(0));
-      return null;
-    }).when(repository).update(any(), any());
+    repository.create(conversation);
     var chatModel = mock(ChatModel.class);
     var notebookService = mock(NotebookService.class);
+    var paragraphs = List.of(Map.of("text", "unique-paragraph-result"));
+    when(notebookService.getNote(eq("noteId"), any(), any(), any())).thenReturn(paragraphs);
     var sut = new AssistantImpl(
         notebook, chatModel, notebookService, authorization, repository, executor
     );
 
     doAnswer(invocation -> {
       Consumer<AssistantEvent> consumer = invocation.getArgument(3);
-      consumer.accept(new AssistantEvent.ToolCall("call_1", "list_paragraphs", "{}"));
+      consumer.accept(new AssistantEvent.ToolCall(
+          "call_1", "list_paragraphs", "{\"filter\":\"all\"}"));
       return null;
     }).doAnswer(invocation -> {
       List<Message> history = invocation.getArgument(1);
-      assertEquals("call_1", ((Message.Tool) history.get(2)).getToolCallId());
+      var result = (Message.Tool) history.get(2);
+      assertEquals("call_1", result.getToolCallId());
+      assertTrue(result.getContent().contains("unique-paragraph-result"));
       Consumer<AssistantEvent> consumer = invocation.getArgument(3);
       consumer.accept(new AssistantEvent.TextDelta("final"));
       return null;
     }).when(chatModel).stream(any(), any(), any(), any());
 
+    var completedTools = new ArrayList<AssistantEventPayload.ToolCallDone>();
     sut.sendMessage("noteId", conversation.getId(), "hi", authInfo, userAndRoles,
-        (type, payload) -> { }
-    ).get(5, TimeUnit.SECONDS);
+        (type, payload) -> {
+          if (type == AssistantEventType.TOOL_CALL_DONE) {
+            completedTools.add((AssistantEventPayload.ToolCallDone) payload);
+          }
+        });
+    assertEquals(1, completedTools.size());
+    assertEquals("call_1", completedTools.get(0).toolCallId);
+    assertEquals(paragraphs, completedTools.get(0).result.value);
+    assertNull(completedTools.get(0).result.error);
 
-    var stored = conversation.getMessages();
-    assertEquals(4, stored.size());
+    var file = new File(tempDir, "noteId/" + conversation.getId() + ".json").toPath();
+    var json = Files.readString(file);
+    assertEquals(1, json.split("unique-paragraph-result", -1).length - 1);
+    var storedJson = JsonParser.parseString(json).getAsJsonObject();
+    var storedCall = storedJson.getAsJsonArray("messages").get(1).getAsJsonObject()
+        .getAsJsonArray("toolCalls").get(0).getAsJsonObject();
+    assertFalse(storedCall.has("result"));
 
-    Message.Assistant toolTurn = (Message.Assistant) stored.get(1);
-    assertEquals("list_paragraphs", toolTurn.getToolCalls().get(0).getName());
-    assertEquals("call_1", ((Message.Tool) stored.get(2)).getToolCallId());
-    assertEquals("final", ((Message.Assistant) stored.get(3)).getContent());
+    // Older files contain the redundant field. Reopen one through the real repository
+    // and resume a model turn, ensuring the canonical result and call metadata survive.
+    storedCall.add("result", JsonParser.parseString(
+        ((Message.Tool) repository.find("noteId", conversation.getId()).orElseThrow()
+            .getMessages().get(2)).getContent()));
+    Files.writeString(file, storedJson.toString());
+    var reopenedRepository = new FileConversationRepository(tempDir);
+    var reopenedModel = mock(ChatModel.class);
+    doAnswer(invocation -> {
+      List<Message> history = invocation.getArgument(1);
+      assertEquals(5, history.size());
+      var call = ((Message.Assistant) history.get(1)).getToolCalls().get(0);
+      assertEquals("call_1", call.getId());
+      assertEquals("list_paragraphs", call.getName());
+      assertEquals(Map.of("filter", "all"), call.getArguments());
+      var result = (Message.Tool) history.get(2);
+      assertEquals(call.getId(), result.getToolCallId());
+      assertTrue(result.getContent().contains("unique-paragraph-result"));
+      assertEquals("final", ((Message.Assistant) history.get(3)).getContent());
+      invocation.<Consumer<AssistantEvent>>getArgument(3)
+          .accept(new AssistantEvent.TextDelta("continued"));
+      return null;
+    }).when(reopenedModel).stream(any(), any(), any(), any());
+    var reopenedService = new AssistantImpl(
+        notebook, reopenedModel, notebookService, authorization, reopenedRepository, executor);
+    reopenedService.sendMessage("noteId", conversation.getId(), "continue", authInfo, userAndRoles,
+        (type, payload) -> { }).get(5, TimeUnit.SECONDS);
+    verify(reopenedModel).stream(any(), any(), any(), any());
+    var reopenedMessages = reopenedRepository.find("noteId", conversation.getId()).orElseThrow()
+        .getMessages();
+    assertEquals(6, reopenedMessages.size());
+    assertEquals("continued", ((Message.Assistant) reopenedMessages.get(5)).getContent());
+    assertEquals(1, Files.readString(file).split("unique-paragraph-result", -1).length - 1);
   }
 
   @Test

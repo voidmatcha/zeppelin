@@ -373,7 +373,6 @@ public class AssistantImpl implements Assistant, AutoCloseable {
               noteId, tc.getName(), tc.getArguments(), authInfo, userAndRoles
           );
           checkRunActive();
-          tc.setResult(result);
           turn.add(Message.tool(Message.id(), tc.getId(), GSON.toJson(result)));
           sink.onEvent(
               AssistantEventType.TOOL_CALL_DONE,
