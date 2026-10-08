@@ -29,19 +29,27 @@ describe('NotebookCoreReadComponent', () => {
 
     component.editParagraph('p1', { target: textarea } as unknown as Event);
     component.saveParagraph('p1');
+    component.runParagraph('p1');
+    component.cancelParagraph('p1');
     expect(dispatch).not.toHaveBeenCalled();
 
     component.editable = true;
     component.editParagraph('p1', { target: textarea } as unknown as Event);
     component.saveParagraph('p1');
+    component.runParagraph('p1');
+    component.cancelParagraph('p1');
     expect(dispatch).toHaveBeenNthCalledWith(1, { type: 'editParagraph', paragraphId: 'p1', text: 'local edit' });
     expect(dispatch).toHaveBeenNthCalledWith(2, { type: 'saveParagraph', paragraphId: 'p1' });
+    expect(dispatch).toHaveBeenNthCalledWith(3, { type: 'runParagraph', paragraphId: 'p1' });
+    expect(dispatch).toHaveBeenNthCalledWith(4, { type: 'cancelParagraph', paragraphId: 'p1' });
 
     component.revisionId = 'saved-revision';
     expect(component.canEdit).toBe(false);
     component.editParagraph('p1', { target: textarea } as unknown as Event);
     component.saveParagraph('p1');
-    expect(dispatch).toHaveBeenCalledTimes(2);
+    component.runParagraph('p1');
+    component.cancelParagraph('p1');
+    expect(dispatch).toHaveBeenCalledTimes(4);
   });
 
   it('passes a mutable copy of saved chart config to the Angular renderer', () => {

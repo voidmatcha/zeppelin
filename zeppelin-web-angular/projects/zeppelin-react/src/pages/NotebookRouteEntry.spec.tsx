@@ -137,7 +137,8 @@ describe('NotebookRouteEntry', () => {
   it('edits through the host-owned command port only in the private editor preview', () => {
     const store = new NotebookCoreReadStore('');
     const request = store.beginRoute('note-1', null);
-    const commandPort = Object.freeze({ ...store.port, dispatch: store.dispatch.bind(store) });
+    const dispatch = vi.fn(store.dispatch.bind(store));
+    const commandPort = Object.freeze({ ...store.port, dispatch });
     act(() => {
       unmount = mount(element, { core: store.port, commandPort }).unmount;
       store.acceptNote(request, {
@@ -160,6 +161,26 @@ describe('NotebookRouteEntry', () => {
       )
     );
     expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    act(() =>
+      fireEvent.click(
+        Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Run paragraph')!
+      )
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: 'runParagraph', paragraphId: 'p1' });
+    act(() => {
+      store.acceptParagraphEvent(request, {
+        type: 'update',
+        noteId: 'note-1',
+        sequence: 1,
+        paragraph: { id: 'p1', text: 'initial', status: 'RUNNING' }
+      });
+    });
+    act(() =>
+      fireEvent.click(
+        Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Cancel paragraph')!
+      )
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: 'cancelParagraph', paragraphId: 'p1' });
     store.dispose();
   });
 

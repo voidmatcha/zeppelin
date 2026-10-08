@@ -74,6 +74,11 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
                   (input)="editParagraph(id, $event)"
                 ></textarea>
                 <button type="button" (click)="saveParagraph(id)">Save paragraph</button>
+                @if (paragraph(id)?.status === 'PENDING' || paragraph(id)?.status === 'RUNNING') {
+                  <button type="button" (click)="cancelParagraph(id)">Cancel paragraph</button>
+                } @else {
+                  <button type="button" (click)="runParagraph(id)">Run paragraph</button>
+                }
               } @else if (!isEditorHidden(id)) {
                 <pre>{{ paragraph(id)?.text }}</pre>
               }
@@ -145,6 +150,18 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   saveParagraph(id: string): void {
     if (this.canEdit) {
       this.host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: id });
+    }
+  }
+
+  runParagraph(id: string): void {
+    if (this.canEdit) {
+      this.host.commandPort.dispatch({ type: 'runParagraph', paragraphId: id });
+    }
+  }
+
+  cancelParagraph(id: string): void {
+    if (this.canEdit) {
+      this.host.commandPort.dispatch({ type: 'cancelParagraph', paragraphId: id });
     }
   }
 

@@ -18,6 +18,7 @@ import type {
   NotebookCorePort,
   NotebookCoreReadSnapshot,
   NotebookCoreReadState,
+  NotebookCoreRunIntent,
   NotebookCoreSnapshot,
   NotebookCoreSnapshotListener,
   NotebookCoreSaveIntent
@@ -27,7 +28,13 @@ export type NotebookCoreWireNote = Readonly<{
   id: string;
   name: string;
   path: string;
-  paragraphs: readonly Readonly<{ id: string; text: string; status: string }>[];
+  paragraphs: readonly Readonly<{
+    id: string;
+    text: string;
+    status: string;
+    dateStarted?: string;
+    results?: unknown;
+  }>[];
 }>;
 
 export type NotebookCoreWirePermissions = Readonly<{
@@ -62,6 +69,21 @@ export type NotebookCoreParagraphEvent = Readonly<{ noteId: string; sequence: nu
     | Readonly<{ type: 'remove'; paragraphId: string }>
     | Readonly<{ type: 'move'; paragraphId: string; index: number }>
   );
+
+export type NotebookCoreOutputEvent = Readonly<{
+  noteId: string;
+  paragraphId: string;
+  sequence: number;
+  index: number;
+  data: string;
+}> &
+  (Readonly<{ kind: 'append' }> | Readonly<{ kind: 'update'; resultType: string }>);
+
+type StreamResult = Readonly<{ type: string; data: string }>;
+type StreamOutput = {
+  results: Map<number, StreamResult>;
+  pendingAppends: Map<number, string>;
+};
 
 type ReadSnapshot = NotebookCoreSnapshot & Readonly<{ readState: NotebookCoreReadState }>;
 
@@ -113,8 +135,8 @@ const sameJsonValue = (left: unknown, right: unknown): boolean => {
 
 /**
  * Host-owned normalized note store. The host must subscribe before requesting NOTE.
- * Incremental paragraph events require trustworthy note attribution; streaming,
- * collaboration and metadata broadcasts still require a fresh read.
+ * Incremental paragraph and output events require trustworthy note attribution;
+ * collaboration patches and metadata broadcasts still require a fresh read.
  */
 export class NotebookCoreReadStore {
   readonly port: NotebookCorePort = Object.freeze({
@@ -136,6 +158,9 @@ export class NotebookCoreReadStore {
   private draftVersion = 0;
   private readonly saves = new Map<string, NotebookCoreSaveIntent>();
   private readonly saveBases = new Map<string, NotebookCoreReadSnapshot['paragraphsById'][string]>();
+  private readonly runs = new Map<string, NotebookCoreRunIntent>();
+  private readonly runBases = new Map<string, NotebookCoreReadSnapshot['paragraphsById'][string]>();
+  private readonly streamOutputs = new Map<string, StreamOutput>();
 
   constructor(noteId: string, revisionId: string | null = null) {
     this.snapshot = Object.freeze({
@@ -163,6 +188,9 @@ export class NotebookCoreReadStore {
     this.eventSequence = -1;
     this.saves.clear();
     this.saveBases.clear();
+    this.runs.clear();
+    this.runBases.clear();
+    this.streamOutputs.clear();
     this.acl = Object.freeze({ status: 'loading' });
     this.publish(
       Object.freeze({ noteId, revisionId, draftsById, readState: Object.freeze({ status: 'loading', acl: this.acl }) })
@@ -242,6 +270,26 @@ export class NotebookCoreReadStore {
     const paragraph = state.data.paragraphsById[command.paragraphId];
     if (!Object.prototype.hasOwnProperty.call(state.data.paragraphsById, command.paragraphId)) {
       return Object.freeze({ accepted: false });
+    }
+    const running = paragraph.status === 'RUNNING' || paragraph.status === 'PENDING';
+    if (command.type === 'runParagraph') {
+      if (running || this.runs.has(command.paragraphId)) {
+        return Object.freeze({ accepted: false });
+      }
+      const draft = this.snapshot.draftsById?.[command.paragraphId];
+      const run = Object.freeze({
+        noteId: this.snapshot.noteId,
+        paragraphId: command.paragraphId,
+        text: draft?.text ?? paragraph.text,
+        version: draft?.version ?? 0,
+        token: Symbol('paragraph run')
+      });
+      this.runs.set(command.paragraphId, run);
+      this.runBases.set(command.paragraphId, paragraph);
+      return Object.freeze({ accepted: true, run });
+    }
+    if (command.type === 'cancelParagraph') {
+      return Object.freeze({ accepted: running });
     }
     const draft = this.snapshot.draftsById?.[command.paragraphId];
     if (command.type === 'saveParagraph') {
@@ -344,6 +392,70 @@ export class NotebookCoreReadStore {
     return true;
   }
 
+  /** A run also persists its submitted source; only its own response may retire that draft. */
+  acceptRunAcknowledgement(
+    request: NotebookCoreReadRequest,
+    run: NotebookCoreRunIntent,
+    response: NotebookCoreWireNote['paragraphs'][number]
+  ): boolean {
+    const state = this.snapshot.readState;
+    if (
+      !this.isLiveRequest(request) ||
+      state.status !== 'ready' ||
+      this.runs.get(run.paragraphId) !== run ||
+      response.id !== run.paragraphId
+    ) {
+      return false;
+    }
+    this.runs.delete(run.paragraphId);
+    const base = this.runBases.get(run.paragraphId);
+    this.runBases.delete(run.paragraphId);
+    const paragraph = state.data.paragraphsById[run.paragraphId];
+    if (!paragraph) {
+      return false;
+    }
+    const draft = this.snapshot.draftsById?.[run.paragraphId];
+    let drafts = this.snapshot.draftsById;
+    if (draft?.version === run.version) {
+      const next = Object.assign(Object.create(null), drafts);
+      delete next[run.paragraphId];
+      drafts = Object.freeze(next);
+    }
+    const newerServerText = paragraph.text !== base?.text && paragraph.text !== run.text;
+    const nextParagraph = newerServerText
+      ? paragraph
+      : paragraph !== base
+        ? Object.freeze({ ...paragraph, text: run.text })
+        : cloneAndFreeze(response);
+    const data = sameJsonValue(paragraph, nextParagraph)
+      ? state.data
+      : Object.freeze({
+          ...state.data,
+          paragraphsById: Object.freeze(
+            Object.assign(Object.create(null), state.data.paragraphsById, { [run.paragraphId]: nextParagraph })
+          )
+        });
+    if (data !== state.data || drafts !== this.snapshot.draftsById) {
+      this.publish(
+        Object.freeze({
+          ...this.snapshot,
+          ...(drafts ? { draftsById: drafts } : {}),
+          readState: Object.freeze({ ...state, data })
+        })
+      );
+    }
+    return true;
+  }
+
+  rejectRun(request: NotebookCoreReadRequest, run: NotebookCoreRunIntent): boolean {
+    if (!this.isLiveRequest(request) || this.runs.get(run.paragraphId) !== run) {
+      return false;
+    }
+    this.runs.delete(run.paragraphId);
+    this.runBases.delete(run.paragraphId);
+    return true;
+  }
+
   acceptParagraphEvent(request: NotebookCoreReadRequest, event: NotebookCoreParagraphEvent): boolean {
     const state = this.snapshot.readState;
     if (
@@ -383,7 +495,19 @@ export class NotebookCoreReadStore {
       if (!Object.prototype.hasOwnProperty.call(paragraphs, event.paragraph.id)) {
         return false;
       }
-      if (!sameJsonValue(paragraphs[event.paragraph.id], event.paragraph)) {
+      const previous = paragraphs[event.paragraph.id];
+      const wireParagraph = event.paragraph as typeof event.paragraph & { results?: { msg?: StreamResult[] } };
+      const serverResults = wireParagraph.results?.msg;
+      if ((event.paragraph.status === 'RUNNING' || event.paragraph.status === 'PENDING') && serverResults?.length) {
+        this.streamOutputs.set(event.paragraph.id, {
+          results: new Map(serverResults.map((result, index) => [index, result])),
+          pendingAppends: new Map()
+        });
+      } else {
+        // A full PARAGRAPH is authoritative, including an output clear while RUNNING.
+        this.streamOutputs.delete(event.paragraph.id);
+      }
+      if (!sameJsonValue(previous, event.paragraph)) {
         paragraphs = Object.freeze(
           Object.assign(Object.create(null), paragraphs, {
             [event.paragraph.id]: cloneAndFreeze(event.paragraph)
@@ -407,6 +531,9 @@ export class NotebookCoreReadStore {
       paragraphs = Object.freeze(next);
       this.saves.delete(event.paragraphId);
       this.saveBases.delete(event.paragraphId);
+      this.runs.delete(event.paragraphId);
+      this.runBases.delete(event.paragraphId);
+      this.streamOutputs.delete(event.paragraphId);
       if (drafts?.[event.paragraphId]) {
         const nextDrafts = Object.assign(Object.create(null), drafts);
         delete nextDrafts[event.paragraphId];
@@ -429,6 +556,70 @@ export class NotebookCoreReadStore {
     return true;
   }
 
+  /** Apply only note-attributed output in socket order; an untyped append stays buffered. */
+  acceptOutputEvent(request: NotebookCoreReadRequest, event: NotebookCoreOutputEvent): boolean {
+    const state = this.snapshot.readState;
+    if (
+      !this.isLiveRequest(request) ||
+      state.status !== 'ready' ||
+      event.noteId !== request.noteId ||
+      !Number.isSafeInteger(event.sequence) ||
+      event.sequence <= this.eventSequence ||
+      !Number.isSafeInteger(event.index) ||
+      event.index < 0 ||
+      typeof event.data !== 'string' ||
+      (event.kind === 'update' && typeof event.resultType !== 'string')
+    ) {
+      return false;
+    }
+    const paragraph = state.data.paragraphsById[event.paragraphId];
+    if (!paragraph || ['FINISHED', 'ERROR', 'ABORT'].includes(paragraph.status)) {
+      return false;
+    }
+    const existing = paragraph.results as { msg?: StreamResult[] } | undefined;
+    let output = this.streamOutputs.get(event.paragraphId);
+    if (!output) {
+      const active = paragraph.status === 'RUNNING' || paragraph.status === 'PENDING';
+      output = { results: new Map(), pendingAppends: new Map() };
+      if (active) {
+        existing?.msg?.forEach((result, index) => output!.results.set(index, result));
+      }
+      this.streamOutputs.set(event.paragraphId, output);
+    }
+    this.eventSequence = event.sequence;
+    if (event.kind === 'append') {
+      const current = output.results.get(event.index);
+      if (current) {
+        output.results.set(event.index, { ...current, data: current.data + event.data });
+      } else {
+        output.pendingAppends.set(event.index, (output.pendingAppends.get(event.index) ?? '') + event.data);
+        return true;
+      }
+    } else {
+      output.results.set(event.index, {
+        type: event.resultType,
+        data: event.data === '' ? (output.pendingAppends.get(event.index) ?? '') : event.data
+      });
+      output.pendingAppends.delete(event.index);
+    }
+    const visible = visibleStreamResults(output);
+    if (sameJsonValue(existing?.msg ?? [], visible)) {
+      return true;
+    }
+    const nextParagraph = Object.freeze({
+      ...paragraph,
+      results: cloneAndFreeze({ ...(paragraph.results as object | undefined), msg: visible })
+    });
+    const data = Object.freeze({
+      ...state.data,
+      paragraphsById: Object.freeze(
+        Object.assign(Object.create(null), state.data.paragraphsById, { [event.paragraphId]: nextParagraph })
+      )
+    });
+    this.publish(Object.freeze({ ...this.snapshot, readState: Object.freeze({ ...state, data }) }));
+    return true;
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;
@@ -437,6 +628,9 @@ export class NotebookCoreReadStore {
     this.currentRequest = null;
     this.saves.clear();
     this.saveBases.clear();
+    this.runs.clear();
+    this.runBases.clear();
+    this.streamOutputs.clear();
     this.acl = Object.freeze({ status: 'loading' });
     this.publish(
       Object.freeze({
@@ -536,3 +730,11 @@ const samePermissions = (left: NotebookCoreWirePermissions, right: NotebookCoreW
   (['readers', 'owners', 'writers', 'runners'] as const).every(
     key => left[key].length === right[key].length && left[key].every((value, index) => value === right[key][index])
   );
+
+const visibleStreamResults = (output: StreamOutput): StreamResult[] => {
+  const visible: StreamResult[] = [];
+  while (output.results.has(visible.length)) {
+    visible.push(output.results.get(visible.length)!);
+  }
+  return visible;
+};

@@ -20,6 +20,7 @@ import {
   NotebookCoreCommandResult,
   NotebookCoreReadRequest,
   NotebookCoreReadStore,
+  NotebookCoreRunIntent,
   NotebookCoreSaveIntent,
   NotebookCoreWireNote
 } from '@zeppelin/notebook-core';
@@ -48,6 +49,10 @@ export class NotebookCoreReadHost {
     string,
     { request: NotebookCoreReadRequest; save: NotebookCoreSaveIntent; timeout: ReturnType<typeof setTimeout> }
   >();
+  private pendingRuns = new Map<
+    string,
+    { request: NotebookCoreReadRequest; run: NotebookCoreRunIntent; timeout: ReturnType<typeof setTimeout> }
+  >();
   private currentRequest?: NotebookCoreReadRequest;
   private wireSequence = 0;
 
@@ -62,6 +67,7 @@ export class NotebookCoreReadHost {
   load(noteId: string, revisionId: string | null): void {
     this.clearPending();
     this.clearPendingSaves();
+    this.clearPendingRuns();
     this.permissionSubscription?.unsubscribe();
     const request = this.store.beginRoute(noteId, revisionId);
     this.currentRequest = request;
@@ -99,6 +105,7 @@ export class NotebookCoreReadHost {
   invalidate(): void {
     this.clearPending();
     this.clearPendingSaves();
+    this.clearPendingRuns();
     this.permissionSubscription?.unsubscribe();
     if (this.currentRequest) {
       this.store.acceptNoteFailure(this.currentRequest, 'failed');
@@ -108,6 +115,7 @@ export class NotebookCoreReadHost {
   destroy(): void {
     this.clearPending();
     this.clearPendingSaves();
+    this.clearPendingRuns();
     this.permissionSubscription?.unsubscribe();
     this.subscriptions.unsubscribe();
     this.store.dispose();
@@ -116,6 +124,14 @@ export class NotebookCoreReadHost {
   private receive(envelope: { op: OP; msgId?: string; data?: unknown }): void {
     if (envelope.msgId && this.message.isNotebookCoreCommitRequestId(envelope.msgId)) {
       this.receiveSaveResponse(envelope);
+      return;
+    }
+    if (
+      envelope.msgId &&
+      this.message.isNotebookCoreRunRequestId(envelope.msgId) &&
+      (envelope.op === OP.PARAGRAPH || envelope.op === OP.ERROR_INFO || envelope.op === OP.AUTH_INFO)
+    ) {
+      this.receiveRunResponse(envelope);
       return;
     }
     this.receiveParagraphChange(envelope);
@@ -176,7 +192,56 @@ export class NotebookCoreReadHost {
       return Object.freeze({ accepted: false });
     }
     const result = this.store.dispatch(command);
-    if (!result.accepted || !result.save) {
+    if (!result.accepted) {
+      return result;
+    }
+    if (command.type === 'runParagraph' || command.type === 'cancelParagraph') {
+      let registeredMsgId: string | undefined;
+      try {
+        if (command.type === 'cancelParagraph') {
+          this.message.cancelParagraph(command.paragraphId);
+        } else {
+          const run = result.run;
+          if (!run) {
+            return Object.freeze({ accepted: false });
+          }
+          const settings = paragraph.settings as { params?: ParagraphConfig } | undefined;
+          this.message.sendNotebookCoreRun(
+            msgId => {
+              registeredMsgId = msgId;
+              const timeout = setTimeout(() => {
+                this.pendingRuns.delete(msgId);
+                this.store.rejectRun(request, run);
+              }, READ_TIMEOUT_MS);
+              this.pendingRuns.set(msgId, { request, run, timeout });
+            },
+            OP.RUN_PARAGRAPH,
+            {
+              id: run.paragraphId,
+              title: typeof paragraph.title === 'string' ? paragraph.title : undefined,
+              paragraph: run.text,
+              config: (paragraph.config ?? {}) as ParagraphConfig,
+              params: settings?.params ?? {},
+              ackRequested: true
+            }
+          );
+        }
+        return result;
+      } catch {
+        if (registeredMsgId) {
+          const pending = this.pendingRuns.get(registeredMsgId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            this.pendingRuns.delete(registeredMsgId);
+          }
+        }
+        if (result.run) {
+          this.store.rejectRun(request, result.run);
+        }
+        return Object.freeze({ accepted: false });
+      }
+    }
+    if (!result.save) {
       return result;
     }
     const save = result.save;
@@ -239,6 +304,27 @@ export class NotebookCoreReadHost {
     this.pendingSaves.delete(envelope.msgId);
   }
 
+  private receiveRunResponse(envelope: { op: OP; msgId?: string; data?: unknown }): void {
+    const pending = envelope.msgId && this.pendingRuns.get(envelope.msgId);
+    if (!pending || !envelope.msgId) {
+      return;
+    }
+    if (envelope.op === OP.PARAGRAPH) {
+      const change = envelope.data as { noteId?: unknown; paragraph?: unknown } | undefined;
+      const paragraph = normalizeReadParagraph(change?.paragraph);
+      if (change?.noteId !== pending.request.noteId || !paragraph || paragraph.id !== pending.run.paragraphId) {
+        return;
+      }
+      this.store.acceptRunAcknowledgement(pending.request, pending.run, paragraph);
+    } else if (envelope.op === OP.ERROR_INFO || envelope.op === OP.AUTH_INFO) {
+      this.store.rejectRun(pending.request, pending.run);
+    } else {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pendingRuns.delete(envelope.msgId);
+  }
+
   private receiveParagraphChange(envelope: { op: OP; data?: unknown }): void {
     const request = this.currentRequest;
     const data = envelope.data;
@@ -252,6 +338,25 @@ export class NotebookCoreReadHost {
       return;
     }
     const sequence = ++this.wireSequence;
+    if (
+      (envelope.op === OP.PARAGRAPH_APPEND_OUTPUT || envelope.op === OP.PARAGRAPH_UPDATE_OUTPUT) &&
+      typeof change.paragraphId === 'string' &&
+      Number.isInteger(change.index) &&
+      typeof change.data === 'string' &&
+      (envelope.op === OP.PARAGRAPH_APPEND_OUTPUT || typeof change.type === 'string')
+    ) {
+      this.store.acceptOutputEvent(request, {
+        noteId: request.noteId,
+        paragraphId: change.paragraphId,
+        sequence,
+        index: change.index as number,
+        data: change.data,
+        ...(envelope.op === OP.PARAGRAPH_APPEND_OUTPUT
+          ? { kind: 'append' as const }
+          : { kind: 'update' as const, resultType: change.type as string })
+      });
+      return;
+    }
     const paragraph = normalizeReadParagraph(change.paragraph);
     if (envelope.op === OP.PARAGRAPH_ADDED && Number.isInteger(change.index) && paragraph) {
       this.store.acceptParagraphEvent(request, {
@@ -299,6 +404,14 @@ export class NotebookCoreReadHost {
       this.store.rejectSave(request, save);
     }
     this.pendingSaves.clear();
+  }
+
+  private clearPendingRuns(): void {
+    for (const { request, run, timeout } of this.pendingRuns.values()) {
+      clearTimeout(timeout);
+      this.store.rejectRun(request, run);
+    }
+    this.pendingRuns.clear();
   }
 }
 

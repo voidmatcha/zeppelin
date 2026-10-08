@@ -33,6 +33,7 @@ const createHost = (
   const message = {
     received: () => received.asObservable(),
     isNotebookCoreCommitRequestId: (msgId: string) => msgId.startsWith('commit-'),
+    isNotebookCoreRunRequestId: (msgId: string) => msgId.startsWith('run-'),
     sendNotebookCoreRead: (register: (msgId: string) => void) => {
       const msgId = `request-${++sequence}`;
       register(msgId);
@@ -43,7 +44,13 @@ const createHost = (
       const msgId = `commit-${++sequence}`;
       register(msgId);
       return msgId;
-    })
+    }),
+    sendNotebookCoreRun: vi.fn((register: (msgId: string) => void) => {
+      const msgId = `run-${++sequence}`;
+      register(msgId);
+      return msgId;
+    }),
+    cancelParagraph: vi.fn()
   };
   const security = {
     getPermissions: vi.fn(() => permissions$ ?? of({ readers: ['alice'], owners: [], writers: [], runners: [] }))
@@ -337,6 +344,129 @@ describe('NotebookCoreReadHost', () => {
       data: { noteId: 'a', paragraph: { id: 'p1', text: 'old draft', status: 'FINISHED' } }
     });
     expect(host.commandPort.getSnapshot()).toBe(before);
+    host.destroy();
+  });
+
+  it('sends the current draft for a live run and cancels only a live paragraph', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'new code' });
+
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toMatchObject({ accepted: true });
+    expect(message.sendNotebookCoreRun).toHaveBeenCalledWith(expect.any(Function), OP.RUN_PARAGRAPH, {
+      id: 'p1',
+      title: undefined,
+      paragraph: 'new code',
+      config: {},
+      params: {},
+      ackRequested: true
+    });
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'run-2',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'new code', status: 'RUNNING' } }
+    });
+    expect(host.commandPort.getSnapshot().draftsById?.p1).toBeUndefined();
+    received.next({
+      op: OP.PARAGRAPH_ADDED,
+      msgId: 'run-2',
+      data: { noteId: 'a', index: 1, paragraph: { id: 'p2', text: '', status: 'READY' } }
+    });
+    const afterRun = host.port.getSnapshot().readState;
+    expect(afterRun?.status === 'ready' && afterRun.data.paragraphOrder).toEqual(['p1', 'p2']);
+    expect(host.commandPort.dispatch({ type: 'cancelParagraph', paragraphId: 'p1' })).toEqual({ accepted: true });
+    expect(message.cancelParagraph).toHaveBeenCalledWith('p1');
+
+    host.load('a', 'rev-1');
+    received.next({
+      op: OP.NOTE_REVISION,
+      msgId: 'request-2',
+      data: { noteId: 'a', revisionId: 'rev-1', note: note('a') }
+    });
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(message.sendNotebookCoreRun).toHaveBeenCalledTimes(1);
+    host.destroy();
+  });
+
+  it('passes only attributed live output to the Core and replaces it with the terminal result', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    received.next({
+      op: OP.PARAGRAPH,
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'hello', status: 'RUNNING', results: { msg: [] } } }
+    });
+    const before = host.port.getSnapshot();
+    received.next({
+      op: OP.PARAGRAPH_UPDATE_OUTPUT,
+      data: { noteId: 'b', paragraphId: 'p1', index: 0, type: 'TEXT', data: 'wrong' }
+    });
+    received.next({
+      op: OP.PARAGRAPH_UPDATE_OUTPUT,
+      data: { paragraphId: 'p1', index: 0, type: 'TEXT', data: 'unattributed' }
+    });
+    expect(host.port.getSnapshot()).toBe(before);
+
+    received.next({
+      op: OP.PARAGRAPH_UPDATE_OUTPUT,
+      data: { noteId: 'a', paragraphId: 'p1', index: 0, type: 'TEXT', data: 'first' }
+    });
+    received.next({
+      op: OP.PARAGRAPH_APPEND_OUTPUT,
+      data: { noteId: 'a', paragraphId: 'p1', index: 0, data: ' second' }
+    });
+    const streamed = host.port.getSnapshot().readState;
+    expect(streamed?.status === 'ready' && streamed.data.paragraphsById.p1.results).toEqual({
+      msg: [{ type: 'TEXT', data: 'first second' }]
+    });
+
+    received.next({
+      op: OP.PARAGRAPH,
+      data: {
+        noteId: 'a',
+        paragraph: { id: 'p1', text: 'hello', status: 'FINISHED', results: { msg: [{ type: 'TEXT', data: 'final' }] } }
+      }
+    });
+    received.next({
+      op: OP.PARAGRAPH_APPEND_OUTPUT,
+      data: { noteId: 'a', paragraphId: 'p1', index: 0, data: ' late' }
+    });
+    const finished = host.port.getSnapshot().readState;
+    expect(finished?.status === 'ready' && finished.data.paragraphsById.p1.results).toEqual({
+      msg: [{ type: 'TEXT', data: 'final' }]
+    });
+    host.destroy();
+  });
+
+  it('keeps a denied run draft and allows retry without leaving a false PENDING status', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'local code' });
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toMatchObject({ accepted: true });
+    received.next({ op: OP.AUTH_INFO, msgId: 'run-2', data: { errorType: 'FORBIDDEN' } });
+    expect(host.commandPort.getSnapshot().draftsById?.p1.text).toBe('local code');
+    const state = host.commandPort.getSnapshot().readState;
+    expect(state?.status === 'ready' && state.data.paragraphsById.p1.status).toBe('FINISHED');
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toMatchObject({ accepted: true });
+    expect(message.sendNotebookCoreRun).toHaveBeenCalledTimes(2);
+    host.destroy();
+  });
+
+  it('releases a run intent when sending fails before a request ID is registered', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'local code' });
+    vi.mocked(message.sendNotebookCoreRun).mockImplementationOnce(() => {
+      throw new Error('disconnected');
+    });
+
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(host.commandPort.getSnapshot().draftsById?.p1.text).toBe('local code');
+    expect(host.commandPort.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toMatchObject({ accepted: true });
     host.destroy();
   });
 });

@@ -1667,15 +1667,21 @@ public class NotebookServer implements AngularObjectRegistryListener,
       note -> {
         getNotebookService().runParagraph(note, paragraphId, title, text, params, config, null,
           false, false, context,
-          new WebSocketServiceCallback<Paragraph>(conn) {
+          new WebSocketServiceCallback<Paragraph>(conn, fromMessage.msgId) {
             @Override
             public void onSuccess(Paragraph p, ServiceContext context)
                 throws IOException {
               super.onSuccess(p, context);
+              Paragraph response = p;
               if (p.getNote().isPersonalizedMode()) {
                 Paragraph p2 = p.getNote().clearPersonalizedParagraphOutput(paragraphId,
                     context.getAutheInfo().getUser());
                 connectionManager.unicastParagraph(p.getNote(), p2, context.getAutheInfo().getUser(), fromMessage.msgId);
+                response = p2;
+              }
+              if (Boolean.TRUE.equals(fromMessage.get("ackRequested"))) {
+                conn.send(serializeMessage(new Message(OP.PARAGRAPH).withMsgId(fromMessage.msgId)
+                    .put("noteId", noteId).put("paragraph", response)));
               }
 
               // if it's the last paragraph and not empty, let's add a new one

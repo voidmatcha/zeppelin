@@ -218,4 +218,22 @@ describe('Message.send', () => {
     expect(message.isNotebookCoreCommitRequestId(msgId)).toBe(true);
     expect(message.isNotebookCoreCommitRequestId('another-client-core-commit-1')).toBe(false);
   });
+
+  it('registers a Core run before sending and identifies only its own run replies', () => {
+    const { message, next } = connectedMessage();
+    const registered: string[] = [];
+    next.mockImplementation(sent => expect(registered).toContain(sent.msgId));
+
+    const msgId = message.sendNotebookCoreRun(id => registered.push(id), OP.RUN_PARAGRAPH, {
+      id: 'p1',
+      title: undefined,
+      paragraph: 'code',
+      config: {},
+      params: {}
+    });
+
+    expect(registered).toEqual([msgId]);
+    expect(message.isNotebookCoreRunRequestId(msgId)).toBe(true);
+    expect(message.isNotebookCoreRunRequestId('another-client-core-run-1')).toBe(false);
+  });
 });

@@ -52,7 +52,9 @@ export class MessageService extends Message implements OnDestroy {
   interceptReceived(data: WebSocketMessage<MessageReceiveDataTypeMap>): WebSocketMessage<MessageReceiveDataTypeMap> {
     if (
       data.msgId &&
-      (this.isNotebookCoreReadRequestId(data.msgId) || this.isNotebookCoreCommitRequestId(data.msgId)) &&
+      (this.isNotebookCoreReadRequestId(data.msgId) ||
+        this.isNotebookCoreCommitRequestId(data.msgId) ||
+        this.isNotebookCoreRunRequestId(data.msgId)) &&
       (data.op === OP.NOTE || data.op === OP.NOTE_REVISION || data.op === OP.ERROR_INFO || data.op === OP.AUTH_INFO)
     ) {
       // Private read errors belong to its route, not the global login modal or notification.
@@ -103,7 +105,10 @@ export class MessageService extends Message implements OnDestroy {
         filter(
           message =>
             !message.msgId ||
-            (!this.isNotebookCoreReadRequestId(message.msgId) && !this.isNotebookCoreCommitRequestId(message.msgId))
+            (!this.isNotebookCoreReadRequestId(message.msgId) &&
+              !this.isNotebookCoreCommitRequestId(message.msgId) &&
+              (!this.isNotebookCoreRunRequestId(message.msgId) ||
+                (message.op !== OP.PARAGRAPH && message.op !== OP.ERROR_INFO && message.op !== OP.AUTH_INFO)))
         )
       );
   }

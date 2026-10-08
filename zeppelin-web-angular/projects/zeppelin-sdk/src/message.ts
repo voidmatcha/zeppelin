@@ -174,6 +174,11 @@ export class Message {
     return this.sendRegistered(register, args, 'core-commit-');
   }
 
+  /** Correlate a Core run's persisted source and any authorization failure. */
+  sendNotebookCoreRun(register: (msgId: string) => void, ...args: SendArgumentsType<OP.RUN_PARAGRAPH>): string {
+    return this.sendRegistered(register, args, 'core-run-');
+  }
+
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
     return this.receiveMessage(op).pipe(map(message => message.data)) as Observable<
       Record<K, MessageReceiveDataTypeMap[K]>[K]
@@ -561,6 +566,10 @@ export class Message {
 
   isNotebookCoreCommitRequestId(msgId: string): boolean {
     return msgId.startsWith(`${this.uniqueClientId}-core-commit-`);
+  }
+
+  isNotebookCoreRunRequestId(msgId: string): boolean {
+    return msgId.startsWith(`${this.uniqueClientId}-core-run-`);
   }
 
   protected isNotebookCoreReadRequestId(msgId: string): boolean {

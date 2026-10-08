@@ -82,6 +82,21 @@ const ReadOnlyParagraph = ({
         >
           Save paragraph
         </button>
+        {paragraph.status === 'PENDING' || paragraph.status === 'RUNNING' ? (
+          <button
+            type="button"
+            onClick={() => commandPort.dispatch({ type: 'cancelParagraph', paragraphId: paragraph.id })}
+          >
+            Cancel paragraph
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => commandPort.dispatch({ type: 'runParagraph', paragraphId: paragraph.id })}
+          >
+            Run paragraph
+          </button>
+        )}
       </div>
     ) : (
       !paragraph.config?.editorHide && <pre className="notebook-react-read-source">{paragraph.text}</pre>

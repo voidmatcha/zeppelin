@@ -1210,6 +1210,57 @@ class NotebookServerTest extends AbstractTestRestApi {
   }
 
   @Test
+  void runParagraphAcknowledgesItsPersistedSourceOnlyWhenRequested() throws IOException {
+    String noteId = notebook.createNote("correlated-run", anonymous);
+    try {
+      String paragraphId = notebook.processNote(noteId,
+          note -> note.addNewParagraph(anonymous).getId());
+      NotebookSocket socket = createWebSocket();
+      notebookServer.onMessage(socket, new Message(OP.GET_NOTE).put("id", noteId).toJson());
+      reset(socket);
+
+      notebookServer.onMessage(socket, new Message(OP.RUN_PARAGRAPH)
+          .withMsgId("run-request")
+          .put("id", paragraphId)
+          .put("paragraph", "%md hello")
+          .put("config", Collections.emptyMap())
+          .put("params", Collections.emptyMap())
+          .put("ackRequested", true)
+          .toJson());
+
+      ArgumentCaptor<String> response = ArgumentCaptor.forClass(String.class);
+      verify(socket, Mockito.atLeastOnce()).send(response.capture());
+      Message acknowledgement = response.getAllValues().stream()
+          .map(notebookServer::deserializeMessage)
+          .filter(message -> message.op == OP.PARAGRAPH && "run-request".equals(message.msgId))
+          .findFirst()
+          .orElseThrow();
+      assertEquals(noteId, acknowledgement.data.get("noteId"));
+      Map<?, ?> paragraph = (Map<?, ?>) acknowledgement.data.get("paragraph");
+      assertEquals(paragraphId, paragraph.get("id"));
+      assertEquals("%md hello", paragraph.get("text"));
+
+      String legacyParagraphId = notebook.processNote(noteId,
+          note -> note.addNewParagraph(anonymous).getId());
+      reset(socket);
+      notebookServer.onMessage(socket, new Message(OP.RUN_PARAGRAPH)
+          .withMsgId("legacy-run")
+          .put("id", legacyParagraphId)
+          .put("paragraph", "%md legacy")
+          .put("config", Collections.emptyMap())
+          .put("params", Collections.emptyMap())
+          .toJson());
+      response = ArgumentCaptor.forClass(String.class);
+      verify(socket, Mockito.atLeastOnce()).send(response.capture());
+      assertFalse(response.getAllValues().stream()
+          .map(notebookServer::deserializeMessage)
+          .anyMatch(message -> message.op == OP.PARAGRAPH && "legacy-run".equals(message.msgId)));
+    } finally {
+      notebook.removeNote(noteId, anonymous);
+    }
+  }
+
+  @Test
   void getNoteFailurePreservesRequestMessageIdAndClassification() throws IOException {
     NotebookSocket socket = createWebSocket();
     notebookServer.onMessage(socket, new Message(OP.GET_NOTE)

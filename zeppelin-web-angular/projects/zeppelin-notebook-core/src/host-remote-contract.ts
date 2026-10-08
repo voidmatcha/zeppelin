@@ -23,7 +23,9 @@ export type NotebookCoreParagraphDraft = Readonly<{ text: string; version: numbe
 
 export type NotebookCoreCommand =
   | Readonly<{ type: 'editParagraph'; paragraphId: string; text: string }>
-  | Readonly<{ type: 'saveParagraph'; paragraphId: string }>;
+  | Readonly<{ type: 'saveParagraph'; paragraphId: string }>
+  | Readonly<{ type: 'runParagraph'; paragraphId: string }>
+  | Readonly<{ type: 'cancelParagraph'; paragraphId: string }>;
 
 /** Opaque identity: only the exact intent returned by this store can acknowledge a save. */
 export type NotebookCoreSaveIntent = Readonly<{
@@ -34,8 +36,11 @@ export type NotebookCoreSaveIntent = Readonly<{
   token: symbol;
 }>;
 
+export type NotebookCoreRunIntent = NotebookCoreSaveIntent;
+
 export type NotebookCoreCommandResult =
-  Readonly<{ accepted: false }> | Readonly<{ accepted: true; save?: NotebookCoreSaveIntent }>;
+  | Readonly<{ accepted: false }>
+  | Readonly<{ accepted: true; save?: NotebookCoreSaveIntent; run?: NotebookCoreRunIntent }>;
 
 /** The host sends returned save intents; the server remains the authority for writes. */
 export type NotebookCoreCommandPort = NotebookCorePort &

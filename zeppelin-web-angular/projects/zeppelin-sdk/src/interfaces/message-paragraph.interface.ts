@@ -208,6 +208,7 @@ export interface CopyParagraph {
 export interface RunParagraph extends SendParagraph {
   // eslint-disable-next-line  @typescript-eslint/no-explicit-any
   [key: string]: any;
+  ackRequested?: boolean;
 }
 
 export interface CommitParagraph extends SendParagraph {

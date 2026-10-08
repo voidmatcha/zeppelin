@@ -44,6 +44,223 @@ const note = (id: string) => ({
 const permissions = () => ({ readers: ['reader'], owners: ['owner'], writers: [], runners: [] });
 
 describe('host-owned notebook read store', () => {
+  it('accepts run and cancel only for live paragraphs', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const run = store.dispatch({ type: 'runParagraph', paragraphId: 'p2' });
+    expect(run).toMatchObject({ accepted: true, run: { noteId: 'n1', paragraphId: 'p2', text: 'second' } });
+    expect(store.dispatch({ type: 'runParagraph', paragraphId: 'p2' })).toEqual({ accepted: false });
+    expect(store.dispatch({ type: 'cancelParagraph', paragraphId: 'p2' })).toEqual({ accepted: false });
+    store.acceptParagraphEvent(request, {
+      type: 'update',
+      noteId: 'n1',
+      sequence: 1,
+      paragraph: { id: 'p2', text: 'second', status: 'RUNNING' }
+    });
+    expect(store.dispatch({ type: 'cancelParagraph', paragraphId: 'p2' })).toEqual({ accepted: true });
+    expect(store.dispatch({ type: 'runParagraph', paragraphId: 'missing' })).toEqual({ accepted: false });
+    const revision = store.beginRoute('n1', 'r1');
+    store.acceptRevision(revision, { noteId: 'n1', revisionId: 'r1', note: note('n1') });
+    expect(store.dispatch({ type: 'runParagraph', paragraphId: 'p2' })).toEqual({ accepted: false });
+  });
+
+  it('retires only the submitted run draft and does not mask later server text', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p2', text: 'submitted' });
+    const first = store.dispatch({ type: 'runParagraph', paragraphId: 'p2' });
+    if (!first.accepted || !first.run) {
+      throw new Error('Expected a prepared run');
+    }
+    store.acceptParagraphEvent(request, {
+      type: 'update',
+      noteId: 'n1',
+      sequence: 1,
+      paragraph: { id: 'p2', text: 'submitted', status: 'RUNNING' }
+    });
+    expect(
+      store.acceptRunAcknowledgement(request, first.run, {
+        id: 'p2',
+        text: 'submitted',
+        status: 'RUNNING'
+      })
+    ).toBe(true);
+    expect(store.getSnapshot().draftsById?.p2).toBeUndefined();
+    store.acceptParagraphEvent(request, {
+      type: 'update',
+      noteId: 'n1',
+      sequence: 2,
+      paragraph: { id: 'p2', text: 'collaborator', status: 'FINISHED' }
+    });
+    expect(selectParagraph(store.getSnapshot(), 'p2')?.text).toBe('collaborator');
+    expect(store.dispatch({ type: 'runParagraph', paragraphId: 'p2' })).toMatchObject({
+      accepted: true,
+      run: { text: 'collaborator' }
+    });
+  });
+
+  it('keeps a newer local edit after an older run acknowledgement and retries a rejected run', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p2', text: 'sent' });
+    const first = store.dispatch({ type: 'runParagraph', paragraphId: 'p2' });
+    if (!first.accepted || !first.run) {
+      throw new Error('Expected a prepared run');
+    }
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p2', text: 'newer local edit' });
+    expect(store.acceptRunAcknowledgement(request, first.run, { id: 'p2', text: 'sent', status: 'READY' })).toBe(true);
+    expect(store.getSnapshot().draftsById?.p2.text).toBe('newer local edit');
+    const second = store.dispatch({ type: 'runParagraph', paragraphId: 'p2' });
+    if (!second.accepted || !second.run) {
+      throw new Error('Expected a second prepared run');
+    }
+    expect(store.rejectRun(request, second.run)).toBe(true);
+    expect(store.dispatch({ type: 'runParagraph', paragraphId: 'p2' })).toMatchObject({ accepted: true });
+    expect(store.getSnapshot().draftsById?.p2.text).toBe('newer local edit');
+  });
+
+  it('buffers untyped output, publishes typed chunks and rejects stale or wrong-note streams', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const initial = store.getSnapshot();
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'append',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 1,
+        index: 0,
+        data: 'first'
+      })
+    ).toBe(true);
+    expect(store.getSnapshot()).toBe(initial);
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'update',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 2,
+        index: 0,
+        resultType: 'TEXT',
+        data: ''
+      })
+    ).toBe(true);
+    expect(selectSavedResults(store.getSnapshot(), 'p2')).toEqual({ msg: [{ type: 'TEXT', data: 'first' }] });
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'append',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 3,
+        index: 0,
+        data: ' second'
+      })
+    ).toBe(true);
+    expect(selectSavedResults(store.getSnapshot(), 'p2')).toEqual({ msg: [{ type: 'TEXT', data: 'first second' }] });
+    const current = store.getSnapshot();
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'append',
+        noteId: 'wrong',
+        paragraphId: 'p2',
+        sequence: 4,
+        index: 0,
+        data: 'leak'
+      })
+    ).toBe(false);
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'append',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 3,
+        index: 0,
+        data: 'duplicate'
+      })
+    ).toBe(false);
+    expect(store.getSnapshot()).toBe(current);
+    store.beginRoute('n2', null);
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'append',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 5,
+        index: 0,
+        data: 'stale'
+      })
+    ).toBe(false);
+  });
+
+  it('resets streamed output for a new run and gives the terminal snapshot final authority', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    expect(
+      store.acceptParagraphEvent(request, {
+        type: 'update',
+        noteId: 'n1',
+        sequence: 1,
+        paragraph: { id: 'p2', text: 'second', status: 'RUNNING' }
+      })
+    ).toBe(true);
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'update',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 2,
+        index: 0,
+        resultType: 'TEXT',
+        data: 'first run'
+      })
+    ).toBe(true);
+    expect(
+      store.acceptParagraphEvent(request, {
+        type: 'update',
+        noteId: 'n1',
+        sequence: 3,
+        paragraph: { id: 'p2', text: 'second', status: 'RUNNING' }
+      })
+    ).toBe(true);
+    expect(selectSavedResults(store.getSnapshot(), 'p2')).toBeNull();
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'update',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 4,
+        index: 0,
+        resultType: 'TEXT',
+        data: 'second run'
+      })
+    ).toBe(true);
+    expect(selectSavedResults(store.getSnapshot(), 'p2')).toEqual({ msg: [{ type: 'TEXT', data: 'second run' }] });
+    expect(
+      store.acceptParagraphEvent(request, {
+        type: 'update',
+        noteId: 'n1',
+        sequence: 5,
+        paragraph: { id: 'p2', text: 'second', status: 'FINISHED', results: { msg: [{ type: 'TEXT', data: 'final' }] } }
+      })
+    ).toBe(true);
+    expect(selectSavedResults(store.getSnapshot(), 'p2')).toEqual({ msg: [{ type: 'TEXT', data: 'final' }] });
+    expect(
+      store.acceptOutputEvent(request, {
+        kind: 'append',
+        noteId: 'n1',
+        paragraphId: 'p2',
+        sequence: 6,
+        index: 0,
+        data: ' late'
+      })
+    ).toBe(false);
+  });
+
   it('keeps an unsaved draft across a same-note reconnect but not a route change', () => {
     const store = new NotebookCoreReadStore('n1');
     const first = store.beginRoute('n1', null);

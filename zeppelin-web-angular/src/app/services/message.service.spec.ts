@@ -136,4 +136,38 @@ describe('MessageService private notebook reads', () => {
     expect(interceptor.received.mock.calls.map(([message]) => message.op)).toEqual([OP.ERROR_INFO, OP.SESSION_LOGOUT]);
     service.ngOnDestroy();
   });
+
+  it('delivers Core run acknowledgements only to the raw host listener', () => {
+    const service = connectedMessageService();
+    const requestId = service.sendNotebookCoreRun(() => undefined, OP.RUN_PARAGRAPH, {
+      id: 'p1',
+      title: undefined,
+      paragraph: 'code',
+      config: {},
+      params: {}
+    });
+    const raw = vi.fn();
+    const legacy = vi.fn();
+    const legacyAdded = vi.fn();
+    service.received().subscribe(raw);
+    service.receiveEnvelope(OP.PARAGRAPH).subscribe(legacy);
+    service.receiveEnvelope(OP.PARAGRAPH_ADDED).subscribe(legacyAdded);
+    const reply = {
+      op: OP.PARAGRAPH,
+      msgId: requestId,
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'code', status: 'RUNNING' } }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>;
+    service.shortCircuit(reply);
+
+    expect(raw).toHaveBeenCalledExactlyOnceWith(reply);
+    expect(legacy).not.toHaveBeenCalled();
+    const added = {
+      op: OP.PARAGRAPH_ADDED,
+      msgId: requestId,
+      data: { noteId: 'a', index: 1, paragraph: { id: 'p2', text: '', status: 'READY' } }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>;
+    service.shortCircuit(added);
+    expect(legacyAdded).toHaveBeenCalledExactlyOnceWith(added);
+    service.ngOnDestroy();
+  });
 });
