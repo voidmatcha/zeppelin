@@ -14,14 +14,44 @@ import { Locator, Page } from '@playwright/test';
 import { BasePage } from './base-page';
 
 export class NotebookAssistantPage extends BasePage {
+  readonly remoteMount: Locator;
   readonly toggleButton: Locator;
   readonly panel: Locator;
   readonly closeButton: Locator;
+  readonly messageInput: Locator;
+  readonly sendButton: Locator;
+  /** The open conversation's title, named "Conversation: <title>"; it opens the conversation list. */
+  readonly conversationPicker: Locator;
+  readonly messages: Locator;
+  readonly confirmDeleteButton: Locator;
+  readonly cancelDeleteButton: Locator;
 
   constructor(page: Page) {
     super(page);
-    this.toggleButton = page.getByRole('button', { name: 'Toggle AI Assistant' });
-    this.panel = page.getByRole('complementary', { name: 'AI Assistant workspace' });
+    this.remoteMount = page.locator('zeppelin-assistant-host [zeppelin-react-mount]');
+    this.toggleButton = page.getByRole('button', { name: 'Toggle AI Assistant', exact: true });
+    this.panel = page.getByRole('complementary', { name: 'AI Assistant workspace', exact: true });
     this.closeButton = page.getByRole('button', { name: 'Close AI Assistant' });
+    this.messageInput = this.panel.getByRole('textbox', { name: 'Message', exact: true });
+    this.sendButton = this.panel.getByRole('button', { name: 'Send', exact: true });
+    this.conversationPicker = this.panel.getByRole('button', { name: /^Conversation:/ });
+    this.messages = this.panel.getByLabel('Messages', { exact: true });
+    const deletion = page.getByRole('tooltip').filter({ hasText: 'Delete this conversation?' });
+    this.confirmDeleteButton = deletion.getByRole('button', { name: 'Delete', exact: true });
+    this.cancelDeleteButton = deletion.getByRole('button', { name: 'Cancel', exact: true });
+  }
+
+  deleteButton(title: string): Locator {
+    return this.panel.getByRole('button', { name: `Delete ${title}`, exact: true });
+  }
+
+  async open(): Promise<void> {
+    await this.toggleButton.click();
+    await this.messageInput.waitFor({ state: 'visible' });
+  }
+
+  async ask(question: string): Promise<void> {
+    await this.messageInput.fill(question);
+    await this.sendButton.click();
   }
 }
