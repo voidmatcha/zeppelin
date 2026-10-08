@@ -17,10 +17,10 @@ const KEY_STEP_PX = 16;
 const clamp = (width: number) =>
   Math.min(NOTEBOOK_SIDEBAR_WIDTH.max, Math.max(NOTEBOOK_SIDEBAR_WIDTH.min, Math.round(width)));
 const setWidthOn = (element: HTMLElement | undefined, width: number) =>
-  element?.style.setProperty('--assistant-sidebar-width', `${width}px`);
+  element?.style.setProperty('--assistant-panel-width', `${width}px`);
 
 /**
- * The sidebar's total width, shared with the panel through the host, and the props of its resize handle. A drag
+ * The panel's width, shared with the notebook sidebar through the host, and the props of its resize handle. A drag
  * writes the width straight to `element` so the panel does not re-render per pointer move, and reports it once at the
  * end; arrow keys step it. The host's width wins whenever it changes.
  */
@@ -30,6 +30,7 @@ export const usePanelResize = (
   onChange?: (width: number) => void
 ) => {
   const [width, setWidth] = useState(() => clamp(hostWidth ?? NOTEBOOK_SIDEBAR_WIDTH.initial));
+  const [resizing, setResizing] = useState(false);
   const drag = useRef<{ startX: number; startWidth: number; latest: number } | null>(null);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export const usePanelResize = (
   useLayoutEffect(() => {
     setWidthOn(element, width);
     return () => {
-      element?.style.removeProperty('--assistant-sidebar-width');
+      element?.style.removeProperty('--assistant-panel-width');
     };
   }, [element, width]);
 
@@ -50,6 +51,7 @@ export const usePanelResize = (
     if (!drag.current) return;
     const { latest } = drag.current;
     drag.current = null;
+    setResizing(false);
     commit(latest);
   };
 
@@ -67,6 +69,7 @@ export const usePanelResize = (
       // Captured, so the move and up events keep coming here even when the pointer leaves the strip.
       event.currentTarget.setPointerCapture?.(event.pointerId);
       drag.current = { startX: event.clientX, startWidth: width, latest: width };
+      setResizing(true);
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
       if (!drag.current) return;
@@ -95,5 +98,5 @@ export const usePanelResize = (
     }
   } as const;
 
-  return { handleProps };
+  return { width, resizing, handleProps };
 };
