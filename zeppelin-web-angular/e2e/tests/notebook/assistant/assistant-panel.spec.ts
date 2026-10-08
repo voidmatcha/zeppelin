@@ -13,6 +13,7 @@
 import { expect, test } from '@playwright/test';
 import { NotebookAssistantPage } from '../../../models/notebook-assistant-page';
 import { FakeAssistantBackend } from '../../../models/notebook-assistant-page.util';
+import { LoginTestUtil } from '../../../models/login-page.util';
 import { NotebookSidebarPage } from '../../../models/notebook-sidebar-page';
 import {
   addPageAnnotationBeforeEach,
@@ -58,6 +59,7 @@ test.describe('Assistant panel', () => {
   });
 
   test('shows a completed answer in a conversation named after the first question', async ({ page }) => {
+    test.skip(!(await LoginTestUtil.isShiroEnabled()), 'Sending assistant messages requires a signed-in user');
     backend.reply = () => [
       { type: 'run.started', payload: { runId: 'run-1' } },
       { type: 'message.delta', payload: { messageId: 'answer-1', delta: 'It loads ' } },
@@ -110,6 +112,7 @@ test.describe('Assistant panel', () => {
   });
 
   test('reopens a stored conversation with its answer and the tools it used', async ({ page }) => {
+    test.skip(!(await LoginTestUtil.isShiroEnabled()), 'Writable conversations require a signed-in user');
     backend.conversations.push({
       id: 'e2e-stored',
       title: QUESTION,
@@ -141,6 +144,7 @@ test.describe('Assistant panel', () => {
   });
 
   test('explains a rejected first question and keeps it for another try', async ({ page }) => {
+    test.skip(!(await LoginTestUtil.isShiroEnabled()), 'Sending assistant messages requires a signed-in user');
     backend.reply = () => [{ type: 'run.failed', payload: { runId: 'run-1', error: { status: 503 } } }];
 
     await test.step('Given the notebook is open with the reactAssistant flag', async () => {
@@ -164,6 +168,27 @@ test.describe('Assistant panel', () => {
       ).toBeVisible();
       await expect(assistant.messageInput).toHaveValue(QUESTION);
       await expect.poll(() => backend.deletedIds).toEqual(['e2e-conversation-1']);
+    });
+  });
+
+  test('asks anonymous visitors to sign in before sending a question', async ({ page }) => {
+    test.skip(await LoginTestUtil.isShiroEnabled(), 'Only the anonymous server shows the sign-in requirement');
+
+    await test.step('Given the notebook is open with the reactAssistant flag', async () => {
+      await page.goto(`/#/notebook/${noteId}?reactAssistant=true`);
+      await waitForZeppelinReady(page);
+    });
+
+    await test.step('When I open the assistant panel', async () => {
+      await assistant.open();
+    });
+
+    await test.step('Then I am asked to sign in and cannot send a question', async () => {
+      await expect(assistant.panel.getByText('Sign in to use the assistant.', { exact: true })).toBeVisible();
+      await expect(assistant.messageInput).toBeDisabled();
+      await expect(assistant.sendButton).toBeDisabled();
+      expect(backend.conversations).toEqual([]);
+      expect(backend.sentMessages).toEqual([]);
     });
   });
 });
