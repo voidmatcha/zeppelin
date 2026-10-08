@@ -72,6 +72,13 @@ const AssistantWorkspaceSession = (props: AssistantWorkspaceProps & AssistantTra
     setPanelVisible(false);
     navigationButtonRef.current?.focus();
   };
+  const revealFromPanel = revealParagraph
+    ? async (paragraphId: string) => {
+        const result = await revealParagraph(paragraphId);
+        if (result !== 'missing' && window.matchMedia('(max-width: 640px)').matches) setPanelVisible(false);
+        return result;
+      }
+    : undefined;
   // Esc from inside the panel closes it, unless a list in it is open (that list closes first).
   const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
@@ -178,7 +185,7 @@ const AssistantWorkspaceSession = (props: AssistantWorkspaceProps & AssistantTra
                       // A different account starts a fresh panel; the panel stays open around it.
                       key={props.draftOwner ?? ''}
                       draftOwner={props.draftOwner}
-                      revealParagraph={revealParagraph}
+                      revealParagraph={revealFromPanel}
                       paragraphs={paragraphs}
                       noteId={noteId}
                       listConversations={listConversations}
