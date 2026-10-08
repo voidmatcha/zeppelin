@@ -94,6 +94,7 @@ describe('AssistantWorkspace', () => {
     slotElements.forEach(slot => slot.remove());
     slotElements = [];
     transportState.authHandlers.clear();
+    vi.restoreAllMocks();
   });
 
   it.each([401, 405])('ignores retired notebook auth errors with status %s', status => {
@@ -287,6 +288,53 @@ describe('AssistantWorkspace', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(visibility.at(-1)).toBe(false);
   });
+
+  it.each([
+    { viewport: 'mobile', result: 'shown', closes: true },
+    { viewport: 'mobile', result: 'visible', closes: true },
+    { viewport: 'mobile', result: 'missing', closes: false },
+    { viewport: 'desktop', result: 'shown', closes: false }
+  ] as const)(
+    'reveals a paragraph on $viewport with $result and closes only when needed',
+    async ({ viewport, result, closes }) => {
+      const originalMatchMedia = window.matchMedia;
+      vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+        ...originalMatchMedia(query),
+        matches: viewport === 'mobile' && query === '(max-width: 640px)'
+      }));
+      const navigation = element();
+      const panel = element();
+      const target = element();
+      target.tabIndex = -1;
+      const revealParagraph = vi.fn(async () => {
+        target.focus();
+        return result;
+      });
+      mountWorkspace({
+        ...transport({
+          listConversations: vi.fn().mockResolvedValue([{ id: 'conversation', title: 'Previous question' }]),
+          getMessages: vi.fn().mockResolvedValue({
+            messages: [{ id: 'answer', role: 'assistant', content: 'See paragraph_1_2.' }],
+            earlierCursor: null
+          })
+        }),
+        noteId: 'note-1',
+        paragraphs: [{ id: 'paragraph_1_1' }, { id: 'paragraph_1_2' }],
+        revealParagraph,
+        slots: [
+          { element: navigation, kind: 'navigation' },
+          { element: panel, kind: 'panel' }
+        ]
+      });
+      const toggle = within(navigation).getByRole('button', { name: 'Toggle AI Assistant' });
+      fireEvent.click(toggle);
+      fireEvent.click(await within(panel).findByRole('button', { name: 'Show Paragraph 2 in the notebook' }));
+
+      await waitFor(() => expect(revealParagraph).toHaveBeenCalledWith('paragraph_1_2'));
+      await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe(closes ? 'false' : 'true'));
+      expect(document.activeElement).toBe(target);
+    }
+  );
 
   it('closes on Escape back to its sidebar button, but leaves an open list to close first', () => {
     const navigation = element();
