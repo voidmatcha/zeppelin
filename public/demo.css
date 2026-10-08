@@ -1,0 +1,21 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+.demo-card { position: relative; border: 1px solid var(--hcfrxg8, #d9d9d9); border-radius: 4px; padding: 12px; margin: 12px 0; background: var(--hcfrxg4, #fff); color: var(--hcfrxg0, #262626); font: 13px/1.6 sans-serif; }
+.demo-card button { cursor: pointer; margin: 4px; padding: 4px 10px; border: 1px solid var(--hcfrxg8, #d9d9d9); border-radius: 4px; background: var(--hcfrxg4, #fff); color: inherit; }
+.demo-card pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.demo-card del { background: #fff1f0; color: #a8071a; }
+.demo-card ins { background: #f6ffed; color: #237804; text-decoration: none; }
+.demo-list, .demo-confirm { position: absolute; left: 8px; right: 8px; top: 32px; z-index: 10; }
+.demo-list input { width: 100%; padding: 6px; }
+.demo-list button { display: block; width: 100%; text-align: left; }
+.demo-earlier { display: block; margin: 0 auto 12px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.demo-note { max-width: 600px; font: 12px/1.6 sans-serif; }

@@ -1,0 +1,692 @@
+[
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-actionlog--running",
+    "name": "Running",
+    "title": "Assistant/ActionLog",
+    "importPath": "./src/entities/assistant/ui/ActionLog.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ActionLog.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Running"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-actionlog--completed",
+    "name": "Completed",
+    "title": "Assistant/ActionLog",
+    "importPath": "./src/entities/assistant/ui/ActionLog.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ActionLog.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Completed"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-composer--empty",
+    "name": "Empty",
+    "title": "Assistant/Composer",
+    "importPath": "./src/entities/assistant/ui/Composer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Composer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Empty"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-composer--draft",
+    "name": "Draft",
+    "title": "Assistant/Composer",
+    "importPath": "./src/entities/assistant/ui/Composer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Composer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Draft"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-composer--running",
+    "name": "Running",
+    "title": "Assistant/Composer",
+    "importPath": "./src/entities/assistant/ui/Composer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Composer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Running"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-composer--read-only",
+    "name": "Read Only",
+    "title": "Assistant/Composer",
+    "importPath": "./src/entities/assistant/ui/Composer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Composer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "ReadOnly"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-composer--draft-save-error",
+    "name": "Draft Save Error",
+    "title": "Assistant/Composer",
+    "importPath": "./src/entities/assistant/ui/Composer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Composer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "DraftSaveError"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-composer--send",
+    "name": "Send",
+    "title": "Assistant/Composer",
+    "importPath": "./src/entities/assistant/ui/Composer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Composer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest",
+      "play-fn"
+    ],
+    "exportName": "Send"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationheader--current",
+    "name": "Current",
+    "title": "Assistant/ConversationHeader",
+    "importPath": "./src/entities/assistant/ui/ConversationHeader.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationHeader.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Current"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationheader--read-only",
+    "name": "Read Only",
+    "title": "Assistant/ConversationHeader",
+    "importPath": "./src/entities/assistant/ui/ConversationHeader.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationHeader.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "ReadOnly"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationheader--new-conversation",
+    "name": "New Conversation",
+    "title": "Assistant/ConversationHeader",
+    "importPath": "./src/entities/assistant/ui/ConversationHeader.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationHeader.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "NewConversation"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationheader--busy",
+    "name": "Busy",
+    "title": "Assistant/ConversationHeader",
+    "importPath": "./src/entities/assistant/ui/ConversationHeader.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationHeader.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Busy"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationlist--conversations",
+    "name": "Conversations",
+    "title": "Assistant/ConversationList",
+    "importPath": "./src/entities/assistant/ui/ConversationList.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationList.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Conversations"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationlist--empty",
+    "name": "Empty",
+    "title": "Assistant/ConversationList",
+    "importPath": "./src/entities/assistant/ui/ConversationList.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationList.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Empty"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationlist--busy",
+    "name": "Busy",
+    "title": "Assistant/ConversationList",
+    "importPath": "./src/entities/assistant/ui/ConversationList.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationList.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Busy"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationlist--select-and-delete",
+    "name": "Select And Delete",
+    "title": "Assistant/ConversationList",
+    "importPath": "./src/entities/assistant/ui/ConversationList.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationList.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest",
+      "play-fn"
+    ],
+    "exportName": "SelectAndDelete"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-conversationlist--search",
+    "name": "Search",
+    "title": "Assistant/ConversationList",
+    "importPath": "./src/entities/assistant/ui/ConversationList.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/ConversationList.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest",
+      "play-fn"
+    ],
+    "exportName": "Search"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-emptystate--introduction",
+    "name": "Introduction",
+    "title": "Assistant/EmptyState",
+    "importPath": "./src/entities/assistant/ui/EmptyState.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/EmptyState.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Introduction"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-emptystate--suggestions",
+    "name": "Suggestions",
+    "title": "Assistant/EmptyState",
+    "importPath": "./src/entities/assistant/ui/EmptyState.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/EmptyState.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest",
+      "play-fn"
+    ],
+    "exportName": "Suggestions"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-markdownanswer--gfm-table",
+    "name": "Gfm Table",
+    "title": "Assistant/MarkdownAnswer",
+    "importPath": "./src/entities/assistant/ui/MarkdownAnswer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/MarkdownAnswer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "GfmTable"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-markdownanswer--sql-code",
+    "name": "Sql Code",
+    "title": "Assistant/MarkdownAnswer",
+    "importPath": "./src/entities/assistant/ui/MarkdownAnswer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/MarkdownAnswer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "SqlCode"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-markdownanswer--partial-fence",
+    "name": "Partial Fence",
+    "title": "Assistant/MarkdownAnswer",
+    "importPath": "./src/entities/assistant/ui/MarkdownAnswer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/MarkdownAnswer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "PartialFence"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-markdownanswer--paragraph-reference",
+    "name": "Paragraph Reference",
+    "title": "Assistant/MarkdownAnswer",
+    "importPath": "./src/entities/assistant/ui/MarkdownAnswer.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/MarkdownAnswer.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "ParagraphReference"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-message--completed-reply",
+    "name": "Completed Reply",
+    "title": "Assistant/Message",
+    "importPath": "./src/entities/assistant/ui/Message.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Message.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "CompletedReply"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-message--streaming-reply",
+    "name": "Streaming Reply",
+    "title": "Assistant/Message",
+    "importPath": "./src/entities/assistant/ui/Message.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Message.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "StreamingReply"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-message--from-history",
+    "name": "From History",
+    "title": "Assistant/Message",
+    "importPath": "./src/entities/assistant/ui/Message.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Message.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "FromHistory"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-message--user",
+    "name": "User",
+    "title": "Assistant/Message",
+    "importPath": "./src/entities/assistant/ui/Message.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Message.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "User"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-message--conversation",
+    "name": "Conversation",
+    "title": "Assistant/Message",
+    "importPath": "./src/entities/assistant/ui/Message.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Message.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Conversation"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panellayout--conversation",
+    "name": "Conversation",
+    "title": "Assistant/PanelLayout",
+    "importPath": "./src/entities/assistant/ui/PanelLayout.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/PanelLayout.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest",
+      "play-fn"
+    ],
+    "exportName": "Conversation"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panellayout--list-overlay",
+    "name": "List Overlay",
+    "title": "Assistant/PanelLayout",
+    "importPath": "./src/entities/assistant/ui/PanelLayout.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/PanelLayout.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "ListOverlay"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--streaming",
+    "name": "Streaming",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Streaming"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--loading",
+    "name": "Loading",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Loading"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--completed",
+    "name": "Completed",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Completed"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--error",
+    "name": "Error",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Error"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--earlier-messages",
+    "name": "Earlier Messages",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "EarlierMessages"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--loading-earlier",
+    "name": "Loading Earlier",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "LoadingEarlier"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-status--new-reply",
+    "name": "New Reply",
+    "title": "Assistant/Status",
+    "importPath": "./src/entities/assistant/ui/Status.stories.tsx",
+    "componentPath": "./src/entities/assistant/ui/Status.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "NewReply"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-assistanticon--conversation",
+    "name": "Conversation",
+    "title": "Assistant/AssistantIcon",
+    "importPath": "./src/shared/ui/assistant-icon/AssistantIcon.stories.tsx",
+    "componentPath": "./src/shared/ui/assistant-icon/AssistantIcon.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Conversation"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-assistanticon--active",
+    "name": "Active",
+    "title": "Assistant/AssistantIcon",
+    "importPath": "./src/shared/ui/assistant-icon/AssistantIcon.stories.tsx",
+    "componentPath": "./src/shared/ui/assistant-icon/AssistantIcon.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Active"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-assistanticon--navigation",
+    "name": "Navigation",
+    "title": "Assistant/AssistantIcon",
+    "importPath": "./src/shared/ui/assistant-icon/AssistantIcon.stories.tsx",
+    "componentPath": "./src/shared/ui/assistant-icon/AssistantIcon.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Navigation"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-foundations--theme",
+    "name": "Theme",
+    "title": "Assistant/Foundations",
+    "importPath": "./src/shared/ui/assistant-theme/AssistantScope.stories.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Theme"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panel--empty",
+    "name": "Empty",
+    "title": "Assistant/Panel",
+    "importPath": "./src/widgets/assistant-panel/ui/AssistantPanel.stories.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "Empty"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panel--history",
+    "name": "History",
+    "title": "Assistant/Panel",
+    "importPath": "./src/widgets/assistant-panel/ui/AssistantPanel.stories.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "History"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panel--read-only",
+    "name": "Read Only",
+    "title": "Assistant/Panel",
+    "importPath": "./src/widgets/assistant-panel/ui/AssistantPanel.stories.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "ReadOnly"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panel--request-error",
+    "name": "Request Error",
+    "title": "Assistant/Panel",
+    "importPath": "./src/widgets/assistant-panel/ui/AssistantPanel.stories.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest"
+    ],
+    "exportName": "RequestError"
+  },
+  {
+    "type": "story",
+    "subtype": "story",
+    "id": "assistant-panel--streaming",
+    "name": "Streaming",
+    "title": "Assistant/Panel",
+    "importPath": "./src/widgets/assistant-panel/ui/AssistantPanel.stories.tsx",
+    "tags": [
+      "dev",
+      "test",
+      "manifest",
+      "play-fn"
+    ],
+    "exportName": "Streaming"
+  }
+]

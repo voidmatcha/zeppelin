@@ -1,0 +1,56 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+.flow { height: 800px; min-height: 640px; width: 100%; display: flex; flex-direction: column; background: #f1f2f5; color: #333; font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+.flow *, .flow *::before, .flow *::after { box-sizing: border-box; }
+.flow-main { display:flex; min-height:0; flex:1; }
+.flow-aside { width:410px; flex:none; background:#fff; border-right:1px solid #d9d9d9; display:flex; flex-direction:column; min-height:0; }
+.flow-aside-title { height:42px; flex:none; padding:10px 16px; border-bottom:1px solid #eee; font-weight:600; }
+.flow-panel { min-height:0; flex:1; }
+.flow-panel > div { height:100%; }
+.flow-panel > div > div { height:100% !important; }
+.flow-panel > div > div > div { height:100% !important; }
+.flow-notebook { flex:1; overflow:auto; padding:28px 12px; }
+.flow-paragraph { position:relative; background:#fff; border:1px solid #e5e7eb; box-shadow:0 2px 6px #0000000d; margin:0 0 32px; min-height:175px; padding:36px 14px 16px 26px; }
+.flow-paragraph.is-focused { border-color:#99b9d4; }
+.flow-paragraph .flow-state { position:absolute; right:12px; top:10px; color:#999; font-size:12px; }
+.flow-code { font:12px/1.55 Menlo,Consolas,monospace; white-space:pre-wrap; margin:0; color:#202020; }
+.flow-output { margin-top:34px; font:12px/1.55 Menlo,Consolas,monospace; white-space:pre-wrap; color:#555; }
+.flow-result { margin-top:20px; color:#999; font-size:11px; }
+.flow-diff { border:1px solid #b7c6ce; margin:-12px -2px 12px; padding:8px 10px; font:12px/1.5 Menlo,Consolas,monospace; }
+.flow-diff-head { display:flex; justify-content:space-between; font:12px/1.4 sans-serif; margin-bottom:8px; }
+.flow-diff del,.flow-diff ins { display:block; text-decoration:none; padding:3px 12px; }
+.flow-diff del { background:#ffe0e3; }
+.flow-diff ins { background:#e9f6e5; }
+.flow-approval { background:#fffbe8; border-left:3px solid #d8a326; margin:10px 0; padding:10px; font-size:12px; }
+.flow-approval button,.flow-diff button { margin:4px 4px 0 0; border:1px solid #d9d9d9; border-radius:3px; background:#fff; color:#333; padding:3px 8px; }
+.flow-approval button:first-of-type,.flow-diff button:first-of-type { color:#fff; background:#3b7fb1; }
+.flow-caption { position:absolute; bottom:10px; right:14px; font-size:11px; color:#999; }
+.flow-list { position:absolute; top:40px; left:4px; right:4px; bottom:65px; z-index:4; background:#fff; border:1px solid #ddd; box-shadow:0 4px 12px #0002; padding:12px; overflow:auto; }
+.flow-list input { width:100%; padding:6px; border:1px solid #ddd; }
+.flow-list .flow-row { border-bottom:1px solid #eee; padding:8px 4px; font-size:12px; }
+.flow-current { outline:2px solid #9ac7e5; outline-offset:1px; }
+@media (max-width:800px) { .flow-aside { width:45%; } .flow-notebook { padding:12px 6px; } }
+
+.flow-empty { text-align:center; padding:70px 12px; color:#777; }
+.flow-empty strong { display:block; color:#333; font-size:16px; margin-bottom:12px; }
+.flow-empty p:last-child { margin-top:28px; text-align:left; border:1px solid #eee; border-radius:4px; padding:12px; }
+.flow [data-role="assistant"] table { width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; }
+.flow [data-role="assistant"] th,.flow [data-role="assistant"] td { border-bottom:1px solid #e8e8e8; padding:5px; text-align:left; }
+.flow-list { transform-origin: top center; animation: flow-open 280ms ease-out both; }
+.flow-approval, .flow-diff { animation: flow-enter 350ms ease-out both; }
+.flow [data-role="assistant"] tbody tr { animation: flow-enter 300ms ease-out both; }
+.flow [data-role="assistant"][aria-busy="true"] .lifu725 > .ww4adn0:last-child > p:last-child::after { content:none; }
+.flow-stream-cursor { display:inline-block; width:2px; height:1em; margin-left:2px; vertical-align:-2px; background:currentColor; animation:flow-cursor 1s steps(2,jump-none) infinite; }
+.flow-empty { animation: flow-enter 300ms ease-out both; }
+@keyframes flow-open { from { opacity: 0; transform: translateY(-8px) scaleY(.96); } to { opacity: 1; transform: none; } }
+@keyframes flow-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes flow-cursor { 50% { opacity: 0; } }

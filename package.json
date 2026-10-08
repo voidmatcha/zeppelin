@@ -1,0 +1,17 @@
+{
+  "name": "zeppelin-assistant-design-reference",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "storybook": "storybook dev --port 6006 --disable-telemetry",
+    "build:storybook": "storybook build --disable-telemetry",
+    "test:storybook": "playwright test"
+  },
+  "devDependencies": {
+    "@storybook/html-vite": "10.6.1",
+    "storybook": "10.6.1",
+    "vite": "8.2.1",
+    "@playwright/test": "1.55.1"
+  }
+}

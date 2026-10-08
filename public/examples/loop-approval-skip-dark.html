@@ -1,0 +1,6 @@
+<!doctype html>
+<!-- Licensed under the Apache License, Version 2.0. See LICENSE. -->
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>approval-skip</title><link rel="stylesheet" href="../reference.css"><link rel="stylesheet" href="../demo.css"><link rel="stylesheet" href="../flow.css"></head><body style="margin:0;background:#141414"><script type="module">import { loopingFlow } from '../flow.js';
+const html = await (await fetch('../screens/assistant-panel--history-dark.html')).text();
+const render = () => { const root=document.createElement('div'); root.innerHTML=html; return root; };
+document.body.append(loopingFlow(render, 'dark', 'approval-skip'));</script></body></html>
