@@ -13,14 +13,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { MessageInterceptor } from '@zeppelin/interfaces';
-import { OP } from '@zeppelin/sdk';
+import { OP, WebSocketMessage, MessageReceiveDataTypeMap } from '@zeppelin/sdk';
 import { BaseUrlService } from './base-url.service';
 import { MessageService } from './message.service';
 import { TicketService } from './ticket.service';
 
 const connectedMessageService = (): MessageService => {
   const service = new MessageService({} as BaseUrlService, {} as TicketService, null as unknown as MessageInterceptor);
-  (service as unknown as { ws: { next: () => void } }).ws = { next: vi.fn() };
+  (service as unknown as { ws: { next: () => void; complete: () => void } }).ws = {
+    next: vi.fn(),
+    complete: vi.fn()
+  };
   return service;
 };
 
@@ -46,6 +49,42 @@ describe('MessageService local add focus', () => {
 });
 
 describe('MessageService private notebook reads', () => {
+  it('delivers private replies to the Core host without updating legacy notebook listeners', () => {
+    const service = connectedMessageService();
+    const requestId = service.sendNotebookCoreRead(() => undefined, OP.GET_NOTE, { id: 'a' });
+    const lateRequestId = service.sendNotebookCoreRead(() => undefined, OP.GET_NOTE, { id: 'old-route' });
+    const raw = vi.fn();
+    const typed = vi.fn();
+    const envelope = vi.fn();
+    const coreSubscription = service.received().subscribe(raw);
+    service.receive(OP.NOTE).subscribe(typed);
+    service.receiveEnvelope(OP.NOTE).subscribe(envelope);
+
+    const privateReply = {
+      op: OP.NOTE,
+      msgId: requestId,
+      data: { id: 'a' }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>;
+    const ordinaryReply = {
+      op: OP.NOTE,
+      msgId: 'ordinary-1',
+      data: { id: 'b' }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>;
+    service.shortCircuit(privateReply);
+    coreSubscription.unsubscribe();
+    service.shortCircuit({
+      op: OP.NOTE,
+      msgId: lateRequestId,
+      data: { id: 'old-route' }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>);
+    service.shortCircuit(ordinaryReply);
+
+    expect(raw).toHaveBeenCalledExactlyOnceWith(privateReply);
+    expect(typed).toHaveBeenCalledExactlyOnceWith(ordinaryReply.data);
+    expect(envelope).toHaveBeenCalledExactlyOnceWith(ordinaryReply);
+    service.ngOnDestroy();
+  });
+
   it('keeps a delayed correlated read failure out of the global interceptor', () => {
     const interceptor = { received: vi.fn(message => message) };
     const service = new MessageService({} as BaseUrlService, {} as TicketService, interceptor);
