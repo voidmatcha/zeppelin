@@ -354,6 +354,21 @@ export class NotebookCoreReadHost {
     }
     const sequence = ++this.wireSequence;
     if (
+      envelope.op === OP.NOTE_UPDATED &&
+      typeof change.name === 'string' &&
+      isRecord(change.config) &&
+      isRecord(change.info)
+    ) {
+      this.store.acceptNoteUpdated(request, {
+        noteId: request.noteId,
+        sequence,
+        name: change.name,
+        config: change.config,
+        info: change.info
+      });
+      return;
+    }
+    if (
       (envelope.op === OP.PARAGRAPH_APPEND_OUTPUT || envelope.op === OP.PARAGRAPH_UPDATE_OUTPUT) &&
       typeof change.paragraphId === 'string' &&
       Number.isInteger(change.index) &&
@@ -429,6 +444,9 @@ export class NotebookCoreReadHost {
     this.pendingRuns.clear();
   }
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const normalizeReadParagraph = (paragraph: unknown): NotebookCoreWireNote['paragraphs'][number] | null => {
   if (!paragraph || typeof paragraph !== 'object') {

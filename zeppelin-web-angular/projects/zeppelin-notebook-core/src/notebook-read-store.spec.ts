@@ -44,6 +44,40 @@ const note = (id: string) => ({
 const permissions = () => ({ readers: ['reader'], owners: ['owner'], writers: [], runners: [] });
 
 describe('host-owned notebook read store', () => {
+  it('applies only attributed live note metadata without changing paragraphs or local drafts', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'local edit' });
+    const before = store.getSnapshot();
+    const update = {
+      noteId: 'n1',
+      sequence: 1,
+      name: 'Renamed',
+      config: { looknfeel: 'simple' },
+      info: { owner: 'alice' }
+    };
+    expect(store.acceptNoteUpdated(request, { ...update, noteId: 'n2' })).toBe(false);
+    expect(store.acceptNoteUpdated(request, update)).toBe(true);
+    expect(selectNote(store.getSnapshot())).toMatchObject({
+      name: 'Renamed',
+      config: update.config,
+      info: update.info
+    });
+    expect(store.getSnapshot().readState.status).toBe('ready');
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('local edit');
+    const after = store.getSnapshot();
+    const beforeParagraphs = before.readState.status === 'ready' ? before.readState.data.paragraphsById : undefined;
+    const afterParagraphs = after.readState.status === 'ready' ? after.readState.data.paragraphsById : undefined;
+    expect(afterParagraphs).toBe(beforeParagraphs);
+    expect(store.acceptNoteUpdated(request, { ...update, sequence: 1, name: 'Stale' })).toBe(false);
+
+    const revision = store.beginRoute('n1', 'r1');
+    store.acceptRevision(revision, { noteId: 'n1', revisionId: 'r1', note: note('n1') });
+    expect(store.acceptNoteUpdated(revision, { ...update, sequence: 2 })).toBe(false);
+    expect(selectNote(store.getSnapshot())?.name).toBe('A note');
+  });
+
   it('accepts run and cancel only for live paragraphs', () => {
     const store = new NotebookCoreReadStore('n1');
     const request = store.beginRoute('n1', null);

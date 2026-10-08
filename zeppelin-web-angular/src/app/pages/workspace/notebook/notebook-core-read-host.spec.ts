@@ -81,6 +81,36 @@ describe('NotebookCoreReadHost', () => {
     host.destroy();
   });
 
+  it('routes only attributed live NOTE_UPDATED metadata into the shared Core', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    received.next({ op: OP.NOTE_UPDATED, data: { name: 'No ID', config: {}, info: {} } });
+    received.next({ op: OP.NOTE_UPDATED, data: { noteId: 'b', name: 'Other note', config: {}, info: {} } });
+    expect(
+      host.store.getSnapshot().readState.status === 'ready' && host.store.getSnapshot().readState.data.note.name
+    ).toBe('a');
+
+    received.next({
+      op: OP.NOTE_UPDATED,
+      data: { noteId: 'a', name: 'Renamed', config: { looknfeel: 'simple' }, info: { owner: 'alice' } }
+    });
+    const state = host.store.getSnapshot().readState;
+    expect(state.status === 'ready' && state.data.note).toMatchObject({ name: 'Renamed', info: { owner: 'alice' } });
+
+    host.load('a', 'rev-1');
+    received.next({
+      op: OP.NOTE_REVISION,
+      msgId: 'request-2',
+      data: { noteId: 'a', revisionId: 'rev-1', note: note('a') }
+    });
+    received.next({ op: OP.NOTE_UPDATED, data: { noteId: 'a', name: 'Live', config: {}, info: {} } });
+    expect(
+      host.store.getSnapshot().readState.status === 'ready' && host.store.getSnapshot().readState.data.note.name
+    ).toBe('a');
+    host.destroy();
+  });
+
   it('ignores stale, duplicate and uncorrelated NOTE replies after A to B to A', () => {
     const { host, received } = createHost();
     host.load('a', null);

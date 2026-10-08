@@ -79,6 +79,14 @@ export type NotebookCoreOutputEvent = Readonly<{
 }> &
   (Readonly<{ kind: 'append' }> | Readonly<{ kind: 'update'; resultType: string }>);
 
+export type NotebookCoreNoteUpdatedEvent = Readonly<{
+  noteId: string;
+  sequence: number;
+  name: string;
+  config: Readonly<Record<string, unknown>>;
+  info: Readonly<Record<string, unknown>>;
+}>;
+
 type StreamResult = Readonly<{ type: string; data: string }>;
 type StreamOutput = {
   results: Map<number, StreamResult>;
@@ -136,7 +144,7 @@ const sameJsonValue = (left: unknown, right: unknown): boolean => {
 /**
  * Host-owned normalized note store. The host must subscribe before requesting NOTE.
  * Incremental paragraph and output events require trustworthy note attribution;
- * collaboration patches and metadata broadcasts still require a fresh read.
+ * Collaboration patches still require a fresh read.
  */
 export class NotebookCoreReadStore {
   readonly port: NotebookCorePort = Object.freeze({
@@ -471,6 +479,34 @@ export class NotebookCoreReadStore {
     }
     this.runs.delete(run.paragraphId);
     this.runBases.delete(run.paragraphId);
+    return true;
+  }
+
+  acceptNoteUpdated(request: NotebookCoreReadRequest, event: NotebookCoreNoteUpdatedEvent): boolean {
+    const state = this.snapshot.readState;
+    if (
+      !this.isLiveRequest(request) ||
+      state.status !== 'ready' ||
+      event.noteId !== request.noteId ||
+      !Number.isSafeInteger(event.sequence) ||
+      event.sequence <= this.eventSequence
+    ) {
+      return false;
+    }
+    const note = state.data.note;
+    const nextNote = { ...note, name: event.name, config: event.config, info: event.info };
+    this.eventSequence = event.sequence;
+    if (!sameJsonValue(note, nextNote)) {
+      this.publish(
+        Object.freeze({
+          ...this.snapshot,
+          readState: Object.freeze({
+            ...state,
+            data: Object.freeze({ ...state.data, note: cloneAndFreeze(nextNote) })
+          })
+        })
+      );
+    }
     return true;
   }
 
