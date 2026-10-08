@@ -15,3 +15,5 @@ export * from './message';
 export * from './paragraph-state';
 
 export * from './assistant-ui';
+
+export * from './assistant';
