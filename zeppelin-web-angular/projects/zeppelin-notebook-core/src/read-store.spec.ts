@@ -86,17 +86,55 @@ describe('notebook read store', () => {
       id: 'note-a',
       name: 'note-a name',
       path: '/note-a',
+      lookAndFeel: 'default',
       paragraphIds: ['p2', 'p1']
     });
     expect(snapshot.note?.paragraphsById.p1).toEqual({
       id: 'p1',
       title: null,
+      titleVisible: false,
       text: '%md p1',
       status: 'FINISHED',
+      resultHidden: false,
       resultCode: 'SUCCESS',
       resultMessages: [{ type: 'TEXT', data: 'p1 output' }],
       chartConfigs: { '0': { mode: 'table', height: 300 } }
     });
+  });
+
+  it('preserves persisted read-only display settings without retaining the input config', () => {
+    const store = createNotebookReadStore();
+    const request = store.activate({ kind: 'note', noteId: 'note-a' });
+    const input = {
+      ...note('note-a', [paragraph('p1', { config: { title: true, tableHide: true } })]),
+      config: { looknfeel: 'report' as const }
+    };
+
+    expect(request.acceptNote(input)).toBe(true);
+    expect(store.getSnapshot().note).toMatchObject({
+      lookAndFeel: 'report',
+      paragraphsById: { p1: { titleVisible: true, resultHidden: true } }
+    });
+
+    expect('config' in store.getSnapshot().note!).toBe(false);
+
+    expect(request.acceptNote(note('note-a', [paragraph('p1')]))).toBe(true);
+    expect(store.getSnapshot().note).toMatchObject({
+      lookAndFeel: 'default',
+      paragraphsById: { p1: { titleVisible: false, resultHidden: false } }
+    });
+  });
+
+  it('preserves own result-index keys without treating them as object prototypes', () => {
+    const store = createNotebookReadStore();
+    const request = store.activate({ kind: 'note', noteId: 'note-a' });
+    const results = JSON.parse('{"__proto__":{"graph":{"mode":"table"}}}') as NonNullable<
+      NonNullable<NotebookParagraphInput['config']>['results']
+    >;
+
+    expect(request.acceptNote(note('note-a', [paragraph('p1', { config: { results } })]))).toBe(true);
+    const chartConfigs = store.getSnapshot().note!.paragraphsById.p1.chartConfigs;
+    expect(Object.getOwnPropertyDescriptor(chartConfigs, '__proto__')?.value).toEqual({ mode: 'table' });
   });
 
   it.each(['not-found', 'access-denied', 'failed'] as const)('reports a %s load outcome without a note', reason => {
@@ -106,6 +144,46 @@ describe('notebook read store', () => {
     expect(request.fail(reason)).toBe(true);
 
     expect(store.getSnapshot()).toMatchObject({ noteId: 'note-a', status: reason, note: null });
+  });
+
+  it('fails an initial full note with duplicate paragraph ids instead of aliasing their content', () => {
+    const store = createNotebookReadStore();
+    const request = store.activate({ kind: 'note', noteId: 'note-a' });
+
+    expect(
+      request.acceptNote(note('note-a', [paragraph('p1', { text: 'first' }), paragraph('p1', { text: 'second' })]))
+    ).toBe(false);
+
+    expect(store.getSnapshot()).toMatchObject({ status: 'failed', note: null });
+    expect(request.acceptNote(note('note-a'))).toBe(false);
+  });
+
+  it('fails a ready note when a later full note has duplicate paragraph ids', () => {
+    const store = createNotebookReadStore();
+    const request = store.activate({ kind: 'note', noteId: 'note-a' });
+    request.acceptNote(note('note-a'));
+    const notifications = recordNotifications(store);
+
+    expect(request.acceptNote(note('note-a', [paragraph('p1'), paragraph('p1')]))).toBe(false);
+
+    expect(store.getSnapshot()).toMatchObject({ status: 'failed', note: null });
+    expect(notifications.map(snapshot => snapshot.status)).toEqual(['failed']);
+    expect(request.acceptNote(note('note-a'))).toBe(false);
+  });
+
+  it('fails a revision with duplicate paragraph ids', () => {
+    const store = createNotebookReadStore();
+    const request = store.activate({ kind: 'revision', noteId: 'note-a', revisionId: 'r1' });
+
+    expect(
+      request.acceptRevision({
+        noteId: 'note-a',
+        revisionId: 'r1',
+        note: note('note-a', [paragraph('p1'), paragraph('p1')])
+      })
+    ).toBe(false);
+
+    expect(store.getSnapshot()).toMatchObject({ status: 'failed', note: null });
   });
 
   it('ends a request at its first failure', () => {
@@ -337,13 +415,23 @@ describe('notebook read store', () => {
       expect(store.getSnapshot()).toMatchObject({ noteId: 'note-a', revisionId: 'r1', status: 'ready' });
     });
 
-    it('treats a NOTE_REVISION without a note as not found', () => {
+    it('keeps a ready revision unchanged when a later response embeds another note', () => {
+      const store = createNotebookReadStore();
+      const request = store.activate({ kind: 'revision', noteId: 'note-a', revisionId: 'r1' });
+      request.acceptRevision({ noteId: 'note-a', revisionId: 'r1', note: note('note-a') });
+      const readySnapshot = store.getSnapshot();
+
+      expect(request.acceptRevision({ noteId: 'note-a', revisionId: 'r1', note: note('note-b') })).toBe(false);
+      expect(store.getSnapshot()).toBe(readySnapshot);
+    });
+
+    it('does not misreport an unavailable NOTE_REVISION as not found', () => {
       const store = createNotebookReadStore();
       const request = store.activate({ kind: 'revision', noteId: 'note-a', revisionId: 'r1' });
 
       expect(request.acceptRevision({ noteId: 'note-a', revisionId: 'r1' })).toBe(true);
 
-      expect(store.getSnapshot()).toMatchObject({ status: 'not-found', note: null });
+      expect(store.getSnapshot()).toMatchObject({ status: 'failed', note: null });
     });
 
     it('switches between the live note and its revision, rejecting the replaced request', () => {
@@ -406,6 +494,16 @@ describe('notebook read store', () => {
       expect(aclRequest.accept(acl)).toBe(true);
 
       expect(store.getSnapshot().acl).toEqual({ status: 'ready', ...acl });
+    });
+
+    it('accepts a pending permissions response after the note load fails without reviving the note', () => {
+      const store = createNotebookReadStore();
+      const request = store.activate({ kind: 'note', noteId: 'note-a' });
+      const aclRequest = request.readAcl();
+      request.fail('not-found');
+
+      expect(aclRequest.accept(acl)).toBe(true);
+      expect(store.getSnapshot()).toMatchObject({ status: 'not-found', note: null, acl: { status: 'ready', ...acl } });
     });
 
     it.each(['access-denied', 'failed'] as const)('reports a %s permissions read without lists', reason => {

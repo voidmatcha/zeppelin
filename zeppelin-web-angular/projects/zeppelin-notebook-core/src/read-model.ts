@@ -31,7 +31,11 @@ export interface NotebookParagraphInput {
   readonly text?: string;
   readonly status: NotebookParagraphStatus;
   /** Persisted visualization settings, keyed by result index. The Core keeps `graph` uninterpreted. */
-  readonly config?: Readonly<{ results?: Readonly<{ [resultIndex: string]: Readonly<{ graph?: unknown }> }> }>;
+  readonly config?: Readonly<{
+    title?: boolean;
+    tableHide?: boolean;
+    results?: Readonly<{ [resultIndex: string]: Readonly<{ graph?: unknown }> }>;
+  }>;
   readonly results?: Readonly<{ code?: NotebookResultCode; msg?: readonly NotebookResultMessageInput[] }>;
 }
 
@@ -40,6 +44,7 @@ export interface NotebookNoteInput {
   readonly id: string;
   readonly name: string;
   readonly path?: string;
+  readonly config?: Readonly<{ looknfeel?: 'default' | 'simple' | 'report' }>;
   readonly paragraphs: readonly NotebookParagraphInput[];
 }
 
@@ -79,8 +84,10 @@ export type NotebookResultMessage = Readonly<{ type: string; data: string }>;
 export type NotebookReadParagraph = Readonly<{
   id: string;
   title: string | null;
+  titleVisible: boolean;
   text: string;
   status: NotebookParagraphStatus;
+  resultHidden: boolean;
   resultCode: NotebookResultCode | null;
   resultMessages: readonly NotebookResultMessage[];
   /** Persisted `graph` settings by result index, kept as the server sent them. */
@@ -91,6 +98,7 @@ export type NotebookReadNote = Readonly<{
   id: string;
   name: string;
   path: string | null;
+  lookAndFeel: 'default' | 'simple' | 'report';
   paragraphIds: readonly string[];
   paragraphsById: Readonly<{ [paragraphId: string]: NotebookReadParagraph }>;
 }>;

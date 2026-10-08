@@ -41,13 +41,15 @@ export interface NotebookAclRequest {
  * method rejects, including for the same target visited again.
  *
  * Each method returns whether the input was applied.
+ * The handle does not identify a wire response: the host must attribute direct replies and
+ * errors to their requests before calling these methods.
  */
 export interface NotebookReadRequest {
   readonly target: NotebookReadTarget;
   isCurrent(): boolean;
-  /** A full NOTE for a live-note target. Accepted while loading or ready. */
+  /** A full NOTE for a live-note target. Duplicate paragraph ids fail the read. */
   acceptNote(note: NotebookNoteInput): boolean;
-  /** A full NOTE_REVISION for a revision target. A response without a note is `not-found`. */
+  /** A full NOTE_REVISION for a revision target. A response without a note has no known cause. */
   acceptRevision(revision: NotebookRevisionInput): boolean;
   /** Ends a load that has not completed. A failure ends this request; activate again to retry. */
   fail(reason: NotebookReadFailure): boolean;
@@ -72,11 +74,7 @@ const freezeCopy = (value: unknown): unknown => {
     return Object.freeze(value.map(freezeCopy));
   }
   if (value !== null && typeof value === 'object') {
-    const copy: { [key: string]: unknown } = {};
-    for (const key of Object.keys(value)) {
-      copy[key] = freezeCopy((value as { [key: string]: unknown })[key]);
-    }
-    return Object.freeze(copy);
+    return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, freezeCopy(item)])));
   }
   return value;
 };
@@ -117,7 +115,7 @@ const unknownAcl = emptyAcl('unknown');
 const loadingAcl = emptyAcl('loading');
 
 const buildParagraph = (input: NotebookParagraphInput): NotebookReadParagraph => {
-  const chartConfigs: { [resultIndex: string]: unknown } = {};
+  const chartConfigs: { [resultIndex: string]: unknown } = Object.create(null);
   const configResults = input.config?.results ?? {};
   for (const resultIndex of Object.keys(configResults)) {
     const graph = configResults[resultIndex]?.graph;
@@ -128,17 +126,23 @@ const buildParagraph = (input: NotebookParagraphInput): NotebookReadParagraph =>
   return freezeCopy({
     id: input.id,
     title: input.title ?? null,
+    titleVisible: input.config?.title === true,
     text: input.text ?? '',
     status: input.status,
+    resultHidden: input.config?.tableHide === true,
     resultCode: input.results?.code ?? null,
     resultMessages: (input.results?.msg ?? []).map(message => ({ type: message.type, data: message.data })),
     chartConfigs
   }) as NotebookReadParagraph;
 };
 
-const buildNote = (input: NotebookNoteInput, previous: NotebookReadNote | null): NotebookReadNote => {
-  const paragraphsById: { [paragraphId: string]: NotebookReadParagraph } = {};
+const buildNote = (input: NotebookNoteInput, previous: NotebookReadNote | null): NotebookReadNote | null => {
+  const paragraphsById: { [paragraphId: string]: NotebookReadParagraph } = Object.create(null);
   for (const paragraphInput of input.paragraphs) {
+    // A duplicate would make two positions resolve to the same paragraph in the normalized model.
+    if (Object.prototype.hasOwnProperty.call(paragraphsById, paragraphInput.id)) {
+      return null;
+    }
     const previousParagraph =
       previous && Object.prototype.hasOwnProperty.call(previous.paragraphsById, paragraphInput.id)
         ? previous.paragraphsById[paragraphInput.id]
@@ -149,6 +153,7 @@ const buildNote = (input: NotebookNoteInput, previous: NotebookReadNote | null):
     id: input.id,
     name: input.name,
     path: input.path ?? null,
+    lookAndFeel: input.config?.looknfeel ?? 'default',
     paragraphIds: reuse(previous?.paragraphIds, Object.freeze(input.paragraphs.map(paragraph => paragraph.id))),
     paragraphsById: Object.freeze(paragraphsById)
   });
@@ -228,9 +233,15 @@ export const createNotebookReadStore = (): NotebookReadStore => {
     // A permissions re-read passes through `loading`; reuse the last lists read in this activation.
     let lastReadyAcl: NotebookReadAcl | undefined;
 
-    const acceptFullNote = (input: NotebookNoteInput): void => {
+    const acceptFullNote = (input: NotebookNoteInput): boolean => {
       const previous = snapshot.status === 'ready' ? snapshot.note : null;
-      update({ status: 'ready', note: buildNote(input, previous) });
+      const note = buildNote(input, previous);
+      if (note === null) {
+        update({ status: 'failed', note: null });
+        return false;
+      }
+      update({ status: 'ready', note });
+      return true;
     };
 
     const readAcl = (): NotebookAclRequest => {
@@ -275,8 +286,7 @@ export const createNotebookReadStore = (): NotebookReadStore => {
         if (!canLoad() || target.kind !== 'note' || input.id !== target.noteId) {
           return false;
         }
-        acceptFullNote(input);
-        return true;
+        return acceptFullNote(input);
       },
       acceptRevision: (input: NotebookRevisionInput): boolean => {
         if (
@@ -291,14 +301,13 @@ export const createNotebookReadStore = (): NotebookReadStore => {
           if (snapshot.status !== 'loading') {
             return false;
           }
-          update({ status: 'not-found', note: null });
+          update({ status: 'failed', note: null });
           return true;
         }
         if (input.note.id !== target.noteId) {
           return false;
         }
-        acceptFullNote(input.note);
-        return true;
+        return acceptFullNote(input.note);
       },
       fail: (reason: NotebookReadFailure): boolean => {
         if (!isCurrent() || snapshot.status !== 'loading') {

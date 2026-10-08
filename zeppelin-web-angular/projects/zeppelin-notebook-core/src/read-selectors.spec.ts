@@ -75,6 +75,25 @@ describe('notebook read selectors', () => {
     expect(selectChartConfig(snapshot, 'p2', 0)).toBeUndefined();
   });
 
+  it('finds a paragraph with an inherited-object-property id and preserves special graph keys', () => {
+    const store = createNotebookReadStore();
+    const graph = JSON.parse('{"__proto__":{"label":"kept"}}') as Record<string, unknown>;
+    const request = store.activate({ kind: 'note', noteId: 'note-a' });
+
+    expect(
+      request.acceptNote({
+        ...note,
+        paragraphs: [{ id: '__proto__', status: 'FINISHED', config: { results: { '0': { graph } } } }]
+      })
+    ).toBe(true);
+
+    const snapshot = store.getSnapshot();
+    expect(selectOrderedParagraphs(snapshot).map(paragraph => paragraph.id)).toEqual(['__proto__']);
+    expect(selectParagraph(snapshot, '__proto__')?.id).toBe('__proto__');
+    expect(Object.prototype.hasOwnProperty.call(selectChartConfig(snapshot, '__proto__', 0), '__proto__')).toBe(true);
+    expect(selectChartConfig(snapshot, '__proto__', 0)).toEqual(graph);
+  });
+
   it.each(['unknown', 'loading', 'access-denied', 'failed'])('grants nothing while permissions are %s', status => {
     const { store, request } = loadedStore();
     if (status !== 'unknown') {
