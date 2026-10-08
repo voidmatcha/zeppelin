@@ -10,7 +10,9 @@
  * limitations under the License.
  */
 
-import { Component, Input } from '@angular/core';
+import { ChangeDetectorRef, Component, HostBinding, Input, OnDestroy } from '@angular/core';
+
+import { NotebookCorePort } from '@zeppelin/notebook-core';
 
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 
@@ -20,13 +22,45 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
     '<div data-testid="react-notebook-host" zeppelin-react-mount="./NotebookRouteEntry" [reactProps]="reactProps"></div>',
   standalone: false
 })
-export class NotebookReactEntryComponent {
+export class NotebookReactEntryComponent implements OnDestroy {
   @Input({ required: true }) onEntryFailure!: () => void;
+  @HostBinding('attr.data-read-ready') ready = false;
 
   reactProps: Record<string, unknown> = {};
+  private port?: NotebookCorePort;
+  private unsubscribe?: () => void;
+
+  constructor(private readonly cdr: ChangeDetectorRef) {}
 
   @Input({ required: true }) set host(value: NotebookCoreReadHost) {
-    this.reactProps = { core: value.port, onError: this.onError };
+    this.unsubscribe?.();
+    this.port = value.port;
+    this.ready = false;
+    this.cdr.markForCheck();
+    this.unsubscribe = value.port.subscribe(() => {
+      const state = value.port.getSnapshot().readState;
+      if (state?.status !== 'ready' || state.acl.status !== 'ready') {
+        this.ready = false;
+        this.cdr.markForCheck();
+      }
+    });
+    this.reactProps = {
+      core: value.port,
+      onError: this.onError,
+      onReady: () => {
+        const state = value.port.getSnapshot().readState;
+        if (this.port === value.port && state?.status === 'ready' && state.acl.status === 'ready') {
+          this.ready = true;
+          this.cdr.markForCheck();
+        }
+      }
+    };
+  }
+
+  ngOnDestroy(): void {
+    this.unsubscribe?.();
+    this.port = undefined;
+    this.ready = false;
   }
 
   private readonly onError = (_error: unknown): void => this.onEntryFailure();

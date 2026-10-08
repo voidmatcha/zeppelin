@@ -17,8 +17,27 @@ type Aggregate = { sum: number; count: number; min: number; max: number };
 
 export type ReadOnlyChartData = {
   labels: string[];
-  series: { label: string; values: number[] }[];
+  series: { label: string; values: (number | null)[] }[];
   scatter: { label: string; points: { x: number; y: number; radius: number }[] }[];
+};
+
+const savedChartModes = new Set([
+  'table',
+  'multiBarChart',
+  'lineChart',
+  'stackedAreaChart',
+  'pieChart',
+  'scatterChart'
+]);
+
+export const supportsReadOnlyChart = (graph: SavedGraphConfig | undefined): boolean => {
+  if (!graph?.mode) return true;
+  if (!savedChartModes.has(graph.mode)) return false;
+  if (graph.mode === 'pieChart' && (graph.groups?.length || (graph.values?.length ?? 0) > 1)) return false;
+  return (
+    graph.mode !== 'stackedAreaChart' ||
+    !['stream', 'expand'].includes(graph.setting?.stackedAreaChart?.style ?? 'stack')
+  );
 };
 
 const number = (value: string | undefined): number => {
@@ -73,21 +92,32 @@ export const readOnlyChartData = (data: TableData, graph: SavedGraphConfig): Rea
     };
   }
 
-  const keys = graph.keys?.length ? graph.keys.map(key => columnIndex(data, key.name, 0)) : [0];
+  const useDefaultMapping = !graph.keys?.length && !graph.groups?.length && !graph.values?.length;
+  const keys = (graph.keys ?? []).map(key => columnIndex(data, key.name, -1)).filter(index => index >= 0);
+  if (useDefaultMapping && data.columnNames[0]) keys.push(0);
   const groupIndexes = (graph.groups ?? []).map(group => columnIndex(data, group.name, -1)).filter(index => index >= 0);
-  const values = graph.values?.length
-    ? graph.values.map(value => ({ name: value.name, index: columnIndex(data, value.name, 1), aggr: value.aggr }))
-    : [{ name: data.columnNames[1] ?? 'Value', index: 1, aggr: 'sum' }];
+  const values = (graph.values ?? [])
+    .map(value => ({ name: value.name, index: columnIndex(data, value.name, -1), aggr: value.aggr }))
+    .filter(value => value.index >= 0)
+    .filter(
+      (value, index, all) =>
+        all.findIndex(candidate => candidate.index === value.index && candidate.aggr === value.aggr) === index
+    );
+  if (useDefaultMapping && data.columnNames[1]) {
+    values.push({ name: data.columnNames[1], index: 1, aggr: 'sum' });
+  }
   const labels: string[] = [];
-  const series = new Map<string, Map<string, Aggregate>>();
+  const series = new Map<string, { aggr: string; buckets: Map<string, Aggregate> }>();
 
   for (const row of data.rows) {
     const key = keys.map(index => row[index] ?? '').join(' / ');
     if (!labels.includes(key)) labels.push(key);
     const group = groupIndexes.map(index => row[index] ?? '').join(' / ');
     for (const value of values) {
-      const label = group ? `${value.name} / ${group}` : value.name;
-      const buckets = series.get(label) ?? new Map<string, Aggregate>();
+      const field = `${value.name}(${value.aggr})`;
+      const label = group ? `${field} / ${group}` : field;
+      const entry = series.get(label) ?? { aggr: value.aggr, buckets: new Map<string, Aggregate>() };
+      const buckets = entry.buckets;
       const current = buckets.get(key);
       const numeric = number(row[value.index]);
       buckets.set(key, {
@@ -96,22 +126,19 @@ export const readOnlyChartData = (data: TableData, graph: SavedGraphConfig): Rea
         min: Math.min(current?.min ?? numeric, numeric),
         max: Math.max(current?.max ?? numeric, numeric)
       });
-      series.set(label, buckets);
+      series.set(label, entry);
     }
   }
 
   return {
     labels,
-    series: Array.from(series).map(([label, buckets]) => {
-      const value = values.find(candidate => label === candidate.name || label.startsWith(`${candidate.name} / `));
-      return {
-        label,
-        values: labels.map(key => {
-          const aggregate = buckets.get(key);
-          return aggregate ? aggregateValue(aggregate, value?.aggr ?? 'sum') : 0;
-        })
-      };
-    }),
+    series: Array.from(series).map(([label, { aggr, buckets }]) => ({
+      label,
+      values: labels.map(key => {
+        const aggregate = buckets.get(key);
+        return aggregate ? aggregateValue(aggregate, aggr) : graph.mode === 'stackedAreaChart' ? 0 : null;
+      })
+    })),
     scatter: []
   };
 };

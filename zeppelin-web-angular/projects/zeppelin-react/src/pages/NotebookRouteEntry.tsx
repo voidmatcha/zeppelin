@@ -16,6 +16,7 @@ import { Alert, Tag, Typography } from 'antd';
 import type { NotebookCoreReadState, NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
 import { ReactErrorBoundary } from '@/components';
 import type { ResultConfigs, ResultMessage } from '@/components/visualizations/result-types';
+import { supportsReadOnlyChart } from '@/components/visualizations/readOnlyChartData';
 import { NotebookCoreProvider, useNotebookSelector } from '@/notebook/NotebookCoreProvider';
 import { SingleResultRenderer } from '@/templates';
 import { ZeppelinThemeProvider } from '@/theme';
@@ -153,35 +154,64 @@ const NotebookRouteScreen = ({
     setReadyResults(current => (current.has(key) ? current : new Set(current).add(key)));
   }, []);
   const state = snapshot.readState ?? { status: 'initial' as const, acl: { status: 'loading' as const } };
+  useEffect(() => {
+    if (state.status !== 'ready') {
+      reportedReady.current = false;
+      setReadyResults(current => (current.size === 0 ? current : new Set()));
+    }
+  }, [state.status]);
   const requiredResults: string[] = [];
+  let hasUnsupportedResult = false;
   if (state.status === 'ready') {
     for (const id of state.data.paragraphOrder) {
       const paragraph = state.data.paragraphsById[id] as ReadParagraph | undefined;
       if (paragraph?.config?.tableHide) continue;
       paragraph?.results?.msg?.forEach((result, index) => {
-        if (result.type === 'TABLE') requiredResults.push(`${id}:${index}`);
+        if (result.type === 'ANGULAR') {
+          hasUnsupportedResult = true;
+        } else if (result.type === 'TABLE') {
+          if (!supportsReadOnlyChart(paragraph.config?.results?.[index]?.graph)) hasUnsupportedResult = true;
+          requiredResults.push(`${id}:${index}`);
+        }
       });
     }
   }
   const complete =
-    state.status === 'ready'
-      ? state.acl.status !== 'loading' && requiredResults.every(key => readyResults.has(key))
-      : !['initial', 'loading', 'disposed'].includes(state.status);
+    state.status === 'ready' &&
+    state.acl.status === 'ready' &&
+    !hasUnsupportedResult &&
+    requiredResults.every(key => readyResults.has(key));
   useEffect(() => {
     if (onReady && !reportedReady.current && complete) {
       reportedReady.current = true;
       onReady();
     }
   }, [complete, onReady]);
+  const defaultNotebookHref = (() => {
+    const [path, query] = window.location.hash.split('?');
+    const params = new URLSearchParams(query);
+    params.delete('notebookReactPrivate');
+    params.delete('notebookCoreReadOnly');
+    return `${path}${params.size ? `?${params}` : ''}`;
+  })();
   return (
     <ZeppelinThemeProvider>
       <main data-testid="react-notebook-entry" aria-label="Read-only notebook" className="notebook-react-read">
-        <NotebookReadContent
-          state={state}
-          revisionId={snapshot.revisionId}
-          onResultReady={onResultReady}
-          onError={onError}
-        />
+        {hasUnsupportedResult ? (
+          <Alert
+            type="warning"
+            role="alert"
+            message="This notebook contains a result that the read-only preview cannot display."
+            description={<a href={defaultNotebookHref}>Open the default Angular notebook</a>}
+          />
+        ) : (
+          <NotebookReadContent
+            state={state}
+            revisionId={snapshot.revisionId}
+            onResultReady={onResultReady}
+            onError={onError}
+          />
+        )}
       </main>
     </ZeppelinThemeProvider>
   );

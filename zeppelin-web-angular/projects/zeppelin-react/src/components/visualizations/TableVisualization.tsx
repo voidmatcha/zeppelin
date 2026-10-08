@@ -13,7 +13,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Table } from 'antd';
 import { VisualizationControls } from './VisualizationControls';
-import { readOnlyChartData } from './readOnlyChartData';
+import { readOnlyChartData, supportsReadOnlyChart } from './readOnlyChartData';
 import { applyChartTheme, useHostThemeMode } from '@/theme';
 import { parseTableData, exportFile } from '@/utils';
 import type { ResultConfig, ResultMessage } from './result-types';
@@ -28,8 +28,6 @@ interface TableVisualizationProps {
   onVisualError?: (error: unknown) => void;
 }
 
-const savedChartModes = new Set(['multiBarChart', 'lineChart', 'stackedAreaChart', 'pieChart', 'scatterChart']);
-
 export const TableVisualization = ({
   result,
   config,
@@ -40,12 +38,9 @@ export const TableVisualization = ({
 }: TableVisualizationProps) => {
   const [currentMode, setCurrentMode] = useState<string>(config?.graph?.mode || 'table');
   const savedMode = config?.graph?.mode;
-  const readOnlyMode = savedMode && savedChartModes.has(savedMode) ? savedMode : 'table';
-  const unsupportedAreaStyle =
-    readOnly &&
-    readOnlyMode === 'stackedAreaChart' &&
-    ['stream', 'expand'].includes(config?.graph?.setting?.stackedAreaChart?.style ?? 'stack');
-  const displayMode = readOnly ? (unsupportedAreaStyle ? 'table' : readOnlyMode) : currentMode;
+  const savedBarStacked = config?.graph?.setting?.multiBarChart?.stacked === true;
+  const unsupportedSavedGraph = readOnly && !supportsReadOnlyChart(config?.graph);
+  const displayMode = readOnly ? (unsupportedSavedGraph ? 'table' : savedMode || 'table') : currentMode;
   const chartRef = useRef<HTMLDivElement>(null);
   const themeMode = useHostThemeMode();
 
@@ -93,6 +88,10 @@ export const TableVisualization = ({
   };
 
   useEffect(() => {
+    if (unsupportedSavedGraph) {
+      onVisualError?.(new Error(`Unsupported saved chart configuration: ${savedMode}`));
+      return;
+    }
     const container = chartRef.current;
     if (!container || !tableData || tableData.rows.length === 0 || displayMode === 'table') {
       if (readOnly && visualKey) onVisualReady?.(visualKey);
@@ -166,7 +165,9 @@ export const TableVisualization = ({
               options:
                 displayMode === 'stackedAreaChart'
                   ? { ...sharedOptions, scales: { y: { stacked: true } } }
-                  : sharedOptions
+                  : displayMode === 'multiBarChart' && savedBarStacked
+                    ? { ...sharedOptions, scales: { x: { stacked: true }, y: { stacked: true } } }
+                    : sharedOptions
             };
           }
         } else
@@ -300,14 +301,27 @@ export const TableVisualization = ({
         container.innerHTML = '';
       }
     };
-  }, [currentMode, displayMode, onVisualError, onVisualReady, readOnly, readOnlyData, tableData, themeMode, visualKey]);
+  }, [
+    currentMode,
+    displayMode,
+    onVisualError,
+    onVisualReady,
+    readOnly,
+    readOnlyData,
+    savedBarStacked,
+    savedMode,
+    tableData,
+    themeMode,
+    unsupportedSavedGraph,
+    visualKey
+  ]);
 
   return (
     <div>
       {!readOnly && (
         <VisualizationControls currentMode={currentMode} onModeChange={setCurrentMode} onExport={handleExport} />
       )}
-      {unsupportedAreaStyle && <p role="status">This saved area style is not available in the read-only preview.</p>}
+      {unsupportedSavedGraph && <p role="status">This saved chart is not available in the read-only preview.</p>}
       {renderVisualization()}
       {readOnly && displayMode !== 'table' && readOnlyData && (
         <details>
@@ -315,7 +329,11 @@ export const TableVisualization = ({
           <table>
             <thead>
               <tr>
-                <th scope="col">{displayMode === 'scatterChart' ? 'Group' : 'Category'}</th>
+                <th scope="col">
+                  {displayMode === 'scatterChart'
+                    ? 'Group'
+                    : config?.graph?.keys?.map(key => key.name).join(' / ') || 'Category'}
+                </th>
                 {displayMode === 'scatterChart' ? (
                   <>
                     <th scope="col">X</th>

@@ -19,6 +19,7 @@ export type SavedGraphConfig = Readonly<{
   groups?: readonly Readonly<{ name: string }>[];
   values?: readonly Readonly<{ name: string; aggr: string }>[];
   setting?: Readonly<{
+    multiBarChart?: Readonly<{ stacked?: boolean }>;
     stackedAreaChart?: Readonly<{ style?: string }>;
     scatterChart?: Readonly<{
       xAxis?: Readonly<{ name: string }>;

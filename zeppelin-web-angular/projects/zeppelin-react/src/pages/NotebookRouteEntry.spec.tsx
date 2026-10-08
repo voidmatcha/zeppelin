@@ -17,9 +17,14 @@ import { NotebookCoreReadStore, NotebookCoreWireNote } from '@zeppelin/notebook-
 import { DatasetType } from '@zeppelin/sdk';
 import { mount } from './NotebookRouteEntry';
 
+const { chartConfigurations } = vi.hoisted(() => ({ chartConfigurations: [] as unknown[] }));
+
 vi.mock('chart.js/auto', () => ({
   Chart: class {
     static defaults = { color: '', borderColor: '' };
+    constructor(_context: unknown, configuration: unknown) {
+      chartConfigurations.push(configuration);
+    }
     destroy() {}
   }
 }));
@@ -34,6 +39,8 @@ describe('NotebookRouteEntry', () => {
       unmount = undefined;
     }
     element.replaceChildren();
+    chartConfigurations.length = 0;
+    window.location.hash = '';
     vi.restoreAllMocks();
   });
 
@@ -61,6 +68,29 @@ describe('NotebookRouteEntry', () => {
       store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
     });
     expect(onReady).toHaveBeenCalledOnce();
+    store.dispose();
+  });
+
+  it('does not report a failed note or unavailable permissions as ready', () => {
+    const store = new NotebookCoreReadStore('');
+    const onReady = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady }).unmount;
+    });
+    let request = store.beginRoute('missing', null);
+    act(() => {
+      store.acceptNoteFailure(request, 'notFound');
+    });
+    expect(element.textContent).toContain('Notebook not found');
+    expect(onReady).not.toHaveBeenCalled();
+
+    act(() => {
+      request = store.beginRoute('note-1', null);
+      store.acceptNote(request, { id: 'note-1', name: 'Loaded note', path: '/Loaded note', paragraphs: [] });
+      store.acceptPermissionsFailure(request, 'failed');
+    });
+    expect(element.textContent).toContain('Could not load permissions');
+    expect(onReady).not.toHaveBeenCalled();
     store.dispose();
   });
 
@@ -166,6 +196,127 @@ describe('NotebookRouteEntry', () => {
     store.dispose();
   });
 
+  it('applies the saved stacked bar setting to the chart and accessible table', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as CanvasRenderingContext2D);
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-chart', null);
+    const onReady = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady }).unmount;
+      store.acceptNote(request, {
+        id: 'note-chart',
+        name: 'Saved stacked chart',
+        path: '/Saved stacked chart',
+        paragraphs: [
+          {
+            id: 'paragraph-chart',
+            text: '%sh saved',
+            status: 'FINISHED',
+            config: {
+              results: {
+                0: {
+                  graph: {
+                    mode: 'multiBarChart',
+                    keys: [{ name: 'city' }],
+                    groups: [],
+                    values: [{ name: 'amount', aggr: 'sum' }],
+                    setting: { multiBarChart: { stacked: true } }
+                  }
+                }
+              }
+            },
+            results: { msg: [{ type: DatasetType.TABLE, data: 'city\tamount\nSeoul\t2\nSeoul\t4' }] }
+          }
+        ]
+      } as unknown as NotebookCoreWireNote);
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledOnce());
+    expect(chartConfigurations[0]).toMatchObject({
+      type: 'bar',
+      data: { labels: ['Seoul'], datasets: [{ label: 'amount(sum)', data: [6] }] },
+      options: { scales: { x: { stacked: true }, y: { stacked: true } } }
+    });
+    expect(element.querySelector('details table')?.textContent).toContain('amount(sum)');
+    store.dispose();
+  });
+
+  it('offers the default Angular route for an unsupported saved chart without reporting readiness', () => {
+    window.location.hash = '#/notebook/note-chart?notebookReactPrivate=true&term=saved';
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-chart', null);
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady, onError }).unmount;
+      store.acceptNote(request, {
+        id: 'note-chart',
+        name: 'Saved stream chart',
+        path: '/Saved stream chart',
+        paragraphs: [
+          {
+            id: 'paragraph-chart',
+            text: '%sh saved',
+            status: 'FINISHED',
+            config: {
+              results: {
+                0: {
+                  graph: {
+                    mode: 'stackedAreaChart',
+                    keys: [],
+                    groups: [],
+                    values: [],
+                    setting: { stackedAreaChart: { style: 'stream' } }
+                  }
+                }
+              }
+            },
+            results: { msg: [{ type: DatasetType.TABLE, data: 'city\tamount\nSeoul\t2' }] }
+          }
+        ]
+      } as unknown as NotebookCoreWireNote);
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+
+    const link = element.querySelector<HTMLAnchorElement>('a');
+    expect(link?.textContent).toBe('Open the default Angular notebook');
+    expect(link?.getAttribute('href')).toBe('#/notebook/note-chart?term=saved');
+    expect(element.textContent).toContain('cannot display');
+    expect(onError).not.toHaveBeenCalled();
+    expect(onReady).not.toHaveBeenCalled();
+    store.dispose();
+  });
+
+  it('keeps Angular component results on the default route', () => {
+    window.location.hash = '#/notebook/note-angular?notebookReactPrivate=true';
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-angular', null);
+    const onReady = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady }).unmount;
+      store.acceptNote(request, {
+        id: 'note-angular',
+        name: 'Angular component note',
+        path: '/Angular component note',
+        paragraphs: [
+          {
+            id: 'paragraph-angular',
+            text: '%angular saved',
+            status: 'FINISHED',
+            results: { msg: [{ type: DatasetType.ANGULAR, data: '<p>saved</p>' }] }
+          }
+        ]
+      } as unknown as NotebookCoreWireNote);
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+
+    expect(element.querySelector<HTMLAnchorElement>('a')?.getAttribute('href')).toBe('#/notebook/note-angular');
+    expect(element.textContent).toContain('cannot display');
+    expect(onReady).not.toHaveBeenCalled();
+    store.dispose();
+  });
+
   it('reports readiness again for a different route after its note and ACL load', () => {
     const store = new NotebookCoreReadStore('');
     const onReady = vi.fn();
@@ -189,6 +340,35 @@ describe('NotebookRouteEntry', () => {
     });
     expect(onReady).toHaveBeenCalledTimes(2);
     expect(element.querySelector('h1')?.textContent).toBe('Second');
+    store.dispose();
+  });
+
+  it('waits for a fresh read of the same route before reporting ready again', () => {
+    const store = new NotebookCoreReadStore('');
+    const onReady = vi.fn();
+    act(() => {
+      unmount = mount(element, { core: store.port, onReady }).unmount;
+    });
+    let request = store.beginRoute('note-1', null);
+    act(() => {
+      store.acceptNote(request, { id: 'note-1', name: 'First load', path: '/First', paragraphs: [] });
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+    expect(onReady).toHaveBeenCalledOnce();
+
+    act(() => {
+      request = store.beginRoute('note-1', null);
+    });
+    expect(element.textContent).toContain('Loading notebook');
+    expect(onReady).toHaveBeenCalledOnce();
+    act(() => {
+      store.acceptNote(request, { id: 'note-1', name: 'Reloaded', path: '/Reloaded', paragraphs: [] });
+    });
+    expect(onReady).toHaveBeenCalledOnce();
+    act(() => {
+      store.acceptPermissions(request, { owners: [], readers: [], writers: [], runners: [] });
+    });
+    expect(onReady).toHaveBeenCalledTimes(2);
     store.dispose();
   });
 });

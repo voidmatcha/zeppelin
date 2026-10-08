@@ -30,6 +30,10 @@ export class NotebookReactRoutePage {
   readonly fallbackChartCanvas: Locator;
   readonly fallbackPermissions: Locator;
   readonly legacyNotebook: Locator;
+  readonly reactHost: Locator;
+  readonly legacyParagraphs: Locator;
+  readonly coreParagraphs: Locator;
+  readonly legacyPermissions: Locator;
 
   constructor(private readonly page: Page) {
     this.entry = page.getByTestId('react-notebook-entry');
@@ -43,10 +47,22 @@ export class NotebookReactRoutePage {
     this.fallbackChartCanvas = this.fallback.readView.locator('[data-result-type="TABLE"] canvas');
     this.fallbackPermissions = this.fallback.readView.getByRole('region', { name: 'Notebook permissions' });
     this.legacyNotebook = this.fallback.legacyNotebook;
+    this.reactHost = page.locator('zeppelin-notebook-react-entry');
+    this.legacyParagraphs = this.legacyNotebook.locator('zeppelin-notebook-paragraph');
+    this.coreParagraphs = this.fallback.readView.locator('article');
+    this.legacyPermissions = this.legacyNotebook.locator('zeppelin-notebook-permissions');
   }
 
-  async open(noteId: string): Promise<void> {
-    await this.page.goto(`/#/notebook/${noteId}?notebookReactPrivate=true`);
+  async open(noteId: string, revisionId?: string): Promise<void> {
+    const revision = revisionId ? `/revision/${revisionId}` : '';
+    await this.page.goto(`/#/notebook/${noteId}${revision}?notebookReactPrivate=true`);
+  }
+
+  async changeRoute(noteId: string, revisionId?: string): Promise<void> {
+    const revision = revisionId ? `/revision/${revisionId}` : '';
+    await this.page.evaluate(hash => {
+      window.location.hash = hash;
+    }, `#/notebook/${noteId}${revision}?notebookReactPrivate=true`);
   }
 
   async openDefault(noteId: string): Promise<void> {
@@ -59,5 +75,39 @@ export class NotebookReactRoutePage {
 
   paragraphWithTitle(title: string): Locator {
     return this.paragraphs.filter({ has: this.page.getByRole('heading', { name: title, exact: true }) });
+  }
+
+  legacyChartCanvas(index: number, chartTag: string): Locator {
+    return this.legacyNotebook.getByTestId(`paragraph_read_chart_${index}`).locator(`${chartTag} canvas`);
+  }
+
+  legacyParagraphTitles(): Locator {
+    return this.legacyParagraphs.locator('zeppelin-elastic-input p');
+  }
+
+  legacyBarChart(paragraph: Locator): Locator {
+    return paragraph.locator('zeppelin-bar-chart-visualization');
+  }
+
+  legacyBarCanvas(chart: Locator): Locator {
+    return chart.locator('canvas');
+  }
+
+  legacyChartField(chart: Locator, index: number): Locator {
+    return chart.locator('.field-setting-wrap nz-card').nth(index).locator('.drag-tag');
+  }
+
+  legacyPermissionButton(): Locator {
+    return this.legacyNotebook
+      .locator('zeppelin-notebook-action-bar button')
+      .filter({ has: this.page.locator('.anticon-lock') });
+  }
+
+  legacyPermissionSelection(key: string): Locator {
+    return this.legacyPermissions.locator(`nz-select[name="${key}"] .ant-select-selection-item`);
+  }
+
+  permissionLines(panel: Locator): Locator {
+    return panel.locator('p');
   }
 }

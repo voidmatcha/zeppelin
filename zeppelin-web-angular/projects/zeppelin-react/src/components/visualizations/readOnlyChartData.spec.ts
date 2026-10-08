@@ -11,10 +11,31 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { GraphConfig } from '@zeppelin/sdk';
-import { readOnlyChartData } from './readOnlyChartData';
+import { GraphConfig, VisualizationStackedAreaChart } from '@zeppelin/sdk';
+import { readOnlyChartData, supportsReadOnlyChart } from './readOnlyChartData';
 
 describe('readOnlyChartData', () => {
+  it('keeps Helium and unsupported area styles on the default notebook route', () => {
+    const graph = new GraphConfig();
+    graph.mode = 'helium-custom';
+    expect(supportsReadOnlyChart(graph)).toBe(false);
+    graph.mode = 'stackedAreaChart';
+    graph.setting.stackedAreaChart = new VisualizationStackedAreaChart();
+    graph.setting.stackedAreaChart.style = 'stream';
+    expect(supportsReadOnlyChart(graph)).toBe(false);
+    graph.setting.stackedAreaChart.style = 'stack';
+    expect(supportsReadOnlyChart(graph)).toBe(true);
+    graph.mode = 'pieChart';
+    graph.groups = [{ name: 'team', index: 1, aggr: 'sum' }];
+    expect(supportsReadOnlyChart(graph)).toBe(false);
+    graph.groups = [];
+    graph.values = [
+      { name: 'sales', index: 1, aggr: 'sum' },
+      { name: 'cost', index: 2, aggr: 'sum' }
+    ];
+    expect(supportsReadOnlyChart(graph)).toBe(false);
+  });
+
   it('uses saved key, group and value columns with aggregation instead of the first two columns', () => {
     const graph = new GraphConfig();
     graph.mode = 'multiBarChart';
@@ -38,11 +59,35 @@ describe('readOnlyChartData', () => {
     ).toMatchObject({
       labels: ['Seoul', 'Busan'],
       series: [
-        { label: 'amount / A', values: [5, 0] },
-        { label: 'amount / B', values: [0, 4] }
+        { label: 'amount(sum) / A', values: [5, null] },
+        { label: 'amount(sum) / B', values: [null, 4] }
       ]
     });
     expect(graph).toEqual(original);
+  });
+
+  it('fills absent groups with zero only for stacked area charts', () => {
+    const graph = new GraphConfig();
+    graph.mode = 'stackedAreaChart';
+    graph.keys = [{ name: 'city', index: 0, aggr: 'sum' }];
+    graph.groups = [{ name: 'team', index: 1, aggr: 'sum' }];
+    graph.values = [{ name: 'amount', index: 2, aggr: 'sum' }];
+
+    expect(
+      readOnlyChartData(
+        {
+          columnNames: ['city', 'team', 'amount'],
+          rows: [
+            ['Seoul', 'A', '10'],
+            ['Busan', 'B', '20']
+          ]
+        },
+        graph
+      ).series
+    ).toEqual([
+      { label: 'amount(sum) / A', values: [10, 0] },
+      { label: 'amount(sum) / B', values: [0, 20] }
+    ]);
   });
 
   it('honors saved scatter axes, group and size columns', () => {
@@ -85,8 +130,76 @@ describe('readOnlyChartData', () => {
         graph
       ).series
     ).toEqual([
-      { label: 'amount / East / A', values: [2] },
-      { label: 'amount / East / B', values: [3] }
+      { label: 'amount(sum) / East / A', values: [2] },
+      { label: 'amount(sum) / East / B', values: [3] }
     ]);
+  });
+
+  it('keeps different aggregations of the same saved value separate', () => {
+    const graph = new GraphConfig();
+    graph.mode = 'multiBarChart';
+    graph.keys = [{ name: 'city', index: 0, aggr: 'sum' }];
+    graph.values = [
+      { name: 'amount', index: 1, aggr: 'sum' },
+      { name: 'amount', index: 1, aggr: 'avg' }
+    ];
+
+    expect(
+      readOnlyChartData(
+        {
+          columnNames: ['city', 'amount'],
+          rows: [
+            ['Seoul', '2'],
+            ['Seoul', '4']
+          ]
+        },
+        graph
+      ).series
+    ).toEqual([
+      { label: 'amount(sum)', values: [6] },
+      { label: 'amount(avg)', values: [3] }
+    ]);
+  });
+
+  it('does not count a duplicate saved value mapping twice', () => {
+    const graph = new GraphConfig();
+    graph.mode = 'multiBarChart';
+    graph.keys = [{ name: 'city', index: 0, aggr: 'sum' }];
+    graph.values = [
+      { name: 'amount', index: 1, aggr: 'sum' },
+      { name: 'amount', index: 1, aggr: 'sum' }
+    ];
+
+    expect(
+      readOnlyChartData(
+        {
+          columnNames: ['city', 'amount'],
+          rows: [
+            ['Seoul', '2'],
+            ['Seoul', '4']
+          ]
+        },
+        graph
+      ).series
+    ).toEqual([{ label: 'amount(sum)', values: [6] }]);
+  });
+
+  it('does not invent a key column when saved values have no keys', () => {
+    const graph = new GraphConfig();
+    graph.mode = 'multiBarChart';
+    graph.values = [{ name: 'amount', index: 1, aggr: 'sum' }];
+
+    expect(
+      readOnlyChartData(
+        {
+          columnNames: ['city', 'amount'],
+          rows: [
+            ['Seoul', '2'],
+            ['Busan', '4']
+          ]
+        },
+        graph
+      )
+    ).toMatchObject({ labels: [''], series: [{ label: 'amount(sum)', values: [6] }] });
   });
 });
