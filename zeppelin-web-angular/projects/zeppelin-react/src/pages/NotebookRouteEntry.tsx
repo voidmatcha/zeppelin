@@ -14,8 +14,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Alert, Tag, Typography } from 'antd';
 import type { NotebookCoreReadState, NotebookCoreRemoteProps, NotebookCoreSnapshot } from '@zeppelin/notebook-core';
-import type { ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
 import { ReactErrorBoundary } from '@/components';
+import type { ResultConfigs, ResultMessage } from '@/components/visualizations/result-types';
 import { NotebookCoreProvider, useNotebookSelector } from '@/notebook/NotebookCoreProvider';
 import { SingleResultRenderer } from '@/templates';
 import { ZeppelinThemeProvider } from '@/theme';
@@ -34,9 +34,9 @@ type ReadParagraph = Readonly<{
   config?: {
     editorHide?: boolean;
     tableHide?: boolean;
-    results?: ParagraphConfigResults;
+    results?: ResultConfigs;
   };
-  results?: { msg?: ParagraphIResultsMsgItem[] };
+  results?: { msg?: ResultMessage[] };
 }>;
 
 const ReadOnlyParagraph = ({

@@ -26,6 +26,9 @@ export class NotebookReactRoutePage {
   readonly editor: Locator;
   readonly writeControls: Locator;
   readonly fallback: NotebookCoreReadPage;
+  readonly fallbackSavedText: Locator;
+  readonly fallbackChartCanvas: Locator;
+  readonly fallbackPermissions: Locator;
   readonly legacyNotebook: Locator;
 
   constructor(private readonly page: Page) {
@@ -36,6 +39,9 @@ export class NotebookReactRoutePage {
     this.editor = this.entry.getByRole('textbox');
     this.writeControls = this.entry.getByRole('button', { name: /^(run|save|delete|add paragraph)$/i });
     this.fallback = new NotebookCoreReadPage(page);
+    this.fallbackSavedText = this.fallback.readView.getByText('Persisted result text', { exact: true });
+    this.fallbackChartCanvas = this.fallback.readView.locator('[data-result-type="TABLE"] canvas');
+    this.fallbackPermissions = this.fallback.readView.getByRole('region', { name: 'Notebook permissions' });
     this.legacyNotebook = this.fallback.legacyNotebook;
   }
 
@@ -49,5 +55,9 @@ export class NotebookReactRoutePage {
 
   defaultTitle(name: string): Locator {
     return this.legacyNotebook.getByText(name, { exact: true }).first();
+  }
+
+  paragraphWithTitle(title: string): Locator {
+    return this.paragraphs.filter({ has: this.page.getByRole('heading', { name: title, exact: true }) });
   }
 }

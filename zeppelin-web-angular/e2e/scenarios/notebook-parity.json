@@ -679,7 +679,7 @@
       ],
       "interpreter": null,
       "coverage": {
-        "status": "partial",
+        "status": "covered",
         "tests": [
           {
             "path": "zeppelin-web-angular/e2e/tests/notebook/core-read/notebook-react-route.spec.ts",
@@ -687,7 +687,7 @@
           }
         ],
         "issues": ["ZEPPELIN-6729"],
-        "uncoveredOutcomes": ["NB-PARITY-070-OUTCOME-005"]
+        "uncoveredOutcomes": []
       },
       "implementationEvidence": [
         {

@@ -19,8 +19,45 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { compareNotebookParity, NotebookParityParticipant } from '../../../parity/notebook-parity-comparison.mjs';
+import { DarkModePage } from '../../../models/dark-mode-page';
 import { NotebookReactRoutePage } from '../../../models/notebook-react-route-page';
 import { addPageAnnotationBeforeEach, createTestNotebookWithName, PAGES, waitForZeppelinReady } from '../../../utils';
+
+const savedReadNotebook = (name: string) => ({
+  name,
+  paragraphs: [
+    {
+      id: 'paragraph_react_read_1',
+      title: 'Saved output',
+      text: '%md saved code',
+      status: 'FINISHED',
+      config: { editorHide: false, tableHide: false },
+      results: { code: 'SUCCESS', msg: [{ type: 'TEXT', data: 'Persisted result text' }] }
+    },
+    {
+      id: 'paragraph_react_read_2',
+      title: 'Saved chart',
+      text: '%sh saved table',
+      status: 'FINISHED',
+      config: {
+        results: {
+          0: {
+            graph: {
+              mode: 'multiBarChart',
+              keys: [{ name: 'city', index: 2, aggr: 'sum' }],
+              groups: [],
+              values: [{ name: 'amount', index: 3, aggr: 'sum' }]
+            }
+          }
+        }
+      },
+      results: {
+        code: 'SUCCESS',
+        msg: [{ type: 'TABLE', data: 'unused\tother\tcity\tamount\na\t9\tSeoul\t2' }]
+      }
+    }
+  ]
+});
 
 test.describe('Private React notebook route entry', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_CORE_READ);
@@ -68,8 +105,17 @@ test.describe('Private React notebook route entry', () => {
   });
 
   test('shows the same-route Angular read view when the React remote cannot load', async ({ page }) => {
-    const { noteId, notebookName } = await createTestNotebookWithName(page, { namePrefix: 'ReactRouteFallback' });
+    const notebookName = `ReactRouteFallback_${Date.now()}`;
+    const imported = await page.request.post('/api/notebook/import', {
+      params: { notePath: `/__react_read__/${notebookName}` },
+      data: savedReadNotebook(notebookName)
+    });
+    expect(imported.ok(), `Notebook import failed: ${imported.status()} ${await imported.text()}`).toBe(true);
+    const noteId = (await imported.json()).body as string;
     try {
+      const permissions = await page.request.get(`/api/notebook/${noteId}/permissions`);
+      expect(permissions.ok(), `Permissions read failed: ${permissions.status()}`).toBe(true);
+      const owners = ((await permissions.json()).body.owners as string[]).join(', ') || 'None';
       await page.route('**/remoteEntry.js', route => route.abort());
 
       await test.step('When the remote load fails at entry', async () => {
@@ -79,6 +125,9 @@ test.describe('Private React notebook route entry', () => {
 
       await test.step('Then the private Core-backed Angular read view remains usable', async () => {
         await expect(notebook.fallback.noteHeading).toHaveText(notebookName);
+        await expect(notebook.fallbackSavedText).toBeVisible();
+        await expect(notebook.fallbackChartCanvas).toBeVisible();
+        await expect(notebook.fallbackPermissions).toContainText(`Owners: ${owners}`);
         await expect(notebook.entry).not.toBeAttached();
         await expect(notebook.legacyNotebook).not.toBeAttached();
         await expect(page).toHaveURL(new RegExp(`/notebook/${noteId}\\?notebookReactPrivate=true$`));
@@ -95,41 +144,7 @@ test.describe('Private React notebook route entry', () => {
       const name = `ReactRead_${Date.now()}`;
       const imported = await page.request.post('/api/notebook/import', {
         params: { notePath: `/__react_read__/${name}` },
-        data: {
-          name,
-          paragraphs: [
-            {
-              id: 'paragraph_react_read_1',
-              title: 'Saved output',
-              text: '%md saved code',
-              status: 'FINISHED',
-              config: { editorHide: false, tableHide: false },
-              results: { code: 'SUCCESS', msg: [{ type: 'TEXT', data: 'Persisted result text' }] }
-            },
-            {
-              id: 'paragraph_react_read_2',
-              title: 'Saved chart',
-              text: '%sh saved table',
-              status: 'FINISHED',
-              config: {
-                results: {
-                  0: {
-                    graph: {
-                      mode: 'multiBarChart',
-                      keys: [{ name: 'city', index: 2, aggr: 'sum' }],
-                      groups: [],
-                      values: [{ name: 'amount', index: 3, aggr: 'sum' }]
-                    }
-                  }
-                }
-              },
-              results: {
-                code: 'SUCCESS',
-                msg: [{ type: 'TABLE', data: 'unused\tother\tcity\tamount\na\t9\tSeoul\t2' }]
-              }
-            }
-          ]
-        }
+        data: savedReadNotebook(name)
       });
       expect(imported.ok(), `Notebook import failed: ${imported.status()} ${await imported.text()}`).toBe(true);
       const noteId = (await imported.json()).body as string;
@@ -143,12 +158,12 @@ test.describe('Private React notebook route entry', () => {
         await test.step('Then saved paragraphs, output, chart and accessible table appear in order', async () => {
           await expect(notebook.noteHeading).toHaveText(name);
           await expect(notebook.paragraphs).toHaveCount(2);
-          await expect(notebook.paragraphs.nth(0)).toContainText('Persisted result text');
+          await expect(notebook.paragraphWithTitle('Saved output')).toContainText('Persisted result text');
           await expect(
-            notebook.paragraphs.nth(1).getByRole('img', { name: 'multiBarChart visualization' })
+            notebook.paragraphWithTitle('Saved chart').getByRole('img', { name: 'multiBarChart visualization' })
           ).toBeVisible();
-          await notebook.paragraphs.nth(1).getByText('View chart data as a table').click();
-          const chartData = notebook.paragraphs.nth(1).getByRole('table');
+          await notebook.paragraphWithTitle('Saved chart').getByText('View chart data as a table').click();
+          const chartData = notebook.paragraphWithTitle('Saved chart').getByRole('table');
           await expect(chartData.getByRole('columnheader', { name: 'amount' })).toBeVisible();
           await expect(chartData.getByRole('rowheader', { name: 'Seoul' })).toBeVisible();
           await expect(chartData.getByRole('cell', { name: '2' })).toBeVisible();
@@ -158,6 +173,72 @@ test.describe('Private React notebook route entry', () => {
           await expect(notebook.editor).toHaveCount(0);
           await expect(notebook.writeControls).toHaveCount(0);
           await expect(notebook.legacyNotebook).not.toBeAttached();
+        });
+      } finally {
+        await page.request.delete(`/api/notebook/${noteId}`, { failOnStatusCode: false });
+      }
+    }
+  );
+
+  test(
+    'keeps saved chart data readable through live light, dark and system theme changes and reload',
+    { tag: '@NB-PARITY-070' },
+    async ({ page }) => {
+      const name = `ReactReadTheme_${Date.now()}`;
+      const imported = await page.request.post('/api/notebook/import', {
+        params: { notePath: `/__react_read__/${name}` },
+        data: savedReadNotebook(name)
+      });
+      expect(imported.ok(), `Notebook import failed: ${imported.status()} ${await imported.text()}`).toBe(true);
+      const noteId = (await imported.json()).body as string;
+      const theme = new DarkModePage(page);
+      try {
+        await test.step('Given a saved chart in the light theme', async () => {
+          await page.emulateMedia({ colorScheme: 'light' });
+          await theme.setThemeInLocalStorage('light');
+          await page.reload();
+          await waitForZeppelinReady(page);
+          await notebook.open(noteId);
+          await waitForZeppelinReady(page);
+          await theme.assertLightTheme();
+          await expect(notebook.paragraphWithTitle('Saved output')).toContainText('Persisted result text');
+          await expect(
+            notebook.paragraphWithTitle('Saved chart').getByRole('img', { name: 'multiBarChart visualization' })
+          ).toBeVisible();
+        });
+
+        await test.step('When the theme changes to dark, saved chart data remains readable', async () => {
+          await theme.toggleTheme();
+          await theme.assertDarkTheme();
+          await expect(notebook.paragraphWithTitle('Saved output')).toContainText('Persisted result text');
+          await expect(
+            notebook.paragraphWithTitle('Saved chart').getByRole('img', { name: 'multiBarChart visualization' })
+          ).toBeVisible();
+          await notebook.paragraphWithTitle('Saved chart').getByText('View chart data as a table').click();
+          const chartData = notebook.paragraphWithTitle('Saved chart').getByRole('table');
+          await expect(chartData).toBeVisible();
+          await expect(chartData).toContainText('Seoul');
+          await expect(chartData).toContainText('2');
+        });
+
+        await test.step('When the theme changes to system, saved chart data survives reload', async () => {
+          await theme.toggleTheme();
+          await theme.assertSystemTheme();
+          await expect(notebook.paragraphWithTitle('Saved output')).toContainText('Persisted result text');
+          await expect(
+            notebook.paragraphWithTitle('Saved chart').getByRole('img', { name: 'multiBarChart visualization' })
+          ).toBeVisible();
+          await page.reload();
+          await waitForZeppelinReady(page);
+          await theme.assertSystemTheme();
+          await expect(notebook.paragraphWithTitle('Saved output')).toContainText('Persisted result text');
+          await expect(
+            notebook.paragraphWithTitle('Saved chart').getByRole('img', { name: 'multiBarChart visualization' })
+          ).toBeVisible();
+          await notebook.paragraphWithTitle('Saved chart').getByText('View chart data as a table').click();
+          const chartData = notebook.paragraphWithTitle('Saved chart').getByRole('table');
+          await expect(chartData).toBeVisible();
+          await expect(chartData).toContainText('Seoul');
         });
       } finally {
         await page.request.delete(`/api/notebook/${noteId}`, { failOnStatusCode: false });
@@ -217,7 +298,7 @@ test.describe('Private React notebook route entry', () => {
         }
       }));
 
-    await test.step('Then the host-backed checkpoint passes while the full scenario remains unverified', () => {
+    await test.step('Then the name-only checkpoint passes without claiming unobserved outcomes', () => {
       expect(report.checkpoint).toMatchObject({ status: 'pass', failures: [] });
       expect(report.implementations).toHaveLength(2);
       for (const implementation of report.implementations) {

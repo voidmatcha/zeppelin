@@ -19,11 +19,10 @@ import TableOutlined from '@ant-design/icons/TableOutlined';
 import AreaChartOutlined from '@ant-design/icons/AreaChartOutlined';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import FileExcelOutlined from '@ant-design/icons/FileExcelOutlined';
-import type { VisualizationMode } from '@zeppelin/sdk';
 
 interface VisualizationControlsProps {
-  currentMode: VisualizationMode;
-  onModeChange: (mode: VisualizationMode) => void;
+  currentMode: string;
+  onModeChange: (mode: string) => void;
   onExport: (type: 'csv' | 'xlsx') => void;
 }
 
@@ -46,7 +45,7 @@ export const VisualizationControls = ({ currentMode, onModeChange, onExport }: V
               key={viz.id}
               type={currentMode === viz.id ? 'primary' : 'default'}
               icon={viz.icon}
-              onClick={() => onModeChange(viz.id as VisualizationMode)}
+              onClick={() => onModeChange(viz.id)}
               size="small"
             >
               {viz.name}

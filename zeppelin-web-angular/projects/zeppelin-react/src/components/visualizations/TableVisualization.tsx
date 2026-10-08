@@ -16,12 +16,12 @@ import { VisualizationControls } from './VisualizationControls';
 import { readOnlyChartData } from './readOnlyChartData';
 import { applyChartTheme, useHostThemeMode } from '@/theme';
 import { parseTableData, exportFile } from '@/utils';
-import type { ParagraphConfigResult, ParagraphIResultsMsgItem, VisualizationMode } from '@zeppelin/sdk';
+import type { ResultConfig, ResultMessage } from './result-types';
 import type { Chart, ChartConfiguration } from 'chart.js';
 
 interface TableVisualizationProps {
-  result: ParagraphIResultsMsgItem;
-  config?: ParagraphConfigResult;
+  result: ResultMessage;
+  config?: ResultConfig;
   readOnly?: boolean;
   visualKey?: string;
   onVisualReady?: (key: string) => void;
@@ -38,7 +38,7 @@ export const TableVisualization = ({
   onVisualReady,
   onVisualError
 }: TableVisualizationProps) => {
-  const [currentMode, setCurrentMode] = useState<VisualizationMode>(config?.graph?.mode || 'table');
+  const [currentMode, setCurrentMode] = useState<string>(config?.graph?.mode || 'table');
   const savedMode = config?.graph?.mode;
   const readOnlyMode = savedMode && savedChartModes.has(savedMode) ? savedMode : 'table';
   const unsupportedAreaStyle =

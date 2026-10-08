@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import type { GraphConfig } from '@zeppelin/sdk';
+import type { SavedGraphConfig } from './result-types';
 import type { TableData } from '@/utils/tableUtils';
 
 type Aggregate = { sum: number; count: number; min: number; max: number };
@@ -48,7 +48,7 @@ const aggregateValue = (aggregate: Aggregate, operation: string): number => {
 };
 
 /** Reconstruct saved chart mappings without mutating the host-owned Core snapshot. */
-export const readOnlyChartData = (data: TableData, graph: GraphConfig): ReadOnlyChartData => {
+export const readOnlyChartData = (data: TableData, graph: SavedGraphConfig): ReadOnlyChartData => {
   if (graph.mode === 'scatterChart') {
     const setting = graph.setting?.scatterChart;
     const xIndex = columnIndex(data, setting?.xAxis?.name, 0);

@@ -13,12 +13,12 @@
 import { Alert } from 'antd';
 import { HTMLRenderer, TextRenderer, ImageRenderer, TableVisualization } from '@/components';
 import { checkAndReplaceCarriageReturn } from '@/utils';
-import { DatasetType, ParagraphConfigResult, ParagraphConfigResults, ParagraphIResultsMsgItem } from '@zeppelin/sdk';
+import type { ResultConfig, ResultConfigs, ResultMessage } from '@/components/visualizations/result-types';
 
 interface SingleResultRendererProps {
-  result: ParagraphIResultsMsgItem;
+  result: ResultMessage;
   index: number;
-  config?: ParagraphConfigResults;
+  config?: ResultConfigs;
   readOnly?: boolean;
   visualKey?: string;
   onVisualReady?: (key: string) => void;
@@ -34,10 +34,10 @@ export const SingleResultRenderer = ({
   onVisualReady,
   onVisualError
 }: SingleResultRendererProps) => {
-  const resultConfig: ParagraphConfigResult | undefined = config?.[index];
+  const resultConfig: ResultConfig | undefined = config?.[index];
 
   switch (result.type) {
-    case DatasetType.TABLE:
+    case 'TABLE':
       return (
         <TableVisualization
           result={result}
@@ -48,15 +48,15 @@ export const SingleResultRenderer = ({
           onVisualError={onVisualError}
         />
       );
-    case DatasetType.HTML:
+    case 'HTML':
       return <HTMLRenderer html={result.data} />;
-    case DatasetType.TEXT:
+    case 'TEXT':
       return <TextRenderer text={checkAndReplaceCarriageReturn(result.data)} />;
-    case DatasetType.IMG:
+    case 'IMG':
       return <ImageRenderer imageData={result.data} />;
-    case DatasetType.SVG:
+    case 'SVG':
       return <ImageRenderer imageData={result.data} format="svg" />;
-    case DatasetType.ANGULAR:
+    case 'ANGULAR':
       return (
         <Alert
           message="Angular Component"
@@ -65,8 +65,8 @@ export const SingleResultRenderer = ({
           showIcon
         />
       );
-    case DatasetType.NULL:
-    case DatasetType.NETWORK:
+    case 'NULL':
+    case 'NETWORK':
       return null;
     default: {
       const _unhandled: never = result.type;
