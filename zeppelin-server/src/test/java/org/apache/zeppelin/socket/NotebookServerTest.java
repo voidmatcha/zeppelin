@@ -329,7 +329,12 @@ class NotebookServerTest extends AbstractTestRestApi {
     patchParagraph(sock1, paragraphId, patches[0]);
     assertEquals("ABC", paragraph.getText());
     verify(sock1, times(sock1SendCount)).send(anyString());
-    verify(sock2, times(++sock2SendCount)).send(anyString());
+    ArgumentCaptor<String> patchBroadcast = ArgumentCaptor.forClass(String.class);
+    verify(sock2, times(++sock2SendCount)).send(patchBroadcast.capture());
+    Message patchMessage = notebookServer.deserializeMessage(patchBroadcast.getValue());
+    assertEquals(OP.PATCH_PARAGRAPH, patchMessage.op);
+    assertEquals(createdNoteInfo.getId(), patchMessage.get("noteId"));
+    assertEquals(paragraphId, patchMessage.get("paragraphId"));
 
     patchParagraph(sock2, paragraphId, patches[1]);
     assertEquals("ABC\n", paragraph.getText());

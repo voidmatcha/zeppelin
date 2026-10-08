@@ -12,7 +12,7 @@
 
 import { assertType, expectTypeOf, it } from 'vitest';
 
-import { MessageReceiveDataTypeMap } from './message-data-type-map.interface';
+import { MessageReceiveDataTypeMap, MessageSendDataTypeMap } from './message-data-type-map.interface';
 import { OP } from './message-operator.interface';
 import { DatasetType, ParagraphAppendOutput, ParagraphUpdateOutput } from './message-paragraph.interface';
 
@@ -50,4 +50,32 @@ it('accepts both attributed and legacy structural paragraph payloads', () => {
   expectTypeOf(added.noteId).toEqualTypeOf<string | undefined>();
   expectTypeOf(moved.noteId).toEqualTypeOf<string | undefined>();
   expectTypeOf(removed.noteId).toEqualTypeOf<string | undefined>();
+});
+
+it('models attributed collaboration and note updates while accepting legacy broadcasts', () => {
+  const patch: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH] = {
+    noteId: 'note',
+    paragraphId: 'paragraph',
+    patch: '@@ -0,0 +1 @@\n+a\n'
+  };
+  const legacyPatch: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH] = {
+    paragraphId: 'paragraph',
+    patch: patch.patch
+  };
+  const updated: MessageReceiveDataTypeMap[OP.NOTE_UPDATED] = {
+    name: 'Note',
+    config: {} as MessageReceiveDataTypeMap[OP.NOTE_UPDATED]['config'],
+    info: {} as MessageReceiveDataTypeMap[OP.NOTE_UPDATED]['info']
+  };
+  const status: MessageReceiveDataTypeMap[OP.COLLABORATIVE_MODE_STATUS] = { status: true, users: [] };
+
+  expectTypeOf(patch.paragraphId).toEqualTypeOf<string>();
+  expectTypeOf(legacyPatch.noteId).toEqualTypeOf<string | undefined>();
+  expectTypeOf(updated.noteId).toEqualTypeOf<string | undefined>();
+  expectTypeOf(status.noteId).toEqualTypeOf<string | undefined>();
+  assertType<MessageSendDataTypeMap[OP.PATCH_PARAGRAPH]>({
+    id: 'paragraph',
+    noteId: 'note',
+    patch: patch.patch
+  });
 });

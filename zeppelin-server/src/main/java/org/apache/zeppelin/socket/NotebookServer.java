@@ -988,7 +988,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
         new WebSocketServiceCallback<Note>(conn) {
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
-            connectionManager.broadcast(note.getId(), new Message(OP.NOTE_UPDATED).put("name", name)
+            connectionManager.broadcast(note.getId(), new Message(OP.NOTE_UPDATED).put("noteId", note.getId())
+                .put("name", name)
                 .put("config", config)
                 .put("info", note.getInfo()));
             broadcastNoteList(context.getAutheInfo(), context.getUserAndRoles());
@@ -1248,7 +1249,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
             super.onSuccess(result, context);
             Message message = new Message(OP.PATCH_PARAGRAPH)
                 .put("patch", result)
-                .put("paragraphId", paragraphId);
+                .put("paragraphId", paragraphId)
+                .put("noteId", noteId2);
             connectionManager.broadcastExcept(noteId2, message, conn);
           }
         });

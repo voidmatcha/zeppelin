@@ -42,6 +42,7 @@ export interface SendNote {
 }
 
 export interface NoteUpdated {
+  noteId?: string;
   config: NoteConfig;
   info: NoteInfo;
   name: string;
@@ -140,6 +141,7 @@ export interface NoteRevisionForCompareReceived {
 }
 
 export interface CollaborativeModeStatus {
+  noteId?: string;
   status: boolean;
   users: string[];
 }

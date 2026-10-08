@@ -213,6 +213,7 @@ public class ConnectionManager {
 
     Message message = new Message(Message.OP.COLLABORATIVE_MODE_STATUS);
     message.put("status", collaborativeStatusNew);
+    message.put("noteId", noteId);
     if (collaborativeStatusNew) {
       HashSet<String> userList = new HashSet<>();
       for (NotebookSocket noteSocket : socketList) {

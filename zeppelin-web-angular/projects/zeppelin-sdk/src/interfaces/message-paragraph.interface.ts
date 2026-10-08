@@ -314,13 +314,14 @@ export interface CompletionReceived {
 }
 
 export interface PatchParagraphReceived {
-  id: string;
-  noteId: string;
+  paragraphId: string;
+  noteId?: string;
   patch: string;
 }
 
 export interface PatchParagraphSend {
-  paragraphId: string;
+  id: string;
+  noteId: string;
   patch: string;
 }
 
