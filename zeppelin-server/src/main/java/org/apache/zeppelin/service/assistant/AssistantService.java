@@ -129,7 +129,8 @@ public class AssistantService {
 
     return notebook.processNote(noteId, note -> {
       if (note == null) throw new NoteNotFoundException(noteId);
-      return conversationRepository.find(noteId, conversationId).orElseThrow();
+      return conversationRepository.find(noteId, conversationId)
+          .orElseThrow(NotFoundException::new);
     });
   }
 

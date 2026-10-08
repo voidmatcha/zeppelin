@@ -34,6 +34,7 @@ import java.util.function.Consumer;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.ForbiddenException;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.ServiceUnavailableException;
 import org.apache.zeppelin.notebook.AuthorizationService;
 import org.apache.zeppelin.notebook.Note;
@@ -127,6 +128,35 @@ class AssistantServiceTest {
         () -> sut.createConversation("noteId", "test", authInfo, userAndRoles)
     );
     verifyNoInteractions(repository);
+  }
+
+  @Test
+  void rejectsMissingConversation() throws Exception {
+    var notebook = mock(Notebook.class);
+    when(notebook.processNote(eq("noteId"), any()))
+        .thenAnswer(invocation -> ((NoteProcessor<?>) invocation.getArgument(1)).process(new Note()));
+    var authorization = mock(AuthorizationService.class);
+    when(authorization.isReader("noteId", userAndRoles)).thenReturn(true);
+    var repository = mock(ConversationRepository.class);
+    when(repository.find("noteId", "missing")).thenReturn(Optional.empty());
+    var sut = new AssistantService(true, notebook, null, null, authorization, repository);
+
+    assertThrows(NotFoundException.class,
+        () -> sut.getConversation("noteId", "missing", userAndRoles));
+    assertThrows(NotFoundException.class,
+        () -> sut.listMessages("noteId", "missing", null, 10, userAndRoles));
+    assertThrows(NotFoundException.class,
+        () -> sut.updateTitle("noteId", "missing", "title", authInfo.getUser(), userAndRoles));
+    assertThrows(NotFoundException.class,
+        () -> sut.deleteConversation("noteId", "missing", authInfo.getUser(), userAndRoles));
+
+    var events = new ArrayList<AssistantEventPayload>();
+    sut.sendMessage("noteId", "missing", "hi", authInfo, userAndRoles,
+        (type, payload) -> events.add(payload));
+    assertEquals(1, events.size());
+    assertEquals(404, ((AssistantEventPayload.RunFailed) events.get(0)).error.status);
+    verify(repository, never()).update(any(), any());
+    verify(repository, never()).delete(anyString(), anyString());
   }
 
   @Test
