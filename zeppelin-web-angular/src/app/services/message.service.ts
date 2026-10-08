@@ -11,7 +11,7 @@
  */
 
 import { Inject, Injectable, OnDestroy, Optional } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, filter, map } from 'rxjs';
 
 import { MessageInterceptor, MESSAGE_INTERCEPTOR } from '@zeppelin/interfaces';
 import {
@@ -87,7 +87,19 @@ export class MessageService extends Message implements OnDestroy {
   }
 
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
-    return super.receive<K>(op);
+    return this.receiveEnvelope(op).pipe(map(message => message.data)) as Observable<
+      Record<K, MessageReceiveDataTypeMap[K]>[K]
+    >;
+  }
+
+  receiveEnvelope<K extends keyof MessageReceiveDataTypeMap>(
+    op: K
+  ): Observable<WebSocketMessage<MessageReceiveDataTypeMap, K>> {
+    // The Core host consumes these from received(). Legacy listeners must not
+    // apply a late private reply to whichever editable notebook is now active.
+    return super
+      .receiveEnvelope(op)
+      .pipe(filter(message => !message.msgId || !this.isNotebookCoreReadRequestId(message.msgId)));
   }
 
   consumeLocalAddFocusMsgId(msgId: string | undefined): boolean {
