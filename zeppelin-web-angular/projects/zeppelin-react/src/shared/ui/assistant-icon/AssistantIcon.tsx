@@ -10,12 +10,24 @@
  * limitations under the License.
  */
 
-export { MarkdownAnswer } from './ui/MarkdownAnswer';
-export type { ParagraphLabel } from './ui/MarkdownAnswer';
-export * from './model/assistantContract';
-export * from './model/messageHistory';
-export { AssistantPanelLayout } from './ui/PanelLayout';
-export { AiDisclaimer, AssistantReply, UserMessage } from './ui/Message';
-export { ActionLog } from './ui/ActionLog';
-export type { ToolStep } from './ui/ActionLog';
-export { ConversationStart, ErrorNotice, JumpToLatest, LoadEarlier, PanelSkeleton, RunStatus } from './ui/Status';
+import * as styles from './AssistantIcon.css';
+
+export interface AssistantIconProps {
+  active?: boolean;
+  variant?: 'conversation' | 'navigation';
+}
+
+export const AssistantIcon = ({ active = false, variant = 'conversation' }: AssistantIconProps) => (
+  <span
+    className={[
+      styles.icon,
+      variant === 'navigation' && styles.navigation,
+      active && variant === 'conversation' && styles.active
+    ]
+      .filter(Boolean)
+      .join(' ')}
+    aria-hidden="true"
+  >
+    AI
+  </span>
+);
