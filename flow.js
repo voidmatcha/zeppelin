@@ -51,8 +51,39 @@ async function typeInto(element, value, delay = 24) {
     await step(delay);
   }
 }
+async function streamInto(element, value) {
+  const text = document.createTextNode('');
+  const cursor = document.createElement('span');
+  cursor.className = 'flow-stream-cursor';
+  element.replaceChildren(text, cursor);
+  const chunkSizes = [2, 4, 1, 6, 3, 5];
+  for (let offset = 0, chunk = 0; offset < value.length; chunk++) {
+    offset = Math.min(value.length, offset + chunkSizes[chunk % chunkSizes.length]);
+    text.textContent = value.slice(0, offset);
+    const log = element.closest('[role="region"]');
+    if (log) log.scrollTop = log.scrollHeight;
+    await step(60 + (chunk % 3) * 25);
+  }
+  cursor.remove();
+}
 function transition(element) {
   element.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 350, easing: 'ease-out' });
+}
+async function press(button) {
+  await button.animate([
+    { transform: 'scale(1)' },
+    { transform: 'scale(.92)', offset: .5 },
+    { transform: 'scale(1)' }
+  ], { duration: 240, easing: 'ease-in-out' }).finished;
+}
+async function sendQuestion(panel) {
+  const input = panel.querySelector('textarea[aria-label="Message"]');
+  const send = panel.querySelector('footer button');
+  const question = input.value.trim();
+  await press(send);
+  input.value = '';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  appendMessage(panel, question, 'user');
 }
 
 function paragraph(code, output = '', id = '') {
@@ -80,68 +111,107 @@ function actionCard(panel, label, state) {
 }
 function makeShell(panel, scenario) {
   const shell=document.createElement('div'); shell.className='flow';
-  shell.innerHTML='<header class="flow-top"><div class="flow-brand">Zeppelin</div><span>Notebook ▾</span><span>Job</span><span class="flow-spacer"></span><span class="flow-search">⌕ Search</span><span>● alice ▾</span></header><div class="flow-titlebar"><h1>Assistant QA</h1><span class="flow-tools">⊙ ◉ ⛶ ▦ ♧ ▣ ↻</span><span class="flow-spacer"></span><span>◉ 1</span></div><div class="flow-main"><aside class="flow-aside"><div class="flow-aside-title">☷ &nbsp; AI Assistant</div><div class="flow-panel"></div></aside><main class="flow-notebook"></main></div>';
+  shell.innerHTML='<div class="flow-main"><aside class="flow-aside"><div class="flow-aside-title">AI Assistant</div><div class="flow-panel"></div></aside><main class="flow-notebook"></main></div>';
   const mount=shell.querySelector('.flow-panel'); mount.append(panel);
   const log=panel.querySelector('[role="log"]') ?? panel.querySelector('[data-role="assistant"]').parentElement;
   panel._flowLog=log;
   panel._flowTemplates={ user: panel.querySelector('[data-role="user"]').cloneNode(true), assistant: panel.querySelector('[data-role="assistant"]').cloneNode(true) };
+  const input=panel.querySelector('textarea[aria-label="Message"]');
+  const send=panel.querySelector('footer button');
+  input.addEventListener('input',()=>{send.disabled=!input.value.trim();});
   if(scenario==='ask'||scenario.startsWith('approval')) { log.innerHTML='<section class="flow-empty"><strong>How can I help?</strong><p>Ask about your notebook, explore data, or draft a query.</p><p>Summarize this notebook<br>Explain the current paragraph</p></section>'; const title=panel.querySelector('header button span:not(.hcfrxgp)'); if(title) title.textContent='New conversation'; }
   panel.firstElementChild.style.width='100%';
   const notebook=shell.querySelector('.flow-notebook');
   notebook.append(paragraph(baseCode,'','markdown'),paragraph(salesCode,rows,'sales'));
-  if (scenario.startsWith('approval')) notebook.append(paragraph(groupCode,grouped,'group'));
+  if (scenario==='ask'||scenario.startsWith('approval')) notebook.append(paragraph(groupCode,grouped,'group'));
   return {shell,notebook,panel};
 }
-async function ask({panel,shell}) {
+async function ask({panel}) {
   const input=panel.querySelector('textarea[aria-label="Message"]');
   await step(900); await typeInto(input, 'What does each paragraph do? Mention each paragraph id, and show the groupby line as code.');
-  await step(1200); const log=panel._flowLog; log.innerHTML=''; appendMessage(panel,input.value,'user'); panel.querySelector('header button span:not(.hcfrxgp)').textContent='What does each paragraph do?'; input.value='';
+  await step(1200); const log=panel._flowLog; log.innerHTML=''; await sendQuestion(panel); panel.querySelector('header button span:not(.hcfrxgp)').textContent='What does each paragraph do?';
   const action=actionCard(panel,'1 action','◌ Read paragraphs');
   await step(1800); action.innerHTML='<strong>1 action</strong><p>✓ Read paragraphs</p>'; transition(action);
-  const reply=appendMessage(panel,'Paragraph-by-paragraph overview','assistant');
+  const reply=appendMessage(panel,'','assistant');
+  reply.setAttribute('aria-busy','true');
+  const icon=reply.querySelector('.zaohb82');
+  icon.classList.add('zaohb83');
+  const actions=reply.querySelector('.lifu726');
+  actions.remove();
   const body=reply.querySelector('p');
-  body.innerHTML='<strong>Paragraph-by-paragraph overview</strong>';
-  await step(1200);
+  const heading=document.createElement('strong');body.replaceChildren(heading);
+  await streamInto(heading,'Paragraph-by-paragraph overview');
+  const explanation=document.createElement('p');body.after(explanation);
+  await streamInto(explanation,'I read the notebook paragraphs and matched each one to its purpose. Here is the breakdown:');
   const table=document.createElement('table');
   table.innerHTML='<thead><tr><th>Paragraph ID</th><th>Purpose</th><th>Code excerpt</th></tr></thead><tbody></tbody>';
-  body.after(table); transition(table);
+  explanation.after(table); transition(table);
   for(const row of [
     ['paragraph_175955','Notebook title','%md # Sales analysis'],
     ['paragraph_175956','Load the sales data','sales = pd.DataFrame(...)'],
     ['paragraph_175957','Group revenue by region',"sales.groupby('region')['revenue'].sum()"]
-  ]) { await step(1500); const tr=document.createElement('tr'); for(const value of row) {const td=document.createElement('td');td.textContent=value;tr.append(td);} table.tBodies[0].append(tr); transition(tr); }
+  ]) {
+    const tr=document.createElement('tr');
+    for(let i=0;i<row.length;i++) tr.append(document.createElement('td'));
+    table.tBodies[0].append(tr);transition(tr);
+    for(let i=0;i<row.length;i++) await streamInto(tr.cells[i],row[i]);
+    await step(250);
+  }
+  icon.classList.remove('zaohb83');
+  reply.removeAttribute('aria-busy');
+  reply.append(actions);
   await step(2200);
 }
 async function earlier({panel}) {
   const log=panel.querySelector('[role="log"]') ?? panel.querySelector('[data-role="assistant"]').parentElement;
   for(let i=0;i<8;i++){ appendMessage(panel,`What does paragraph ${8-i} do in this notebook?`,'user');appendMessage(panel,`Paragraph ${8-i} reads notebook data and explains the result.`,'assistant'); }
   const control=document.createElement('button');control.textContent='Load earlier messages';log.prepend(control);
-  await step(1600);control.textContent='Loading earlier messages…';transition(control);
+  await step(1600);await press(control);control.textContent='Loading earlier messages…';transition(control);
   await step(1000);
-  for(let i=0;i<4;i++){await step(300);const m=appendMessage(panel,`Earlier question ${i+1}`,'user');log.insertBefore(m,control.nextSibling);}
+  const firstCurrentMessage=control.nextSibling;
+  for(let i=0;i<4;i++){
+    await step(300);
+    const question=appendMessage(panel,`Earlier question ${i+1}`,'user');
+    const answer=appendMessage(panel,`Paragraph ${i+1} reads the data and explains its result.`,'assistant');
+    log.insertBefore(question,firstCurrentMessage);
+    log.insertBefore(answer,firstCurrentMessage);
+    log.scrollTop=0;
+  }
   control.textContent='Beginning of conversation';control.disabled=true;
   await step(4400);
 }
 async function list({panel},readonly) {
   const host=panel.firstElementChild;
   await step(700);
+  const titleButton=panel.querySelector('header > button');
+  await press(titleButton);
+  titleButton.setAttribute('aria-expanded','true');
   const menu=document.createElement('div');menu.className='flow-list';
   menu.innerHTML='<input aria-label="Search conversations" placeholder="Search conversations"><div class="flow-row">What does each paragraph do? Mention each paragraph id…</div><div class="flow-row">Sales analysis by region</div><div class="flow-row">Another user’s conversation</div><div class="flow-row">SQL query help</div>';
   host.style.position='relative';host.append(menu);transition(menu);
   await step(1200);const search=menu.querySelector('input');await typeInto(search, readonly?'another user':'sales', 90);
   for(const row of menu.querySelectorAll('.flow-row')) row.hidden=!row.textContent.toLowerCase().includes(search.value);
-  await step(1600);await menu.animate([{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-8px)'}],{duration:220}).finished;menu.remove();
+  await step(1600);await press(menu.querySelector('.flow-row:not([hidden])'));await menu.animate([{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-8px)'}],{duration:220}).finished;menu.remove();titleButton.setAttribute('aria-expanded','false');
   const title=panel.querySelector('header button span:not(.hcfrxgp)');
   title.textContent=readonly?'Another user’s conversation':'Sales analysis by region';
-  if (readonly) { panel.querySelector('textarea').disabled=true;panel.querySelector('footer button').disabled=true;actionCard(panel,'Read-only conversation','This conversation belongs to another user. You can read its history, but cannot send messages.'); }
-  else appendMessage(panel,'Summarize the revenue by region.','assistant');
+  panel._flowLog.replaceChildren();
+  if (readonly) {
+    appendMessage(panel,'Can you review this notebook?','user');
+    appendMessage(panel,'I reviewed the notebook and summarized its results.','assistant');
+    panel.querySelector('textarea').disabled=true;
+    panel.querySelector('footer button').disabled=true;
+    actionCard(panel,'Read-only conversation','This conversation belongs to another user. You can read its history, but cannot send messages.');
+  } else {
+    appendMessage(panel,'Summarize the revenue by region.','user');
+    appendMessage(panel,'South has the highest revenue, followed by West.','assistant');
+  }
   await step(3500);
 }
 async function approval({panel,notebook},skip) {
   const question=skip?'Load the sales data and show the top three regions.':'Show only the top three regions, highest first.';
   await step(700); const input=panel.querySelector('textarea[aria-label="Message"]'); await typeInto(input, question);
-  const log=panel._flowLog; log.innerHTML=''; appendMessage(panel,question,'user'); input.value=''; panel.querySelector('header button span:not(.hcfrxgp)').textContent=question;
-  const action=actionCard(panel,'2 actions','✓ Read paragraphs<br>◌ Edit paragraph');
+  const log=panel._flowLog; log.innerHTML=''; await step(500); await sendQuestion(panel); panel.querySelector('header button span:not(.hcfrxgp)').textContent=question;
+  const action=actionCard(panel,'2 actions','◌ Read paragraphs');
   await step(1200);
   action.innerHTML='<strong>2 actions</strong><p>✓ Read paragraphs</p><p>◌ Edit paragraph</p><div class="flow-approval"><strong>Approval needed: Edit paragraph #3</strong><p>Review the change in the paragraph.</p><button>Allow</button><button>Skip</button></div>';
   const target=notebook.querySelector('[data-paragraph="group"]');target.classList.add('is-focused');
@@ -150,13 +220,16 @@ async function approval({panel,notebook},skip) {
   target.prepend(diff); transition(diff);
   notebook.scrollTo({top:target.offsetTop-notebook.offsetTop-70,behavior:'smooth'});
   await step(2600);
+  await press(diff.querySelector(skip?'button:last-child':'button:first-child'));
   if(skip) {diff.remove();action.innerHTML='<strong>Edit skipped</strong><p>The notebook was not changed or executed.</p>';await step(3500);return;}
   diff.remove();target.querySelector('.flow-code').textContent=proposedCode;
   target.animate([{backgroundColor:'#e8f8e0'},{backgroundColor:'#fff'}],{duration:850});
   action.innerHTML='<strong>Edit applied</strong><p>Execution requires separate approval.</p><div class="flow-approval"><strong>Approval needed: Run paragraph #3</strong><p>Review execution.</p><button>Allow</button><button>Skip</button></div>';transition(action);
   await step(2300);
+  await press(action.querySelector('.flow-approval button:first-of-type'));
   action.innerHTML='<strong>Execution approved</strong><p>◌ Running paragraph #3…</p>';
-  await step(1300);target.querySelector('.flow-output').textContent=topThree;transition(target.querySelector('.flow-output'));
+  target.querySelector('.flow-state').textContent='RUNNING   ◉  ⚙';
+  await step(1300);target.querySelector('.flow-output').textContent=topThree;target.querySelector('.flow-state').textContent='FINISHED   ◉  ⚙';transition(target.querySelector('.flow-output'));
   action.innerHTML='<strong>2 actions completed</strong><p>✓ Edit paragraph</p><p>✓ Run paragraph</p>';
   appendMessage(panel,'The top three regions are South (470), West (420), and East (280).','assistant');
   await step(3300);
