@@ -50,7 +50,11 @@ const createHost = (
       register(msgId);
       return msgId;
     }),
-    cancelParagraph: vi.fn()
+    cancelParagraph: vi.fn(),
+    insertParagraph: vi.fn(() => 'insert-1'),
+    consumeLocalAddFocusMsgId: vi.fn(),
+    moveParagraph: vi.fn(),
+    paragraphRemove: vi.fn()
   };
   const security = {
     getPermissions: vi.fn(() => permissions$ ?? of({ readers: ['alice'], owners: [], writers: [], runners: [] }))
@@ -196,6 +200,53 @@ describe('NotebookCoreReadHost', () => {
     host.destroy();
     received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
     expect(host.store.getSnapshot().readState.status).toBe('disposed');
+  });
+
+  it('sends structure commands and waits for attributed server broadcasts before updating both ports', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    const before = host.port.getSnapshot();
+
+    expect(host.commandPort.dispatch({ type: 'insertParagraph', index: 1 })).toEqual({ accepted: true });
+    expect(message.insertParagraph).toHaveBeenCalledWith(1);
+    expect(message.consumeLocalAddFocusMsgId).toHaveBeenCalledWith('insert-1');
+    expect(host.port.getSnapshot()).toBe(before);
+
+    received.next({
+      op: OP.PARAGRAPH_ADDED,
+      data: { noteId: 'a', index: 1, paragraph: { id: 'p2', text: 'second', status: 'READY' } }
+    });
+    expect(host.port.getSnapshot().readState?.status).toBe('ready');
+    expect(
+      host.port.getSnapshot().readState?.status === 'ready' && host.port.getSnapshot().readState?.data.paragraphOrder
+    ).toEqual(['p1', 'p2']);
+
+    expect(host.commandPort.dispatch({ type: 'moveParagraph', paragraphId: 'p2', index: 0 })).toEqual({
+      accepted: true
+    });
+    expect(message.moveParagraph).toHaveBeenCalledWith('p2', 0);
+    received.next({ op: OP.PARAGRAPH_MOVED, data: { noteId: 'a', id: 'p2', index: 0 } });
+    expect(
+      host.port.getSnapshot().readState?.status === 'ready' && host.port.getSnapshot().readState?.data.paragraphOrder
+    ).toEqual(['p2', 'p1']);
+
+    expect(host.commandPort.dispatch({ type: 'removeParagraph', paragraphId: 'p2' })).toEqual({ accepted: true });
+    expect(message.paragraphRemove).toHaveBeenCalledWith('p2');
+    received.next({ op: OP.PARAGRAPH_REMOVED, data: { noteId: 'a', id: 'p2' } });
+    expect(
+      host.port.getSnapshot().readState?.status === 'ready' && host.port.getSnapshot().readState?.data.paragraphOrder
+    ).toEqual(['p1']);
+
+    host.load('a', 'revision-1');
+    received.next({
+      op: OP.NOTE_REVISION,
+      msgId: 'request-2',
+      data: { noteId: 'a', revisionId: 'revision-1', note: note('a') }
+    });
+    expect(host.commandPort.dispatch({ type: 'insertParagraph', index: 0 })).toEqual({ accepted: false });
+    expect(message.insertParagraph).toHaveBeenCalledTimes(1);
+    host.destroy();
   });
 
   it('publishes attributed paragraph changes to the shared Angular and React port', () => {

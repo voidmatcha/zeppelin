@@ -145,7 +145,10 @@ describe('NotebookRouteEntry', () => {
         id: 'note-1',
         name: 'Editable note',
         path: '/Editable note',
-        paragraphs: [{ id: 'p1', text: 'initial', status: 'READY', config: { editorHide: true } }]
+        paragraphs: [
+          { id: 'p1', text: 'initial', status: 'READY', config: { editorHide: true } },
+          { id: 'p2', text: 'second', status: 'READY', config: { editorHide: true } }
+        ]
       } as unknown as NotebookCoreWireNote);
       store.acceptPermissions(request, { owners: [], readers: [], writers: ['editor'], runners: [] });
     });
@@ -161,6 +164,26 @@ describe('NotebookRouteEntry', () => {
       )
     );
     expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    act(() =>
+      fireEvent.click(
+        Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Add paragraph below')!
+      )
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: 'insertParagraph', index: 1 });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    act(() =>
+      fireEvent.click(
+        Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Remove paragraph')!
+      )
+    );
+    expect(dispatch).not.toHaveBeenCalledWith({ type: 'removeParagraph', paragraphId: 'p1' });
+    confirm.mockReturnValue(true);
+    act(() =>
+      fireEvent.click(
+        Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Remove paragraph')!
+      )
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: 'removeParagraph', paragraphId: 'p1' });
     act(() =>
       fireEvent.click(
         Array.from(element.querySelectorAll('button')).find(button => button.textContent === 'Run paragraph')!
@@ -181,6 +204,7 @@ describe('NotebookRouteEntry', () => {
       )
     );
     expect(dispatch).toHaveBeenCalledWith({ type: 'cancelParagraph', paragraphId: 'p1' });
+    confirm.mockRestore();
     store.dispose();
   });
 

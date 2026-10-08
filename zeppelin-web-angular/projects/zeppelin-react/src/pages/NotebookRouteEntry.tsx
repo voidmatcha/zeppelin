@@ -50,6 +50,7 @@ const ReadOnlyParagraph = ({
   paragraph,
   draft,
   index,
+  paragraphCount,
   commandPort,
   onResultReady,
   onError
@@ -57,6 +58,7 @@ const ReadOnlyParagraph = ({
   paragraph: ReadParagraph;
   draft?: string;
   index: number;
+  paragraphCount: number;
   commandPort?: NotebookCoreCommandPort;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
@@ -97,6 +99,34 @@ const ReadOnlyParagraph = ({
             Run paragraph
           </button>
         )}
+        <button type="button" onClick={() => commandPort.dispatch({ type: 'insertParagraph', index: index + 1 })}>
+          Add paragraph below
+        </button>
+        <button
+          type="button"
+          disabled={index === 0}
+          onClick={() => commandPort.dispatch({ type: 'moveParagraph', paragraphId: paragraph.id, index: index - 1 })}
+        >
+          Move up
+        </button>
+        <button
+          type="button"
+          disabled={index === paragraphCount - 1}
+          onClick={() => commandPort.dispatch({ type: 'moveParagraph', paragraphId: paragraph.id, index: index + 1 })}
+        >
+          Move down
+        </button>
+        <button
+          type="button"
+          disabled={paragraphCount === 1}
+          onClick={() => {
+            if (window.confirm('Remove this paragraph?')) {
+              commandPort.dispatch({ type: 'removeParagraph', paragraphId: paragraph.id });
+            }
+          }}
+        >
+          Remove paragraph
+        </button>
       </div>
     ) : (
       !paragraph.config?.editorHide && <pre className="notebook-react-read-source">{paragraph.text}</pre>
@@ -171,6 +201,11 @@ const NotebookReadContent = ({
       {state.acl.status === 'accessDenied' && (
         <Alert type="warning" role="alert" message="Permissions are unavailable." />
       )}
+      {commandPort && !revisionId && paragraphOrder.length === 0 && (
+        <button type="button" onClick={() => commandPort.dispatch({ type: 'insertParagraph', index: 0 })}>
+          Add paragraph
+        </button>
+      )}
       {paragraphOrder.map((id, index) => {
         const paragraph = paragraphsById[id] as ReadParagraph | undefined;
         return paragraph ? (
@@ -179,6 +214,7 @@ const NotebookReadContent = ({
             paragraph={paragraph}
             draft={draftsById?.[id]?.text}
             index={index}
+            paragraphCount={paragraphOrder.length}
             commandPort={revisionId ? undefined : commandPort}
             onResultReady={onResultReady}
             onError={onError}

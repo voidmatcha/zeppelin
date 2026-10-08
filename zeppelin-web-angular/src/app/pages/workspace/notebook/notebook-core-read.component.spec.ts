@@ -42,6 +42,25 @@ describe('NotebookCoreReadComponent', () => {
     expect(dispatch).toHaveBeenNthCalledWith(2, { type: 'saveParagraph', paragraphId: 'p1' });
     expect(dispatch).toHaveBeenNthCalledWith(3, { type: 'runParagraph', paragraphId: 'p1' });
     expect(dispatch).toHaveBeenNthCalledWith(4, { type: 'cancelParagraph', paragraphId: 'p1' });
+    component.state = {
+      status: 'ready',
+      acl: { status: 'loading' },
+      data: {
+        note: { id: 'note-1', name: 'Note', path: '/Note' },
+        paragraphOrder: ['p1', 'p2'],
+        paragraphsById: {
+          p1: { id: 'p1', text: 'first', status: 'READY' },
+          p2: { id: 'p2', text: 'second', status: 'READY' }
+        }
+      }
+    };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    component.insertParagraph(1);
+    component.moveParagraph('p1', 1);
+    component.removeParagraph('p1');
+    expect(dispatch).toHaveBeenNthCalledWith(5, { type: 'insertParagraph', index: 1 });
+    expect(dispatch).toHaveBeenNthCalledWith(6, { type: 'moveParagraph', paragraphId: 'p1', index: 1 });
+    expect(dispatch).toHaveBeenNthCalledWith(7, { type: 'removeParagraph', paragraphId: 'p1' });
 
     component.revisionId = 'saved-revision';
     expect(component.canEdit).toBe(false);
@@ -49,7 +68,11 @@ describe('NotebookCoreReadComponent', () => {
     component.saveParagraph('p1');
     component.runParagraph('p1');
     component.cancelParagraph('p1');
-    expect(dispatch).toHaveBeenCalledTimes(4);
+    component.insertParagraph(1);
+    component.moveParagraph('p1', 1);
+    component.removeParagraph('p1');
+    expect(dispatch).toHaveBeenCalledTimes(7);
+    vi.restoreAllMocks();
   });
 
   it('passes a mutable copy of saved chart config to the Angular renderer', () => {

@@ -267,9 +267,27 @@ export class NotebookCoreReadStore {
     if (this.disposed || this.snapshot.revisionId !== null || state.status !== 'ready') {
       return Object.freeze({ accepted: false });
     }
-    const paragraph = state.data.paragraphsById[command.paragraphId];
+    if (command.type === 'insertParagraph') {
+      return Object.freeze({
+        accepted:
+          Number.isSafeInteger(command.index) && command.index >= 0 && command.index <= state.data.paragraphOrder.length
+      });
+    }
     if (!Object.prototype.hasOwnProperty.call(state.data.paragraphsById, command.paragraphId)) {
       return Object.freeze({ accepted: false });
+    }
+    const paragraph = state.data.paragraphsById[command.paragraphId];
+    if (command.type === 'removeParagraph') {
+      return Object.freeze({ accepted: state.data.paragraphOrder.length > 1 });
+    }
+    if (command.type === 'moveParagraph') {
+      return Object.freeze({
+        accepted:
+          Number.isSafeInteger(command.index) &&
+          command.index >= 0 &&
+          command.index < state.data.paragraphOrder.length &&
+          state.data.paragraphOrder[command.index] !== command.paragraphId
+      });
     }
     const running = paragraph.status === 'RUNNING' || paragraph.status === 'PENDING';
     if (command.type === 'runParagraph') {

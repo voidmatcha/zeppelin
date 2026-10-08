@@ -25,7 +25,10 @@ export type NotebookCoreCommand =
   | Readonly<{ type: 'editParagraph'; paragraphId: string; text: string }>
   | Readonly<{ type: 'saveParagraph'; paragraphId: string }>
   | Readonly<{ type: 'runParagraph'; paragraphId: string }>
-  | Readonly<{ type: 'cancelParagraph'; paragraphId: string }>;
+  | Readonly<{ type: 'cancelParagraph'; paragraphId: string }>
+  | Readonly<{ type: 'insertParagraph'; index: number }>
+  | Readonly<{ type: 'moveParagraph'; paragraphId: string; index: number }>
+  | Readonly<{ type: 'removeParagraph'; paragraphId: string }>;
 
 /** Opaque identity: only the exact intent returned by this store can acknowledge a save. */
 export type NotebookCoreSaveIntent = Readonly<{

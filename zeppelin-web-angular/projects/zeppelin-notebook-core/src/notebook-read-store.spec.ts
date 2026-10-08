@@ -278,6 +278,34 @@ describe('host-owned notebook read store', () => {
     expect(store.getSnapshot().draftsById).toBeUndefined();
   });
 
+  it('accepts only valid live paragraph structure commands without changing the snapshot optimistically', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const before = store.getSnapshot();
+
+    expect(store.dispatch({ type: 'insertParagraph', index: 1 })).toEqual({ accepted: true });
+    expect(store.dispatch({ type: 'moveParagraph', paragraphId: 'p1', index: 1 })).toEqual({ accepted: true });
+    expect(store.dispatch({ type: 'removeParagraph', paragraphId: 'p1' })).toEqual({ accepted: true });
+    expect(store.getSnapshot()).toBe(before);
+    expect(store.dispatch({ type: 'moveParagraph', paragraphId: 'p1', index: 0 })).toEqual({ accepted: false });
+    expect(store.dispatch({ type: 'moveParagraph', paragraphId: 'p1', index: 2 })).toEqual({ accepted: false });
+    expect(store.dispatch({ type: 'insertParagraph', index: -1 })).toEqual({ accepted: false });
+    expect(store.dispatch({ type: 'insertParagraph', index: 3 })).toEqual({ accepted: false });
+
+    store.beginRoute('n1', 'revision-1');
+    expect(store.dispatch({ type: 'removeParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+  });
+
+  it('can insert the first paragraph into an empty live note', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, { ...note('n1'), paragraphs: [] });
+
+    expect(store.dispatch({ type: 'insertParagraph', index: 0 })).toEqual({ accepted: true });
+    expect(store.dispatch({ type: 'insertParagraph', index: 1 })).toEqual({ accepted: false });
+  });
+
   it('keeps edits made after a save began when its delayed acknowledgement arrives', () => {
     const store = new NotebookCoreReadStore('n1');
     const request = store.beginRoute('n1', null);

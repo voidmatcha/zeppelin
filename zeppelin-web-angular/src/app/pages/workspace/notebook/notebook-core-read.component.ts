@@ -63,6 +63,9 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
               <p>Runners: {{ state.acl.permissions.runners.join(', ') || 'None' }}</p>
             </section>
           }
+          @if (canEdit && readData?.paragraphOrder?.length === 0) {
+            <button type="button" (click)="insertParagraph(0)">Add paragraph</button>
+          }
           @for (id of readData?.paragraphOrder; track id) {
             <article class="notebook-core-read-paragraph">
               <h2>{{ paragraph(id)?.title || 'Paragraph' }}</h2>
@@ -79,6 +82,18 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
                 } @else {
                   <button type="button" (click)="runParagraph(id)">Run paragraph</button>
                 }
+                <button type="button" (click)="insertParagraph($index + 1)">Add paragraph below</button>
+                <button type="button" [disabled]="$index === 0" (click)="moveParagraph(id, -1)">Move up</button>
+                <button
+                  type="button"
+                  [disabled]="$index === readData!.paragraphOrder.length - 1"
+                  (click)="moveParagraph(id, 1)"
+                >
+                  Move down
+                </button>
+                <button type="button" [disabled]="readData!.paragraphOrder.length === 1" (click)="removeParagraph(id)">
+                  Remove paragraph
+                </button>
               } @else if (!isEditorHidden(id)) {
                 <pre>{{ paragraph(id)?.text }}</pre>
               }
@@ -162,6 +177,26 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   cancelParagraph(id: string): void {
     if (this.canEdit) {
       this.host.commandPort.dispatch({ type: 'cancelParagraph', paragraphId: id });
+    }
+  }
+
+  insertParagraph(index: number): void {
+    if (this.canEdit) {
+      this.host.commandPort.dispatch({ type: 'insertParagraph', index });
+    }
+  }
+
+  moveParagraph(id: string, offset: -1 | 1): void {
+    if (!this.canEdit || !this.readData) {
+      return;
+    }
+    const index = this.readData.paragraphOrder.indexOf(id);
+    this.host.commandPort.dispatch({ type: 'moveParagraph', paragraphId: id, index: index + offset });
+  }
+
+  removeParagraph(id: string): void {
+    if (this.canEdit && window.confirm('Remove this paragraph?')) {
+      this.host.commandPort.dispatch({ type: 'removeParagraph', paragraphId: id });
     }
   }
 

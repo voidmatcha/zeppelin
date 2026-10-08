@@ -187,13 +187,28 @@ export class NotebookCoreReadHost {
     if (state.status !== 'ready') {
       return Object.freeze({ accepted: false });
     }
-    const paragraph = state.data.paragraphsById[command.paragraphId];
-    if (!paragraph) {
-      return Object.freeze({ accepted: false });
-    }
     const result = this.store.dispatch(command);
     if (!result.accepted) {
       return result;
+    }
+    if (command.type === 'insertParagraph' || command.type === 'moveParagraph' || command.type === 'removeParagraph') {
+      try {
+        if (command.type === 'insertParagraph') {
+          const msgId = this.message.insertParagraph(command.index);
+          this.message.consumeLocalAddFocusMsgId(msgId);
+        } else if (command.type === 'moveParagraph') {
+          this.message.moveParagraph(command.paragraphId, command.index);
+        } else {
+          this.message.paragraphRemove(command.paragraphId);
+        }
+        return result;
+      } catch {
+        return Object.freeze({ accepted: false });
+      }
+    }
+    const paragraph = state.data.paragraphsById[command.paragraphId];
+    if (!paragraph) {
+      return Object.freeze({ accepted: false });
     }
     if (command.type === 'runParagraph' || command.type === 'cancelParagraph') {
       let registeredMsgId: string | undefined;
