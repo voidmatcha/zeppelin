@@ -9,31 +9,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 import { ElementRef } from '@angular/core';
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { AssistantSlotDirective, AssistantSlots } from './assistant-slots';
 
-it('registers and removes the React portal targets', () => {
-  const slots = new AssistantSlots();
+it('registers explicit portal targets, updates them in place and removes destroyed targets', () => {
+  const registry = new AssistantSlots();
   const element = document.createElement('span');
-  const directive = new AssistantSlotDirective(new ElementRef(element), slots);
+  const directive = new AssistantSlotDirective(new ElementRef(element), registry);
   directive.assistantSlot = 'navigation';
   directive.ngOnChanges();
-  expect(slots.slots.value).toEqual([{ element, kind: 'navigation' }]);
+  expect(registry.slots.value).toEqual([{ element, kind: 'navigation' }]);
   directive.assistantSlot = 'panel';
   directive.ngOnChanges();
-  expect(slots.slots.value).toEqual([{ element, kind: 'panel' }]);
+  expect(registry.slots.value).toEqual([{ element, kind: 'panel' }]);
   directive.ngOnDestroy();
-  expect(slots.slots.value).toEqual([]);
+  expect(registry.slots.value).toEqual([]);
 });
 
-it('requests panel close only while the panel is open', () => {
-  const slots = new AssistantSlots();
-  const close = vi.spyOn(slots.panelCloseRequests, 'next');
-  slots.requestPanelClose();
-  expect(close).not.toHaveBeenCalled();
-  slots.setPanelOpen(true);
-  slots.requestPanelClose();
-  expect(close).toHaveBeenCalledOnce();
+it('tracks the React panel and only forwards close requests while it is open', () => {
+  const registry = new AssistantSlots();
+  const requests: number[] = [];
+  registry.panelCloseRequests.subscribe(() => requests.push(1));
+  registry.requestPanelClose();
+  expect(requests).toHaveLength(0);
+  registry.setPanelOpen(true);
+  registry.requestPanelClose();
+  expect(requests).toHaveLength(1);
+  registry.setPanelOpen(false);
+  expect(registry.panelOpen.value).toBe(false);
 });

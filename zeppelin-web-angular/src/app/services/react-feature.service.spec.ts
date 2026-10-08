@@ -13,13 +13,24 @@
 import { describe, expect, it } from 'vitest';
 import { ReactFeatureService } from './react-feature.service';
 
-describe('Assistant React feature flag', () => {
+describe('ReactFeatureService assistant panel', () => {
   const service = new ReactFeatureService();
 
-  it('is disabled by default and enabled only by the Assistant query parameter', () => {
+  it('defaults off without a source or query parameter', () => {
     expect(service.isEnabled('assistantPanel')).toBe(false);
-    expect(service.isEnabled('assistantPanel', new Map([['reactFooter', 'true']]))).toBe(false);
-    expect(service.isEnabled('assistantPanel', new Map([['reactAssistant', 'true']]))).toBe(true);
-    expect(service.isEnabled('assistantPanel', new Map([['reactAssistant', 'false']]))).toBe(false);
+    expect(service.isEnabled('assistantPanel', new Map())).toBe(false);
+  });
+
+  it.each([
+    ['', true],
+    ['true', true],
+    ['false', false],
+    ['invalid', false]
+  ])('resolves reactAssistant=%s to %s', (value, enabled) => {
+    expect(service.isEnabled('assistantPanel', new Map([['reactAssistant', value]]))).toBe(enabled);
+  });
+
+  it('does not enable the assistant from another surface flag', () => {
+    expect(service.isEnabled('assistantPanel', new Map([['react', 'true']]))).toBe(false);
   });
 });

@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnDestroy, OnInit, Optional, Output } from '@angular/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
 
@@ -35,15 +35,16 @@ export class NotebookSidebarComponent implements OnInit, OnDestroy {
   @Output() readonly scrollToParagraph = new EventEmitter<string>();
   sidebarState = SidebarState.CLOSED;
   SidebarState = SidebarState;
-  private readonly destroy$ = new Subject<void>();
+  private destroy$ = new Subject<void>();
 
   constructor(
-    private readonly cdr: ChangeDetectorRef,
-    private readonly assistantSlots: AssistantSlots
+    private cdr: ChangeDetectorRef,
+    @Optional() private assistantSlots: AssistantSlots | null
   ) {}
 
   ngOnInit(): void {
-    this.assistantSlots.panelOpen.pipe(filter(Boolean), takeUntil(this.destroy$)).subscribe(() => {
+    // Opening the assistant panel closes the TOC/file tree, like switching sidebar tabs.
+    this.assistantSlots?.panelOpen.pipe(filter(Boolean), takeUntil(this.destroy$)).subscribe(() => {
       if (this.sidebarState !== SidebarState.CLOSED) {
         this.sidebarState = SidebarState.CLOSED;
         this.isSidebarOpenChange.emit(false);
@@ -66,7 +67,7 @@ export class NotebookSidebarComponent implements OnInit, OnDestroy {
     if (this.sidebarState === SidebarState.CLOSED) {
       this.isSidebarOpenChange.emit(false);
     } else {
-      this.assistantSlots.requestPanelClose();
+      this.assistantSlots?.requestPanelClose();
       this.isSidebarOpenChange.emit(true);
     }
   }

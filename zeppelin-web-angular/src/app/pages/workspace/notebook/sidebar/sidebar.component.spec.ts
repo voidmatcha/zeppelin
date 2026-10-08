@@ -10,26 +10,52 @@
  * limitations under the License.
  */
 
+import { ChangeDetectorRef } from '@angular/core';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChangeDetectorRef } from '@angular/core';
 import { AssistantSlots } from '../assistant/assistant-slots';
 import { NotebookSidebarComponent } from './sidebar.component';
 
-describe('NotebookSidebarComponent assistant coordination', () => {
-  it('closes the file tree when the Assistant opens and closes the Assistant when the TOC opens', () => {
-    const slots = new AssistantSlots();
-    const sidebar = new NotebookSidebarComponent({ markForCheck: vi.fn() } as unknown as ChangeDetectorRef, slots);
-    const open = vi.spyOn(sidebar.isSidebarOpenChange, 'emit');
-    const closeAssistant = vi.spyOn(slots.panelCloseRequests, 'next');
-    sidebar.ngOnInit();
+const create = (slots: AssistantSlots | null) => {
+  const cdr = { markForCheck: vi.fn() } as unknown as ChangeDetectorRef;
+  const sidebar = new NotebookSidebarComponent(cdr, slots);
+  const openChanges: boolean[] = [];
+  sidebar.isSidebarOpenChange.subscribe(open => openChanges.push(open));
+  sidebar.ngOnInit();
+  return { sidebar, openChanges };
+};
 
-    sidebar.setOrToggleSidebarState(sidebar.SidebarState.FILE_TREE);
+describe('NotebookSidebarComponent', () => {
+  it('closes the TOC or file tree when the assistant panel opens', () => {
+    const slots = new AssistantSlots();
+    const { sidebar, openChanges } = create(slots);
+    sidebar.setOrToggleSidebarState(sidebar.SidebarState.TOC);
+    expect(openChanges).toEqual([true]);
+
     slots.setPanelOpen(true);
     expect(sidebar.sidebarState).toBe(sidebar.SidebarState.CLOSED);
-    sidebar.setOrToggleSidebarState(sidebar.SidebarState.TOC);
-    expect(closeAssistant).toHaveBeenCalledOnce();
-    expect(open.mock.calls).toEqual([[true], [false], [true]]);
+    expect(openChanges).toEqual([true, false]);
+    sidebar.ngOnDestroy();
+  });
 
+  it('asks the assistant panel to close when a sidebar view opens', () => {
+    const slots = new AssistantSlots();
+    const closeRequests = vi.fn();
+    slots.panelCloseRequests.subscribe(closeRequests);
+    slots.setPanelOpen(true);
+    const { sidebar } = create(slots);
+
+    sidebar.setOrToggleSidebarState(sidebar.SidebarState.FILE_TREE);
+    expect(closeRequests).toHaveBeenCalledTimes(1);
+    sidebar.setOrToggleSidebarState(sidebar.SidebarState.FILE_TREE);
+    expect(closeRequests).toHaveBeenCalledTimes(1);
+    sidebar.ngOnDestroy();
+  });
+
+  it('works without the assistant slots provider', () => {
+    const { sidebar, openChanges } = create(null);
+    sidebar.setOrToggleSidebarState(sidebar.SidebarState.TOC);
+    sidebar.setOrToggleSidebarState(sidebar.SidebarState.TOC);
+    expect(openChanges).toEqual([true, false]);
     sidebar.ngOnDestroy();
   });
 });
