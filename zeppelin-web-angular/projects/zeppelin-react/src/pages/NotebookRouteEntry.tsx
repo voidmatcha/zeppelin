@@ -52,6 +52,7 @@ const ReadOnlyParagraph = ({
   index,
   paragraphCount,
   commandPort,
+  collaborationBlocked,
   onResultReady,
   onError
 }: {
@@ -60,6 +61,7 @@ const ReadOnlyParagraph = ({
   index: number;
   paragraphCount: number;
   commandPort?: NotebookCoreCommandPort;
+  collaborationBlocked: boolean;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
 }) => (
@@ -74,12 +76,14 @@ const ReadOnlyParagraph = ({
         <textarea
           id={`react-core-editor-${paragraph.id}`}
           value={draft ?? paragraph.text}
+          readOnly={collaborationBlocked}
           onChange={event =>
             commandPort.dispatch({ type: 'editParagraph', paragraphId: paragraph.id, text: event.target.value })
           }
         />
         <button
           type="button"
+          disabled={collaborationBlocked}
           onClick={() => commandPort.dispatch({ type: 'saveParagraph', paragraphId: paragraph.id })}
         >
           Save paragraph
@@ -87,6 +91,7 @@ const ReadOnlyParagraph = ({
         {paragraph.status === 'PENDING' || paragraph.status === 'RUNNING' ? (
           <button
             type="button"
+            disabled={collaborationBlocked}
             onClick={() => commandPort.dispatch({ type: 'cancelParagraph', paragraphId: paragraph.id })}
           >
             Cancel paragraph
@@ -94,31 +99,36 @@ const ReadOnlyParagraph = ({
         ) : (
           <button
             type="button"
+            disabled={collaborationBlocked}
             onClick={() => commandPort.dispatch({ type: 'runParagraph', paragraphId: paragraph.id })}
           >
             Run paragraph
           </button>
         )}
-        <button type="button" onClick={() => commandPort.dispatch({ type: 'insertParagraph', index: index + 1 })}>
+        <button
+          type="button"
+          disabled={collaborationBlocked}
+          onClick={() => commandPort.dispatch({ type: 'insertParagraph', index: index + 1 })}
+        >
           Add paragraph below
         </button>
         <button
           type="button"
-          disabled={index === 0}
+          disabled={collaborationBlocked || index === 0}
           onClick={() => commandPort.dispatch({ type: 'moveParagraph', paragraphId: paragraph.id, index: index - 1 })}
         >
           Move up
         </button>
         <button
           type="button"
-          disabled={index === paragraphCount - 1}
+          disabled={collaborationBlocked || index === paragraphCount - 1}
           onClick={() => commandPort.dispatch({ type: 'moveParagraph', paragraphId: paragraph.id, index: index + 1 })}
         >
           Move down
         </button>
         <button
           type="button"
-          disabled={paragraphCount === 1}
+          disabled={collaborationBlocked || paragraphCount === 1}
           onClick={() => {
             if (window.confirm('Remove this paragraph?')) {
               commandPort.dispatch({ type: 'removeParagraph', paragraphId: paragraph.id });
@@ -153,6 +163,8 @@ const NotebookReadContent = ({
   revisionId,
   draftsById,
   commandPort,
+  collaborationBlocked,
+  defaultNotebookHref,
   onResultReady,
   onError
 }: {
@@ -160,6 +172,8 @@ const NotebookReadContent = ({
   revisionId: string | null;
   draftsById?: NotebookCoreSnapshot['draftsById'];
   commandPort?: NotebookCoreCommandPort;
+  collaborationBlocked: boolean;
+  defaultNotebookHref: string;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
 }) => {
@@ -187,6 +201,14 @@ const NotebookReadContent = ({
           {revisionId && <p>Revision: {revisionId}</p>}
         </div>
       </header>
+      {commandPort && collaborationBlocked && (
+        <Alert
+          type="warning"
+          role="alert"
+          message="Editing is paused because this note is in collaborative mode."
+          description={<a href={defaultNotebookHref}>Open the standard notebook to edit</a>}
+        />
+      )}
       {state.acl.status === 'ready' && (
         <section aria-label="Notebook permissions" className="notebook-react-read-permissions">
           <Typography.Title level={2}>Permissions</Typography.Title>
@@ -202,7 +224,11 @@ const NotebookReadContent = ({
         <Alert type="warning" role="alert" message="Permissions are unavailable." />
       )}
       {commandPort && !revisionId && paragraphOrder.length === 0 && (
-        <button type="button" onClick={() => commandPort.dispatch({ type: 'insertParagraph', index: 0 })}>
+        <button
+          type="button"
+          disabled={collaborationBlocked}
+          onClick={() => commandPort.dispatch({ type: 'insertParagraph', index: 0 })}
+        >
           Add paragraph
         </button>
       )}
@@ -216,6 +242,7 @@ const NotebookReadContent = ({
             index={index}
             paragraphCount={paragraphOrder.length}
             commandPort={revisionId ? undefined : commandPort}
+            collaborationBlocked={collaborationBlocked}
             onResultReady={onResultReady}
             onError={onError}
           />
@@ -305,6 +332,8 @@ const NotebookRouteScreen = ({
             revisionId={snapshot.revisionId}
             draftsById={snapshot.draftsById}
             commandPort={activeCommandPort}
+            collaborationBlocked={snapshot.collaborativeMode === true}
+            defaultNotebookHref={defaultNotebookHref}
             onResultReady={onResultReady}
             onError={onError}
           />

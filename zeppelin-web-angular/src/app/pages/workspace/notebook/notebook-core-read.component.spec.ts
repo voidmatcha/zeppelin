@@ -62,6 +62,18 @@ describe('NotebookCoreReadComponent', () => {
     expect(dispatch).toHaveBeenNthCalledWith(6, { type: 'moveParagraph', paragraphId: 'p1', index: 1 });
     expect(dispatch).toHaveBeenNthCalledWith(7, { type: 'removeParagraph', paragraphId: 'p1' });
 
+    component.collaborationBlocked = true;
+    expect(component.canWrite).toBe(false);
+    component.editParagraph('p1', { target: textarea } as unknown as Event);
+    component.saveParagraph('p1');
+    component.runParagraph('p1');
+    component.cancelParagraph('p1');
+    component.insertParagraph(1);
+    component.moveParagraph('p1', 1);
+    component.removeParagraph('p1');
+    expect(dispatch).toHaveBeenCalledTimes(7);
+    component.collaborationBlocked = false;
+
     component.revisionId = 'saved-revision';
     expect(component.canEdit).toBe(false);
     component.editParagraph('p1', { target: textarea } as unknown as Event);

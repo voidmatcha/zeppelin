@@ -44,6 +44,28 @@ const note = (id: string) => ({
 const permissions = () => ({ readers: ['reader'], owners: ['owner'], writers: [], runners: [] });
 
 describe('host-owned notebook read store', () => {
+  it('pauses writes on attributed collaborative status and keeps the pause after patches stop', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'unsaved' });
+    expect(store.acceptCollaborativeStatus(request, { noteId: 'n2', sequence: 1, status: true })).toBe(false);
+    expect(store.acceptCollaborativeStatus(request, { noteId: 'n1', sequence: 1, status: true })).toBe(true);
+    expect(store.getSnapshot().collaborativeMode).toBe(true);
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('unsaved');
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(store.dispatch({ type: 'runParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(store.dispatch({ type: 'insertParagraph', index: 1 })).toEqual({ accepted: false });
+    expect(store.acceptCollaborativeStatus(request, { noteId: 'n1', sequence: 2, status: false })).toBe(true);
+    expect(store.getSnapshot().collaborativeMode).toBe(true);
+    expect(store.acceptCollaborativeStatus(request, { noteId: 'n1', sequence: 2, status: false })).toBe(false);
+
+    const reloaded = store.beginRoute('n1', null);
+    store.acceptNote(reloaded, note('n1'));
+    expect(store.getSnapshot().draftsById).toBeUndefined();
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' }).accepted).toBe(true);
+  });
+
   it('applies only attributed live note metadata without changing paragraphs or local drafts', () => {
     const store = new NotebookCoreReadStore('n1');
     const request = store.beginRoute('n1', null);

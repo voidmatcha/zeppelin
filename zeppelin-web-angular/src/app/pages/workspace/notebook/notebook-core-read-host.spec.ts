@@ -68,6 +68,20 @@ afterEach(() => {
 });
 
 describe('NotebookCoreReadHost', () => {
+  it('blocks private writes when an attributed collaborative message arrives before NOTE', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.COLLABORATIVE_MODE_STATUS, data: { noteId: 'b', status: true, users: [] } });
+    received.next({ op: OP.COLLABORATIVE_MODE_STATUS, data: { noteId: 'a', status: true, users: [] } });
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    expect(host.store.getSnapshot().collaborativeMode).toBe(true);
+    expect(host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(message.sendNotebookCoreCommit).not.toHaveBeenCalled();
+    received.next({ op: OP.COLLABORATIVE_MODE_STATUS, data: { noteId: 'a', status: false, users: [] } });
+    expect(host.store.getSnapshot().collaborativeMode).toBe(true);
+    host.destroy();
+  });
+
   it('registers before a synchronous NOTE response and publishes one Core snapshot', () => {
     let received: Subject<{ op: OP; msgId?: string; data?: unknown }>;
     const fixture = createHost(msgId => received.next({ op: OP.NOTE, msgId, data: { note: note('a') } }));

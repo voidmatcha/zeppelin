@@ -45,6 +45,11 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
         }
         @case ('ready') {
           <h1>{{ readData?.note?.name }}</h1>
+          @if (canEdit && collaborationBlocked) {
+            <p role="alert">
+              Editing is paused because this note is in collaborative mode. Use the standard notebook to edit it.
+            </p>
+          }
           @if (state.acl.status === 'loading') {
             <p role="status">Loading permissions…</p>
           }
@@ -64,7 +69,7 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
             </section>
           }
           @if (canEdit && readData?.paragraphOrder?.length === 0) {
-            <button type="button" (click)="insertParagraph(0)">Add paragraph</button>
+            <button type="button" [disabled]="collaborationBlocked" (click)="insertParagraph(0)">Add paragraph</button>
           }
           @for (id of readData?.paragraphOrder; track id) {
             <article class="notebook-core-read-paragraph">
@@ -74,24 +79,39 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
                 <textarea
                   [id]="'core-editor-' + id"
                   [value]="draftsById?.[id]?.text ?? paragraph(id)?.text"
+                  [readOnly]="collaborationBlocked"
                   (input)="editParagraph(id, $event)"
                 ></textarea>
-                <button type="button" (click)="saveParagraph(id)">Save paragraph</button>
+                <button type="button" [disabled]="collaborationBlocked" (click)="saveParagraph(id)">
+                  Save paragraph
+                </button>
                 @if (paragraph(id)?.status === 'PENDING' || paragraph(id)?.status === 'RUNNING') {
-                  <button type="button" (click)="cancelParagraph(id)">Cancel paragraph</button>
+                  <button type="button" [disabled]="collaborationBlocked" (click)="cancelParagraph(id)">
+                    Cancel paragraph
+                  </button>
                 } @else {
-                  <button type="button" (click)="runParagraph(id)">Run paragraph</button>
+                  <button type="button" [disabled]="collaborationBlocked" (click)="runParagraph(id)">
+                    Run paragraph
+                  </button>
                 }
-                <button type="button" (click)="insertParagraph($index + 1)">Add paragraph below</button>
-                <button type="button" [disabled]="$index === 0" (click)="moveParagraph(id, -1)">Move up</button>
+                <button type="button" [disabled]="collaborationBlocked" (click)="insertParagraph($index + 1)">
+                  Add paragraph below
+                </button>
+                <button type="button" [disabled]="collaborationBlocked || $index === 0" (click)="moveParagraph(id, -1)">
+                  Move up
+                </button>
                 <button
                   type="button"
-                  [disabled]="$index === readData!.paragraphOrder.length - 1"
+                  [disabled]="collaborationBlocked || $index === readData!.paragraphOrder.length - 1"
                   (click)="moveParagraph(id, 1)"
                 >
                   Move down
                 </button>
-                <button type="button" [disabled]="readData!.paragraphOrder.length === 1" (click)="removeParagraph(id)">
+                <button
+                  type="button"
+                  [disabled]="collaborationBlocked || readData!.paragraphOrder.length === 1"
+                  (click)="removeParagraph(id)"
+                >
                   Remove paragraph
                 </button>
               } @else if (!isEditorHidden(id)) {
@@ -132,6 +152,7 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   state: NotebookCoreReadState = { status: 'initial', acl: { status: 'loading' } };
   revisionId: string | null = null;
   draftsById?: Readonly<Record<string, NotebookCoreParagraphDraft>>;
+  collaborationBlocked = false;
   private readonly subscriptions = new Subscription();
   private readonly resultConfigs = new WeakMap<ParagraphConfigResult, ParagraphConfigResult>();
 
@@ -145,49 +166,54 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
     return this.editable && this.revisionId === null;
   }
 
+  get canWrite(): boolean {
+    return this.canEdit && !this.collaborationBlocked;
+  }
+
   ngOnInit(): void {
     this.subscriptions.add(
       this.host.snapshot$.subscribe(snapshot => {
         this.state = snapshot.readState;
         this.revisionId = snapshot.revisionId;
         this.draftsById = snapshot.draftsById;
+        this.collaborationBlocked = snapshot.collaborativeMode === true;
         this.cdr.markForCheck();
       })
     );
   }
 
   editParagraph(id: string, event: Event): void {
-    if (this.canEdit && event.target instanceof HTMLTextAreaElement) {
+    if (this.canWrite && event.target instanceof HTMLTextAreaElement) {
       this.host.commandPort.dispatch({ type: 'editParagraph', paragraphId: id, text: event.target.value });
     }
   }
 
   saveParagraph(id: string): void {
-    if (this.canEdit) {
+    if (this.canWrite) {
       this.host.commandPort.dispatch({ type: 'saveParagraph', paragraphId: id });
     }
   }
 
   runParagraph(id: string): void {
-    if (this.canEdit) {
+    if (this.canWrite) {
       this.host.commandPort.dispatch({ type: 'runParagraph', paragraphId: id });
     }
   }
 
   cancelParagraph(id: string): void {
-    if (this.canEdit) {
+    if (this.canWrite) {
       this.host.commandPort.dispatch({ type: 'cancelParagraph', paragraphId: id });
     }
   }
 
   insertParagraph(index: number): void {
-    if (this.canEdit) {
+    if (this.canWrite) {
       this.host.commandPort.dispatch({ type: 'insertParagraph', index });
     }
   }
 
   moveParagraph(id: string, offset: -1 | 1): void {
-    if (!this.canEdit || !this.readData) {
+    if (!this.canWrite || !this.readData) {
       return;
     }
     const index = this.readData.paragraphOrder.indexOf(id);
@@ -195,7 +221,7 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   }
 
   removeParagraph(id: string): void {
-    if (this.canEdit && window.confirm('Remove this paragraph?')) {
+    if (this.canWrite && window.confirm('Remove this paragraph?')) {
       this.host.commandPort.dispatch({ type: 'removeParagraph', paragraphId: id });
     }
   }

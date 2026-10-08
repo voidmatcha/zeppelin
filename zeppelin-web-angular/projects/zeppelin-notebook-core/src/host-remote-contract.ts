@@ -17,6 +17,8 @@ export type NotebookCoreSnapshot = Readonly<{
   readState?: NotebookCoreReadState;
   /** Local editor text is independent of the last server-owned paragraph snapshot. */
   draftsById?: Readonly<Record<string, NotebookCoreParagraphDraft>>;
+  /** Editing is paused while another client uses the server's patch protocol. */
+  collaborativeMode?: boolean;
 }>;
 
 export type NotebookCoreParagraphDraft = Readonly<{ text: string; version: number }>;

@@ -87,6 +87,12 @@ export type NotebookCoreNoteUpdatedEvent = Readonly<{
   info: Readonly<Record<string, unknown>>;
 }>;
 
+export type NotebookCoreCollaborativeStatusEvent = Readonly<{
+  noteId: string;
+  sequence: number;
+  status: boolean;
+}>;
+
 type StreamResult = Readonly<{ type: string; data: string }>;
 type StreamOutput = {
   results: Map<number, StreamResult>;
@@ -188,7 +194,10 @@ export class NotebookCoreReadStore {
     // A reconnect reloads the same live note. Keep local edits until the new
     // server snapshot arrives, but never carry them into a revision or another note.
     const draftsById =
-      this.snapshot.noteId === noteId && this.snapshot.revisionId === null && revisionId === null
+      this.snapshot.noteId === noteId &&
+      this.snapshot.revisionId === null &&
+      revisionId === null &&
+      !this.snapshot.collaborativeMode
         ? this.snapshot.draftsById
         : undefined;
     const request = Object.freeze({ noteId, revisionId, token: Symbol('notebook read request') });
@@ -272,7 +281,12 @@ export class NotebookCoreReadStore {
   /** Local draft/save preparation only. The host remains responsible for authorization and transport. */
   dispatch(command: NotebookCoreCommand): NotebookCoreCommandResult {
     const state = this.snapshot.readState;
-    if (this.disposed || this.snapshot.revisionId !== null || state.status !== 'ready') {
+    if (
+      this.disposed ||
+      this.snapshot.revisionId !== null ||
+      state.status !== 'ready' ||
+      this.snapshot.collaborativeMode
+    ) {
       return Object.freeze({ accepted: false });
     }
     if (command.type === 'insertParagraph') {
@@ -506,6 +520,25 @@ export class NotebookCoreReadStore {
           })
         })
       );
+    }
+    return true;
+  }
+
+  acceptCollaborativeStatus(request: NotebookCoreReadRequest, event: NotebookCoreCollaborativeStatusEvent): boolean {
+    if (
+      !this.isLiveRequest(request) ||
+      event.noteId !== request.noteId ||
+      !Number.isSafeInteger(event.sequence) ||
+      event.sequence <= this.eventSequence
+    ) {
+      return false;
+    }
+    this.eventSequence = event.sequence;
+    // An ignored patch may have changed the server source. A later "false"
+    // cannot make this stale view safe to edit without a fresh route read.
+    const blocked = this.snapshot.collaborativeMode === true || event.status;
+    if (this.snapshot.collaborativeMode !== blocked) {
+      this.publish(Object.freeze({ ...this.snapshot, collaborativeMode: blocked }));
     }
     return true;
   }

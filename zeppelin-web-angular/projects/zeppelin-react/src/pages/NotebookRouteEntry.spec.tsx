@@ -208,6 +208,29 @@ describe('NotebookRouteEntry', () => {
     store.dispose();
   });
 
+  it('preserves visible drafts but disables private editing during collaboration', () => {
+    const store = new NotebookCoreReadStore('');
+    const request = store.beginRoute('note-1', null);
+    const dispatch = vi.fn(store.dispatch.bind(store));
+    act(() => {
+      unmount = mount(element, { core: store.port, commandPort: { ...store.port, dispatch } }).unmount;
+      store.acceptNote(request, {
+        id: 'note-1',
+        name: 'Shared note',
+        path: '/Shared note',
+        paragraphs: [{ id: 'p1', text: 'saved', status: 'READY' }]
+      });
+      store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'unsaved' });
+      store.acceptCollaborativeStatus(request, { noteId: 'note-1', sequence: 1, status: true });
+    });
+    expect(element.querySelector('textarea')?.value).toBe('unsaved');
+    expect(element.querySelector('textarea')?.readOnly).toBe(true);
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain('collaborative mode');
+    expect(Array.from(element.querySelectorAll('button')).every(button => button.disabled)).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+    store.dispose();
+  });
+
   it('keeps a saved revision read-only even when an edit command port is available', () => {
     const store = new NotebookCoreReadStore('');
     const request = store.beginRoute('note-1', 'revision-1');

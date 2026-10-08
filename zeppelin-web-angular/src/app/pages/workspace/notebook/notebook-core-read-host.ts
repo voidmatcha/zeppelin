@@ -353,6 +353,20 @@ export class NotebookCoreReadHost {
       return;
     }
     const sequence = ++this.wireSequence;
+    if (envelope.op === OP.COLLABORATIVE_MODE_STATUS && typeof change.status === 'boolean') {
+      this.store.acceptCollaborativeStatus(request, {
+        noteId: request.noteId,
+        sequence,
+        status: change.status
+      });
+      return;
+    }
+    if (envelope.op === OP.PATCH_PARAGRAPH && typeof change.paragraphId === 'string') {
+      // Do not apply an unchecked patch to the shared source. Preserve any local
+      // draft and pause writes until the server leaves collaborative mode.
+      this.store.acceptCollaborativeStatus(request, { noteId: request.noteId, sequence, status: true });
+      return;
+    }
     if (
       envelope.op === OP.NOTE_UPDATED &&
       typeof change.name === 'string' &&
