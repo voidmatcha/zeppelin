@@ -18,11 +18,19 @@
 package org.apache.zeppelin.service.assistant;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.openai.client.OpenAIClient;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -41,6 +49,44 @@ class OpenAiChatModelLifecycleTest {
     verify(client, times(1)).close();
     assertThrows(IllegalStateException.class,
         () -> model.stream("instruction", List.of(), List.of(), event -> { }));
+  }
+
+  @Test
+  void closingModelCancelsAStalledHttpStream() throws Exception {
+    var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    var streaming = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    server.createContext("/responses", exchange -> {
+      exchange.getRequestBody().readAllBytes();
+      exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+      exchange.sendResponseHeaders(200, 0);
+      try (var body = exchange.getResponseBody()) {
+        body.write(": waiting\n\n".getBytes(StandardCharsets.UTF_8));
+        body.flush();
+        streaming.countDown();
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    });
+    server.start();
+    var worker = Executors.newFixedThreadPool(2);
+    var model = new OpenAiChatModel(
+        "http://127.0.0.1:" + server.getAddress().getPort(), "test-key", "test-model");
+    try {
+      var run = worker.submit(() -> model.stream("instruction", List.of(), List.of(), event -> { }));
+      assertTrue(streaming.await(5, TimeUnit.SECONDS));
+      worker.submit(model::close).get(3, TimeUnit.SECONDS);
+      assertThrows(ExecutionException.class, () -> run.get(3, TimeUnit.SECONDS));
+    } finally {
+      release.countDown();
+      server.stop(0);
+      model.close();
+      worker.shutdownNow();
+      assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS));
+    }
   }
 
   @Test
