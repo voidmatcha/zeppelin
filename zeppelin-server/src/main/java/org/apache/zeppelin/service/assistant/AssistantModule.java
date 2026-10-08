@@ -22,6 +22,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.File;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -72,10 +73,18 @@ public class AssistantModule implements AutoCloseable {
   public void close() {
     try {
       if (assistantExecutor != null) {
-        assistantExecutor.shutdownNow();
+        for (Runnable queued : assistantExecutor.shutdownNow()) {
+          if (queued instanceof Future<?>) ((Future<?>) queued).cancel(false);
+        }
+        ((AssistantImpl) assistant).close();
+        try {
+          assistantExecutor.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
       }
     } finally {
-      if (model != null) {
+      if (model != null && !(assistant instanceof AssistantImpl)) {
         model.close();
       }
     }

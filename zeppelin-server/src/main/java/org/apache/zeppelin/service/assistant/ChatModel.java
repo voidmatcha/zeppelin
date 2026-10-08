@@ -20,7 +20,10 @@ package org.apache.zeppelin.service.assistant;
 import java.util.List;
 import java.util.function.Consumer;
 
-public interface ChatModel {
+public interface ChatModel extends AutoCloseable {
+
+  @Override
+  default void close() { }
 
   void stream(
       String systemPrompt,

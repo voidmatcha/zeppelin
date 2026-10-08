@@ -56,7 +56,9 @@ public class OpenAiChatModel implements ChatModel, AutoCloseable {
   }
 
   private synchronized OpenAIClient client() {
-    if (closed) throw new CancellationException();
+    if (closed) {
+      throw new CancellationException("Assistant model is closed");
+    }
     if (cachedClient == null) {
       cachedClient = OpenAIOkHttpClient.builder()
           .baseUrl(baseUrl)

@@ -453,4 +453,54 @@ class AssistantTest {
       finish.countDown();
     }
   }
+  @Test
+  void closingBlockedRunPreventsPersistenceAndNewRequests() throws Exception {
+    var notebook = mock(Notebook.class);
+    when(notebook.processNote(eq("noteId"), any())).thenAnswer(invocation ->
+        ((NoteProcessor<?>) invocation.getArgument(1)).process(new Note()));
+    var authorization = mock(AuthorizationService.class);
+    when(authorization.isReader("noteId", userAndRoles)).thenReturn(true);
+    var repository = mock(ConversationRepository.class);
+    var conversation = Conversation.create("noteId", "test", authInfo.getUser());
+    when(repository.find("noteId", conversation.getId())).thenReturn(Optional.of(conversation));
+    var model = mock(ChatModel.class);
+    var notebookService = mock(NotebookService.class);
+    var sut = new AssistantImpl(
+        notebook, model, notebookService, authorization, repository, executor);
+    var started = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    var executor = Executors.newSingleThreadExecutor();
+    var events = new ArrayList<AssistantEventType>();
+    doAnswer(invocation -> {
+      invocation.<Consumer<AssistantEvent>>getArgument(3).accept(
+          new AssistantEvent.ToolCall("call_1", "list_paragraphs", "{}"));
+      started.countDown();
+      assertTrue(release.await(5, TimeUnit.SECONDS));
+      return null;
+    }).when(model).stream(any(), any(), any(), any());
+    doAnswer(invocation -> {
+      release.countDown();
+      return null;
+    }).when(model).close();
+    try {
+      var run = sut.sendMessage("noteId", conversation.getId(), "hi",
+          authInfo, userAndRoles, (type, payload) -> events.add(type));
+      assertTrue(started.await(5, TimeUnit.SECONDS));
+      sut.close();
+      run.get(5, TimeUnit.SECONDS);
+      sut.close();
+      verify(model, times(1)).close();
+      verify(repository, times(1)).update(any(), any());
+      verifyNoInteractions(notebookService);
+      assertEquals(List.of(AssistantEventType.RUN_STARTED), events);
+      assertThrows(ServiceUnavailableException.class,
+          () -> sut.listConversations("noteId", userAndRoles));
+      assertThrows(ServiceUnavailableException.class,
+          () -> sut.createConversation("noteId", "title", authInfo, userAndRoles));
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+  }
+
 }
