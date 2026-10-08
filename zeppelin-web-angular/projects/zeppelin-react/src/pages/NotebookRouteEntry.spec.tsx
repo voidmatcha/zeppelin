@@ -228,6 +228,18 @@ describe('NotebookRouteEntry', () => {
     expect(element.querySelector('[role="alert"]')?.textContent).toContain('collaborative mode');
     expect(Array.from(element.querySelectorAll('button')).every(button => button.disabled)).toBe(true);
     expect(dispatch).not.toHaveBeenCalled();
+    act(() => {
+      store.acceptPatchEvent(request, {
+        noteId: 'note-1',
+        paragraphId: 'p1',
+        sequence: 2,
+        baseText: 'saved',
+        text: 'shared',
+        applied: true
+      });
+    });
+    expect(element.textContent).toContain('without checksums');
+    expect(element.querySelector('textarea')?.value).toBe('unsaved');
     store.dispose();
   });
 

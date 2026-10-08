@@ -19,6 +19,10 @@ export type NotebookCoreSnapshot = Readonly<{
   draftsById?: Readonly<Record<string, NotebookCoreParagraphDraft>>;
   /** Editing is paused while another client uses the server's patch protocol. */
   collaborativeMode?: boolean;
+  /** The view cannot prove it matches the server after a collaborative patch. */
+  collaborationPatchFailed?: boolean;
+  /** Older patch senders supply no checksums, so fuzzy application cannot be verified. */
+  collaborationPatchUnverified?: boolean;
 }>;
 
 export type NotebookCoreParagraphDraft = Readonly<{ text: string; version: number }>;

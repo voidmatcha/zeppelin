@@ -164,6 +164,8 @@ const NotebookReadContent = ({
   draftsById,
   commandPort,
   collaborationBlocked,
+  collaborationPatchFailed,
+  collaborationPatchUnverified,
   defaultNotebookHref,
   onResultReady,
   onError
@@ -173,6 +175,8 @@ const NotebookReadContent = ({
   draftsById?: NotebookCoreSnapshot['draftsById'];
   commandPort?: NotebookCoreCommandPort;
   collaborationBlocked: boolean;
+  collaborationPatchFailed: boolean;
+  collaborationPatchUnverified: boolean;
   defaultNotebookHref: string;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
@@ -201,6 +205,26 @@ const NotebookReadContent = ({
           {revisionId && <p>Revision: {revisionId}</p>}
         </div>
       </header>
+      {collaborationPatchFailed && (
+        <Alert
+          type="error"
+          role="alert"
+          message="A collaborative edit could not be verified."
+          description={
+            <>
+              Copy any unsaved text before reopening. <a href={defaultNotebookHref}>Open the standard notebook</a>
+            </>
+          }
+        />
+      )}
+      {!collaborationPatchFailed && collaborationPatchUnverified && (
+        <Alert
+          type="warning"
+          role="alert"
+          message="Collaborative edits without checksums cannot be fully verified in this preview."
+          description={<a href={defaultNotebookHref}>Open the standard notebook</a>}
+        />
+      )}
       {commandPort && collaborationBlocked && (
         <Alert
           type="warning"
@@ -333,6 +357,8 @@ const NotebookRouteScreen = ({
             draftsById={snapshot.draftsById}
             commandPort={activeCommandPort}
             collaborationBlocked={snapshot.collaborativeMode === true}
+            collaborationPatchFailed={snapshot.collaborationPatchFailed === true}
+            collaborationPatchUnverified={snapshot.collaborationPatchUnverified === true}
             defaultNotebookHref={defaultNotebookHref}
             onResultReady={onResultReady}
             onError={onError}

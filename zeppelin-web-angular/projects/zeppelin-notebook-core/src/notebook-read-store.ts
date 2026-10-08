@@ -93,6 +93,17 @@ export type NotebookCoreCollaborativeStatusEvent = Readonly<{
   status: boolean;
 }>;
 
+export type NotebookCorePatchEvent = Readonly<{
+  noteId: string;
+  paragraphId: string;
+  sequence: number;
+  baseText: string;
+  text: string;
+  applied: boolean;
+  baseChecksum?: number;
+  afterChecksum?: number;
+}>;
+
 type StreamResult = Readonly<{ type: string; data: string }>;
 type StreamOutput = {
   results: Map<number, StreamResult>;
@@ -147,10 +158,18 @@ const sameJsonValue = (left: unknown, right: unknown): boolean => {
   );
 };
 
+const textChecksum = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index++) {
+    hash = (Math.imul(31, hash) + value.charCodeAt(index)) | 0;
+  }
+  return hash;
+};
+
 /**
  * Host-owned normalized note store. The host must subscribe before requesting NOTE.
  * Incremental paragraph and output events require trustworthy note attribution;
- * Collaboration patches still require a fresh read.
+ * Collaboration patches are applied only to an attributed live paragraph.
  */
 export class NotebookCoreReadStore {
   readonly port: NotebookCorePort = Object.freeze({
@@ -540,6 +559,64 @@ export class NotebookCoreReadStore {
     if (this.snapshot.collaborativeMode !== blocked) {
       this.publish(Object.freeze({ ...this.snapshot, collaborativeMode: blocked }));
     }
+    return true;
+  }
+
+  /** Preserve local drafts and fail closed if a patch cannot be verified against this view. */
+  acceptPatchEvent(request: NotebookCoreReadRequest, event: NotebookCorePatchEvent): boolean {
+    const state = this.snapshot.readState;
+    if (
+      !this.isLiveRequest(request) ||
+      event.noteId !== request.noteId ||
+      !Number.isSafeInteger(event.sequence) ||
+      event.sequence <= this.eventSequence ||
+      typeof event.baseText !== 'string' ||
+      typeof event.text !== 'string' ||
+      typeof event.applied !== 'boolean' ||
+      this.snapshot.collaborationPatchFailed
+    ) {
+      return false;
+    }
+    this.eventSequence = event.sequence;
+    const fail = () => {
+      this.publish(Object.freeze({ ...this.snapshot, collaborativeMode: true, collaborationPatchFailed: true }));
+      return false;
+    };
+    if (state.status !== 'ready') {
+      return fail();
+    }
+    const paragraph = state.data.paragraphsById[event.paragraphId];
+    if (!paragraph || !event.applied || event.baseText !== paragraph.text) {
+      return fail();
+    }
+    if (
+      (event.baseChecksum !== undefined &&
+        (!Number.isSafeInteger(event.baseChecksum) || event.baseChecksum !== textChecksum(paragraph.text))) ||
+      (event.afterChecksum !== undefined && !Number.isSafeInteger(event.afterChecksum))
+    ) {
+      return fail();
+    }
+    if (event.afterChecksum !== undefined && event.afterChecksum !== textChecksum(event.text)) {
+      return fail();
+    }
+    const nextParagraph = Object.freeze({ ...paragraph, text: event.text });
+    const data = Object.freeze({
+      ...state.data,
+      paragraphsById: Object.freeze(
+        Object.assign(Object.create(null), state.data.paragraphsById, { [event.paragraphId]: nextParagraph })
+      )
+    });
+    this.publish(
+      Object.freeze({
+        ...this.snapshot,
+        collaborativeMode: true,
+        collaborationPatchUnverified:
+          this.snapshot.collaborationPatchUnverified ||
+          event.baseChecksum === undefined ||
+          event.afterChecksum === undefined,
+        readState: Object.freeze({ ...state, data })
+      })
+    );
     return true;
   }
 

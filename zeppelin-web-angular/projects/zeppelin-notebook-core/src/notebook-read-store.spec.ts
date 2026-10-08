@@ -44,6 +44,92 @@ const note = (id: string) => ({
 const permissions = () => ({ readers: ['reader'], owners: ['owner'], writers: [], runners: [] });
 
 describe('host-owned notebook read store', () => {
+  it('applies an attributed collaborative patch without replacing an unsaved local draft', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'my draft' });
+    const patch = { paragraphId: 'p1', baseText: 'first', text: 'first shared', applied: true };
+    expect(store.acceptPatchEvent(request, { noteId: 'n2', sequence: 1, ...patch })).toBe(false);
+    expect(store.acceptPatchEvent(request, { noteId: 'n1', sequence: 1, ...patch })).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first shared');
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('my draft');
+    expect(store.getSnapshot().collaborativeMode).toBe(true);
+    expect(store.getSnapshot().collaborationPatchUnverified).toBe(true);
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+    expect(store.acceptPatchEvent(request, { noteId: 'n1', sequence: 1, ...patch })).toBe(false);
+  });
+
+  it('pauses a stale view when a collaborative patch is malformed or changes unexpected text', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    expect(
+      store.acceptPatchEvent(request, {
+        noteId: 'n1',
+        paragraphId: 'p1',
+        sequence: 1,
+        baseText: 'first',
+        text: 'first shared',
+        applied: true,
+        baseChecksum: 123
+      })
+    ).toBe(false);
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first');
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+    const failed = { noteId: 'n1', paragraphId: 'p1', baseText: 'first', text: 'first', applied: false };
+    expect(store.acceptPatchEvent(request, { ...failed, sequence: 2 })).toBe(false);
+
+    const fresh = store.beginRoute('n1', null);
+    store.acceptNote(fresh, note('n1'));
+    expect(store.acceptPatchEvent(fresh, { ...failed, sequence: 3 })).toBe(false);
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(store.acceptPatchEvent(request, { ...failed, sequence: 4 })).toBe(false);
+  });
+
+  it('verifies before and after checksums when a collaborative sender supplies them', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    const patch = { paragraphId: 'p1', baseText: 'first', text: 'first shared', applied: true };
+    expect(
+      store.acceptPatchEvent(request, {
+        noteId: 'n1',
+        sequence: 1,
+        ...patch,
+        baseChecksum: 97440432,
+        afterChecksum: -17048619
+      })
+    ).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first shared');
+    expect(store.getSnapshot().collaborationPatchFailed).toBeUndefined();
+    expect(store.getSnapshot().collaborationPatchUnverified).toBe(false);
+
+    const fresh = store.beginRoute('n1', null);
+    store.acceptNote(fresh, note('n1'));
+    expect(
+      store.acceptPatchEvent(fresh, {
+        noteId: 'n1',
+        sequence: 2,
+        ...patch,
+        baseChecksum: 97440432,
+        afterChecksum: 0
+      })
+    ).toBe(false);
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first');
+  });
+
+  it('marks a patch received before the requested note as unsafe instead of assuming the note is current', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    const patch = { noteId: 'n1', paragraphId: 'p1', baseText: '', text: '', applied: false };
+    expect(store.acceptPatchEvent(request, { ...patch, sequence: 1 })).toBe(false);
+    store.acceptNote(request, note('n1'));
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
+  });
+
   it('pauses writes on attributed collaborative status and keeps the pause after patches stop', () => {
     const store = new NotebookCoreReadStore('n1');
     const request = store.beginRoute('n1', null);

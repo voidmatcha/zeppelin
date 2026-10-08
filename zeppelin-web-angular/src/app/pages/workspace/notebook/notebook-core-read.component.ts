@@ -45,6 +45,13 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
         }
         @case ('ready') {
           <h1>{{ readData?.note?.name }}</h1>
+          @if (collaborationPatchFailed) {
+            <p role="alert">
+              A collaborative edit could not be verified. Copy any unsaved text before reopening the notebook.
+            </p>
+          } @else if (collaborationPatchUnverified) {
+            <p role="alert">Collaborative edits without checksums cannot be fully verified in this preview.</p>
+          }
           @if (canEdit && collaborationBlocked) {
             <p role="alert">
               Editing is paused because this note is in collaborative mode. Use the standard notebook to edit it.
@@ -153,6 +160,8 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   revisionId: string | null = null;
   draftsById?: Readonly<Record<string, NotebookCoreParagraphDraft>>;
   collaborationBlocked = false;
+  collaborationPatchFailed = false;
+  collaborationPatchUnverified = false;
   private readonly subscriptions = new Subscription();
   private readonly resultConfigs = new WeakMap<ParagraphConfigResult, ParagraphConfigResult>();
 
@@ -177,6 +186,8 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
         this.revisionId = snapshot.revisionId;
         this.draftsById = snapshot.draftsById;
         this.collaborationBlocked = snapshot.collaborativeMode === true;
+        this.collaborationPatchFailed = snapshot.collaborationPatchFailed === true;
+        this.collaborationPatchUnverified = snapshot.collaborationPatchUnverified === true;
         this.cdr.markForCheck();
       })
     );

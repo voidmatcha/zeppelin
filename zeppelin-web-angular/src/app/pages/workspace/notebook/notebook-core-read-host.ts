@@ -11,6 +11,7 @@
  */
 
 import { HttpErrorResponse } from '@angular/common/http';
+import DiffMatchPatch from 'diff-match-patch';
 import { Observable, Subscription } from 'rxjs';
 import { take, timeout } from 'rxjs/operators';
 
@@ -362,9 +363,34 @@ export class NotebookCoreReadHost {
       return;
     }
     if (envelope.op === OP.PATCH_PARAGRAPH && typeof change.paragraphId === 'string') {
-      // Do not apply an unchecked patch to the shared source. Preserve any local
-      // draft and pause writes until the server leaves collaborative mode.
-      this.store.acceptCollaborativeStatus(request, { noteId: request.noteId, sequence, status: true });
+      const state = this.store.getSnapshot().readState;
+      const baseText = state.status === 'ready' ? (state.data.paragraphsById[change.paragraphId]?.text ?? '') : '';
+      let text = baseText;
+      let applied = false;
+      if (typeof change.patch === 'string') {
+        try {
+          const diff = new DiffMatchPatch();
+          const result = diff.patch_apply(diff.patch_fromText(change.patch), baseText);
+          text = result[0];
+          applied = result[1].length > 0 && result[1].every(success => success);
+        } catch {
+          // Core keeps the last known text and marks the view unsafe.
+        }
+      }
+      this.store.acceptPatchEvent(request, {
+        noteId: request.noteId,
+        paragraphId: change.paragraphId,
+        sequence,
+        baseText,
+        text,
+        applied,
+        ...(Object.prototype.hasOwnProperty.call(change, 'baseChecksum')
+          ? { baseChecksum: change.baseChecksum as number }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(change, 'afterChecksum')
+          ? { afterChecksum: change.afterChecksum as number }
+          : {})
+      });
       return;
     }
     if (

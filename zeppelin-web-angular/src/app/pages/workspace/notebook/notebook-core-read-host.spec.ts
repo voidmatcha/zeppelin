@@ -11,6 +11,7 @@
  */
 
 import { Observable, of, Subject } from 'rxjs';
+import DiffMatchPatch from 'diff-match-patch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OP } from '@zeppelin/sdk';
@@ -68,6 +69,44 @@ afterEach(() => {
 });
 
 describe('NotebookCoreReadHost', () => {
+  it('routes only note-attributed collaborative patches into the shared Core', () => {
+    const { host, received } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    const patch = new DiffMatchPatch().patch_make('hello', 'hello shared').toString();
+    received.next({ op: OP.PATCH_PARAGRAPH, data: { noteId: 'b', paragraphId: 'p1', patch } });
+    expect(
+      host.store.getSnapshot().readState.status === 'ready' &&
+        host.store.getSnapshot().readState.data.paragraphsById.p1.text
+    ).toBe('hello');
+    received.next({ op: OP.PATCH_PARAGRAPH, data: { noteId: 'a', paragraphId: 'p1', patch } });
+    expect(
+      host.store.getSnapshot().readState.status === 'ready' &&
+        host.store.getSnapshot().readState.data.paragraphsById.p1.text
+    ).toBe('hello shared');
+    expect(host.store.getSnapshot().collaborativeMode).toBe(true);
+    expect(host.store.getSnapshot().collaborationPatchUnverified).toBe(true);
+    received.next({ op: OP.PATCH_PARAGRAPH, data: { noteId: 'a', paragraphId: 'p1', patch: 'bad patch' } });
+    expect(host.store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(
+      host.store.getSnapshot().readState.status === 'ready' &&
+        host.store.getSnapshot().readState.data.paragraphsById.p1.text
+    ).toBe('hello shared');
+
+    host.load('a', 'revision');
+    received.next({
+      op: OP.NOTE_REVISION,
+      msgId: 'request-2',
+      data: { noteId: 'a', revisionId: 'revision', note: note('a') }
+    });
+    received.next({ op: OP.PATCH_PARAGRAPH, data: { noteId: 'a', paragraphId: 'p1', patch } });
+    expect(
+      host.store.getSnapshot().readState.status === 'ready' &&
+        host.store.getSnapshot().readState.data.paragraphsById.p1.text
+    ).toBe('hello');
+    host.destroy();
+  });
+
   it('blocks private writes when an attributed collaborative message arrives before NOTE', () => {
     const { host, received, message } = createHost();
     host.load('a', null);
