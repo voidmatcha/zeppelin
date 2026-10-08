@@ -17,6 +17,7 @@
 .flow-panel { min-height:0; flex:1; }
 .flow-panel > div { height:100%; }
 .flow-panel > div > div { height:100% !important; }
+.flow-panel > div > div > div { height:100% !important; }
 .flow-notebook { flex:1; overflow:auto; padding:28px 12px; }
 .flow-paragraph { position:relative; background:#fff; border:1px solid #e5e7eb; box-shadow:0 2px 6px #0000000d; margin:0 0 32px; min-height:175px; padding:36px 14px 16px 26px; }
 .flow-paragraph.is-focused { border-color:#99b9d4; }

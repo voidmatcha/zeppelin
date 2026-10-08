@@ -103,6 +103,23 @@ function appendMessage(panel, text, role) {
   else { const body = message.querySelector('p'); body.textContent = text; }
   log.append(message); transition(message); log.scrollTop = log.scrollHeight; return message;
 }
+function beginReply(panel) {
+  const reply=appendMessage(panel,'','assistant');
+  reply.setAttribute('aria-busy','true');
+  const icon=reply.querySelector('.zaohb82');
+  icon.classList.add('zaohb83');
+  const actions=reply.querySelector('.lifu726');
+  actions.remove();
+  return {
+    reply,
+    body:reply.querySelector('p'),
+    finish() {
+      icon.classList.remove('zaohb83');
+      reply.removeAttribute('aria-busy');
+      reply.append(actions);
+    }
+  };
+}
 function actionCard(panel, label, state) {
   const log = panel._flowLog ?? panel.querySelector('[role="log"]') ?? panel.querySelector('[data-role="assistant"]').parentElement;
   const card = document.createElement('div'); card.className='flow-approval';
@@ -132,13 +149,7 @@ async function ask({panel}) {
   await step(1200); const log=panel._flowLog; log.innerHTML=''; await sendQuestion(panel); panel.querySelector('header button span:not(.hcfrxgp)').textContent='What does each paragraph do?';
   const action=actionCard(panel,'1 action','◌ Read paragraphs');
   await step(1800); action.innerHTML='<strong>1 action</strong><p>✓ Read paragraphs</p>'; transition(action);
-  const reply=appendMessage(panel,'','assistant');
-  reply.setAttribute('aria-busy','true');
-  const icon=reply.querySelector('.zaohb82');
-  icon.classList.add('zaohb83');
-  const actions=reply.querySelector('.lifu726');
-  actions.remove();
-  const body=reply.querySelector('p');
+  const {body,finish}=beginReply(panel);
   const heading=document.createElement('strong');body.replaceChildren(heading);
   await streamInto(heading,'Paragraph-by-paragraph overview');
   const explanation=document.createElement('p');body.after(explanation);
@@ -157,9 +168,7 @@ async function ask({panel}) {
     for(let i=0;i<row.length;i++) await streamInto(tr.cells[i],row[i]);
     await step(250);
   }
-  icon.classList.remove('zaohb83');
-  reply.removeAttribute('aria-busy');
-  reply.append(actions);
+  finish();
   await step(2200);
 }
 async function earlier({panel}) {
@@ -231,7 +240,9 @@ async function approval({panel,notebook},skip) {
   target.querySelector('.flow-state').textContent='RUNNING   ◉  ⚙';
   await step(1300);target.querySelector('.flow-output').textContent=topThree;target.querySelector('.flow-state').textContent='FINISHED   ◉  ⚙';transition(target.querySelector('.flow-output'));
   action.innerHTML='<strong>2 actions completed</strong><p>✓ Edit paragraph</p><p>✓ Run paragraph</p>';
-  appendMessage(panel,'The top three regions are South (470), West (420), and East (280).','assistant');
+  const reply=beginReply(panel);
+  await streamInto(reply.body,'The top three regions are South (470), West (420), and East (280).');
+  reply.finish();
   await step(3300);
 }
 export function loopingFlow(renderScreen, theme, scenario) {
