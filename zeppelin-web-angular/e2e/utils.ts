@@ -275,9 +275,16 @@ export const performLoginIfRequired = async (page: Page): Promise<boolean> => {
   const testUser = validUsers[0];
 
   const isLoginVisible = await page.locator('zeppelin-login').isVisible();
-  if (isLoginVisible) {
+  if (isLoginVisible || page.url().includes('#/login')) {
+    await page.locator('zeppelin-login').waitFor({ state: 'visible', timeout: 30000 });
     const loginPage = new LoginPage(page);
-    await loginPage.login(testUser.username, testUser.password);
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        reply => new URL(reply.url()).pathname.endsWith('/api/login') && reply.request().method() === 'POST'
+      ),
+      loginPage.login(testUser.username, testUser.password)
+    ]);
+    if (!response.ok()) return false;
 
     await page.evaluate(() => {
       if (window.location.hash.includes('login')) {
