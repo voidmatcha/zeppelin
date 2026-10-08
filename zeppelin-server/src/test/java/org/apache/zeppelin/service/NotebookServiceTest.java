@@ -78,6 +78,7 @@ import org.apache.zeppelin.search.SearchService;
 import org.apache.zeppelin.storage.ConfigStorage;
 import org.apache.zeppelin.user.AuthenticationInfo;
 import org.apache.zeppelin.user.Credentials;
+import org.bitbucket.cowwoc.diffmatchpatch.DiffMatchPatch;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -909,5 +910,49 @@ class NotebookServiceTest {
       assertEquals("text without checksum", note.getParagraph(paragraphId).getText());
       return null;
     });
+  }
+
+  @Test
+  void testCorePatchRequiresExactBaseAndCompleteResult() throws IOException {
+    String noteId = notebookService.createNote("/core_patch", "test", true, context, callback);
+    String paragraphId = notebook.processNote(noteId, note -> {
+      Paragraph paragraph = note.getParagraph(0);
+      paragraph.setText("server text");
+      return paragraph.getId();
+    });
+    DiffMatchPatch diff = new DiffMatchPatch();
+    String patch = diff.patchToText(diff.patchMake("server text", "server text!"));
+    ServiceCallback<NotebookService.ParagraphPatchResult> patchCallback = mock(ServiceCallback.class);
+
+    notebookService.patchParagraphWithAck(noteId, paragraphId, patch,
+        "stale text".hashCode(), "server text!".hashCode(), context, patchCallback);
+    ArgumentCaptor<NotebookService.ParagraphPatchResult> result =
+        ArgumentCaptor.forClass(NotebookService.ParagraphPatchResult.class);
+    verify(patchCallback).onSuccess(result.capture(), eq(context));
+    assertFalse(result.getValue().isApplied());
+    assertEquals("server text", result.getValue().getParagraph().getText());
+
+    org.mockito.Mockito.reset(patchCallback);
+    notebookService.patchParagraphWithAck(noteId, paragraphId, "invalid patch",
+        "server text".hashCode(), "server text!".hashCode(), context, patchCallback);
+    verify(patchCallback).onFailure(any(IOException.class), eq(context));
+    notebook.processNote(noteId, note -> {
+      assertEquals("server text", note.getParagraph(paragraphId).getText());
+      return null;
+    });
+
+    org.mockito.Mockito.reset(patchCallback);
+    notebookService.patchParagraphWithAck(noteId, paragraphId, patch,
+        "server text".hashCode(), "wrong result".hashCode(), context, patchCallback);
+    verify(patchCallback).onSuccess(result.capture(), eq(context));
+    assertFalse(result.getValue().isApplied());
+    assertEquals("server text", result.getValue().getParagraph().getText());
+
+    org.mockito.Mockito.reset(patchCallback);
+    notebookService.patchParagraphWithAck(noteId, paragraphId, patch,
+        "server text".hashCode(), "server text!".hashCode(), context, patchCallback);
+    verify(patchCallback).onSuccess(result.capture(), eq(context));
+    assertTrue(result.getValue().isApplied());
+    assertEquals("server text!", result.getValue().getParagraph().getText());
   }
 }

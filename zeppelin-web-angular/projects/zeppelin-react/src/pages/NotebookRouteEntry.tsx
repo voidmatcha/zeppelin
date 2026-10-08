@@ -53,6 +53,7 @@ const ReadOnlyParagraph = ({
   paragraphCount,
   commandPort,
   collaborationBlocked,
+  sourceBlocked,
   onResultReady,
   onError
 }: {
@@ -62,6 +63,7 @@ const ReadOnlyParagraph = ({
   paragraphCount: number;
   commandPort?: NotebookCoreCommandPort;
   collaborationBlocked: boolean;
+  sourceBlocked: boolean;
   onResultReady: (key: string) => void;
   onError?: (error: unknown) => void;
 }) => (
@@ -76,7 +78,7 @@ const ReadOnlyParagraph = ({
         <textarea
           id={`react-core-editor-${paragraph.id}`}
           value={draft ?? paragraph.text}
-          readOnly={collaborationBlocked}
+          readOnly={sourceBlocked}
           onChange={event =>
             commandPort.dispatch({ type: 'editParagraph', paragraphId: paragraph.id, text: event.target.value })
           }
@@ -212,7 +214,8 @@ const NotebookReadContent = ({
           message="A collaborative edit could not be verified."
           description={
             <>
-              Copy any unsaved text before reopening. <a href={defaultNotebookHref}>Open the standard notebook</a>
+              Copy any unsaved text before leaving this preview.{' '}
+              <a href={defaultNotebookHref}>Open the standard notebook</a>
             </>
           }
         />
@@ -229,8 +232,8 @@ const NotebookReadContent = ({
         <Alert
           type="warning"
           role="alert"
-          message="Editing is paused because this note is in collaborative mode."
-          description={<a href={defaultNotebookHref}>Open the standard notebook to edit</a>}
+          message="Collaborative editing is active. Other notebook actions remain unavailable in this preview."
+          description="Paragraph source edits are synchronized. Save, run, and paragraph structure controls remain paused."
         />
       )}
       {state.acl.status === 'ready' && (
@@ -267,6 +270,7 @@ const NotebookReadContent = ({
             paragraphCount={paragraphOrder.length}
             commandPort={revisionId ? undefined : commandPort}
             collaborationBlocked={collaborationBlocked}
+            sourceBlocked={collaborationPatchFailed || collaborationPatchUnverified}
             onResultReady={onResultReady}
             onError={onError}
           />

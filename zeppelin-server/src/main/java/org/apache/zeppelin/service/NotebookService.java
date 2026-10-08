@@ -1590,6 +1590,68 @@ public class NotebookService {
     }
   }
 
+  public static final class ParagraphPatchResult {
+    private final Paragraph paragraph;
+    private final boolean applied;
+
+    public ParagraphPatchResult(Paragraph paragraph, boolean applied) {
+      this.paragraph = paragraph;
+      this.applied = applied;
+    }
+
+    public Paragraph getParagraph() {
+      return paragraph;
+    }
+
+    public boolean isApplied() {
+      return applied;
+    }
+  }
+
+  /** Apply a Core patch only to the exact server text it was based on. */
+  public void patchParagraphWithAck(String noteId, String paragraphId, String patchText,
+                                    int baseChecksum, int afterChecksum, ServiceContext context,
+                                    ServiceCallback<ParagraphPatchResult> callback) throws IOException {
+    if (!checkPermission(noteId, Permission.WRITER, Message.OP.PATCH_PARAGRAPH, context, callback)) {
+      return;
+    }
+    notebook.processNote(noteId, note -> {
+      if (note == null) {
+        callback.onFailure(new NoteNotFoundException(noteId), context);
+        return null;
+      }
+      Paragraph paragraph = note.getParagraph(paragraphId);
+      if (paragraph == null) {
+        callback.onFailure(new ParagraphNotFoundException(paragraphId), context);
+        return null;
+      }
+      String current = paragraph.getText() == null ? "" : paragraph.getText();
+      if (checksum(current) != baseChecksum) {
+        callback.onSuccess(new ParagraphPatchResult(paragraph, false), context);
+        return null;
+      }
+      try {
+        DiffMatchPatch diff = new DiffMatchPatch();
+        Object[] result = diff.patchApply(new LinkedList<>(diff.patchFromText(patchText)), current);
+        String next = (String) result[0];
+        boolean[] applied = (boolean[]) result[1];
+        boolean complete = applied.length > 0;
+        for (boolean success : applied) {
+          complete &= success;
+        }
+        if (!complete || checksum(next) != afterChecksum) {
+          callback.onSuccess(new ParagraphPatchResult(paragraph, false), context);
+          return null;
+        }
+        paragraph.setText(next);
+        callback.onSuccess(new ParagraphPatchResult(paragraph, true), context);
+      } catch (RuntimeException ex) {
+        callback.onFailure(new IOException("Failed to apply paragraph patch", ex), context);
+      }
+      return null;
+    });
+  }
+
   /**
    * Resend a single paragraph to a client whose patched text diverged, so that the note as a
    * whole does not have to be reloaded.

@@ -17,7 +17,7 @@ export type NotebookCoreSnapshot = Readonly<{
   readState?: NotebookCoreReadState;
   /** Local editor text is independent of the last server-owned paragraph snapshot. */
   draftsById?: Readonly<Record<string, NotebookCoreParagraphDraft>>;
-  /** Editing is paused while another client uses the server's patch protocol. */
+  /** Non-patch commands are paused while the server's collaboration protocol is active. */
   collaborativeMode?: boolean;
   /** The view cannot prove it matches the server after a collaborative patch. */
   collaborationPatchFailed?: boolean;
@@ -47,9 +47,23 @@ export type NotebookCoreSaveIntent = Readonly<{
 
 export type NotebookCoreRunIntent = NotebookCoreSaveIntent;
 
+export type NotebookCorePatchIntent = Readonly<{
+  noteId: string;
+  paragraphId: string;
+  baseText: string;
+  text: string;
+  version: number;
+  token: symbol;
+}>;
+
 export type NotebookCoreCommandResult =
   | Readonly<{ accepted: false }>
-  | Readonly<{ accepted: true; save?: NotebookCoreSaveIntent; run?: NotebookCoreRunIntent }>;
+  | Readonly<{
+      accepted: true;
+      save?: NotebookCoreSaveIntent;
+      run?: NotebookCoreRunIntent;
+      patch?: NotebookCorePatchIntent;
+    }>;
 
 /** The host sends returned save intents; the server remains the authority for writes. */
 export type NotebookCoreCommandPort = NotebookCorePort &

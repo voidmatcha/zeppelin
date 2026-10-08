@@ -208,7 +208,7 @@ describe('NotebookRouteEntry', () => {
     store.dispose();
   });
 
-  it('preserves visible drafts but disables private editing during collaboration', () => {
+  it('allows collaborative source edits while keeping other notebook actions unavailable', () => {
     const store = new NotebookCoreReadStore('');
     const request = store.beginRoute('note-1', null);
     const dispatch = vi.fn(store.dispatch.bind(store));
@@ -224,8 +224,8 @@ describe('NotebookRouteEntry', () => {
       store.acceptCollaborativeStatus(request, { noteId: 'note-1', sequence: 1, status: true });
     });
     expect(element.querySelector('textarea')?.value).toBe('unsaved');
-    expect(element.querySelector('textarea')?.readOnly).toBe(true);
-    expect(element.querySelector('[role="alert"]')?.textContent).toContain('collaborative mode');
+    expect(element.querySelector('textarea')?.readOnly).toBe(false);
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain('Collaborative editing');
     expect(Array.from(element.querySelectorAll('button')).every(button => button.disabled)).toBe(true);
     expect(dispatch).not.toHaveBeenCalled();
     act(() => {

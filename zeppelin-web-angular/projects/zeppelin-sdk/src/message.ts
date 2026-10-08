@@ -179,6 +179,10 @@ export class Message {
     return this.sendRegistered(register, args, 'core-run-');
   }
 
+  sendNotebookCorePatch(register: (msgId: string) => void, ...args: SendArgumentsType<OP.PATCH_PARAGRAPH>): string {
+    return this.sendRegistered(register, args, 'core-patch-');
+  }
+
   receive<K extends keyof MessageReceiveDataTypeMap>(op: K): Observable<Record<K, MessageReceiveDataTypeMap[K]>[K]> {
     return this.receiveMessage(op).pipe(map(message => message.data)) as Observable<
       Record<K, MessageReceiveDataTypeMap[K]>[K]
@@ -587,6 +591,10 @@ export class Message {
 
   isNotebookCoreRunRequestId(msgId: string): boolean {
     return msgId.startsWith(`${this.uniqueClientId}-core-run-`);
+  }
+
+  isNotebookCorePatchRequestId(msgId: string): boolean {
+    return msgId.startsWith(`${this.uniqueClientId}-core-patch-`);
   }
 
   protected isNotebookCoreReadRequestId(msgId: string): boolean {

@@ -15,6 +15,7 @@ import type {
   NotebookCoreCommand,
   NotebookCoreCommandResult,
   NotebookCoreParagraphDraft,
+  NotebookCorePatchIntent,
   NotebookCorePort,
   NotebookCoreReadSnapshot,
   NotebookCoreReadState,
@@ -193,6 +194,9 @@ export class NotebookCoreReadStore {
   private readonly saveBases = new Map<string, NotebookCoreReadSnapshot['paragraphsById'][string]>();
   private readonly runs = new Map<string, NotebookCoreRunIntent>();
   private readonly runBases = new Map<string, NotebookCoreReadSnapshot['paragraphsById'][string]>();
+  private readonly patches = new Map<string, NotebookCorePatchIntent>();
+  private uncertainPatch = false;
+  private patchFailedOnThisRoute = false;
   private readonly streamOutputs = new Map<string, StreamOutput>();
 
   constructor(noteId: string, revisionId: string | null = null) {
@@ -212,24 +216,32 @@ export class NotebookCoreReadStore {
     }
     // A reconnect reloads the same live note. Keep local edits until the new
     // server snapshot arrives, but never carry them into a revision or another note.
-    const draftsById =
-      this.snapshot.noteId === noteId &&
-      this.snapshot.revisionId === null &&
-      revisionId === null &&
-      !this.snapshot.collaborativeMode
-        ? this.snapshot.draftsById
-        : undefined;
+    const sameLiveNote = this.snapshot.noteId === noteId && this.snapshot.revisionId === null && revisionId === null;
+    const draftsById = sameLiveNote ? this.snapshot.draftsById : undefined;
+    const collaborativeMode = sameLiveNote && this.snapshot.collaborativeMode;
+    this.uncertainPatch = sameLiveNote && (this.uncertainPatch || this.patches.size > 0);
+    const patchFailed = sameLiveNote && (this.snapshot.collaborationPatchFailed || this.uncertainPatch);
     const request = Object.freeze({ noteId, revisionId, token: Symbol('notebook read request') });
     this.currentRequest = request;
     this.eventSequence = -1;
+    this.patchFailedOnThisRoute = false;
     this.saves.clear();
     this.saveBases.clear();
     this.runs.clear();
     this.runBases.clear();
+    this.patches.clear();
     this.streamOutputs.clear();
     this.acl = Object.freeze({ status: 'loading' });
     this.publish(
-      Object.freeze({ noteId, revisionId, draftsById, readState: Object.freeze({ status: 'loading', acl: this.acl }) })
+      Object.freeze({
+        noteId,
+        revisionId,
+        ...(draftsById ? { draftsById } : {}),
+        ...(collaborativeMode ? { collaborativeMode: true } : {}),
+        ...(patchFailed ? { collaborationPatchFailed: true } : {}),
+        ...(sameLiveNote && this.snapshot.collaborationPatchUnverified ? { collaborationPatchUnverified: true } : {}),
+        readState: Object.freeze({ status: 'loading', acl: this.acl })
+      })
     );
     return request;
   }
@@ -304,7 +316,9 @@ export class NotebookCoreReadStore {
       this.disposed ||
       this.snapshot.revisionId !== null ||
       state.status !== 'ready' ||
-      this.snapshot.collaborativeMode
+      (this.snapshot.collaborativeMode && command.type !== 'editParagraph') ||
+      this.snapshot.collaborationPatchFailed ||
+      this.snapshot.collaborationPatchUnverified
     ) {
       return Object.freeze({ accepted: false });
     }
@@ -377,8 +391,69 @@ export class NotebookCoreReadStore {
       // in-flight acknowledgement must not erase that newer user decision.
       drafts[command.paragraphId] = Object.freeze({ text: command.text, version: ++this.draftVersion });
       this.publish(Object.freeze({ ...this.snapshot, draftsById: Object.freeze(drafts) }));
+      if (this.snapshot.collaborativeMode && !this.patches.has(command.paragraphId)) {
+        const patch = this.preparePatch(command.paragraphId, paragraph.text, drafts[command.paragraphId]);
+        return Object.freeze({ accepted: true, patch });
+      }
     }
     return Object.freeze({ accepted: true });
+  }
+
+  /** Only the correlated server paragraph can retire a patch and release the next queued edit. */
+  acceptPatchAcknowledgement(
+    request: NotebookCoreReadRequest,
+    patch: NotebookCorePatchIntent,
+    paragraph: NotebookCoreWireNote['paragraphs'][number],
+    applied: boolean
+  ): NotebookCorePatchIntent | null {
+    const state = this.snapshot.readState;
+    if (
+      !this.isLiveRequest(request) ||
+      state.status !== 'ready' ||
+      this.patches.get(patch.paragraphId) !== patch ||
+      paragraph.id !== patch.paragraphId
+    ) {
+      return null;
+    }
+    this.patches.delete(patch.paragraphId);
+    const current = state.data.paragraphsById[patch.paragraphId];
+    if (
+      !current ||
+      !applied ||
+      paragraph.text !== patch.text ||
+      (current.text !== patch.baseText && current.text !== paragraph.text)
+    ) {
+      this.failPatch();
+      return null;
+    }
+    const nextParagraph = cloneAndFreeze(paragraph);
+    const data = Object.freeze({
+      ...state.data,
+      paragraphsById: Object.freeze(
+        Object.assign(Object.create(null), state.data.paragraphsById, { [patch.paragraphId]: nextParagraph })
+      )
+    });
+    const draft = this.snapshot.draftsById?.[patch.paragraphId];
+    let drafts = this.snapshot.draftsById;
+    if (draft?.text === paragraph.text) {
+      const next = Object.assign(Object.create(null), drafts);
+      delete next[patch.paragraphId];
+      drafts = Object.freeze(next);
+    }
+    this.publish(Object.freeze({ ...this.snapshot, draftsById: drafts, readState: Object.freeze({ ...state, data }) }));
+    if (!drafts?.[patch.paragraphId] || this.snapshot.collaborationPatchFailed) {
+      return null;
+    }
+    return this.preparePatch(patch.paragraphId, paragraph.text, drafts[patch.paragraphId]);
+  }
+
+  rejectPatch(request: NotebookCoreReadRequest, patch: NotebookCorePatchIntent): boolean {
+    if (!this.isLiveRequest(request) || this.patches.get(patch.paragraphId) !== patch) {
+      return false;
+    }
+    this.patches.delete(patch.paragraphId);
+    this.failPatch();
+    return true;
   }
 
   /** Call only for a transport response correlated to this exact save intent. */
@@ -579,6 +654,7 @@ export class NotebookCoreReadStore {
     }
     this.eventSequence = event.sequence;
     const fail = () => {
+      this.patchFailedOnThisRoute = true;
       this.publish(Object.freeze({ ...this.snapshot, collaborativeMode: true, collaborationPatchFailed: true }));
       return false;
     };
@@ -794,6 +870,7 @@ export class NotebookCoreReadStore {
     this.saveBases.clear();
     this.runs.clear();
     this.runBases.clear();
+    this.patches.clear();
     this.streamOutputs.clear();
     this.acl = Object.freeze({ status: 'loading' });
     this.publish(
@@ -804,6 +881,28 @@ export class NotebookCoreReadStore {
       })
     );
     this.listeners.clear();
+  }
+
+  private preparePatch(
+    paragraphId: string,
+    baseText: string,
+    draft: NotebookCoreParagraphDraft
+  ): NotebookCorePatchIntent {
+    const patch = Object.freeze({
+      noteId: this.snapshot.noteId,
+      paragraphId,
+      baseText,
+      text: draft.text,
+      version: draft.version,
+      token: Symbol('paragraph patch')
+    });
+    this.patches.set(paragraphId, patch);
+    return patch;
+  }
+
+  private failPatch(): void {
+    this.patchFailedOnThisRoute = true;
+    this.publish(Object.freeze({ ...this.snapshot, collaborativeMode: true, collaborationPatchFailed: true }));
   }
 
   private isLiveRequest(request: NotebookCoreReadRequest): boolean {
@@ -868,9 +967,19 @@ export class NotebookCoreReadStore {
       }
       drafts = Object.freeze(nextDrafts);
     }
+    const unsentCollaborativeDraft =
+      this.snapshot.collaborativeMode &&
+      drafts &&
+      Object.entries(drafts).some(([id, draft]) => paragraphsById[id]?.text !== draft.text);
     this.publish(
       Object.freeze({
         ...this.snapshot,
+        collaborationPatchFailed:
+          this.uncertainPatch ||
+          this.patchFailedOnThisRoute ||
+          (this.snapshot.collaborationPatchFailed && unsentCollaborativeDraft) ||
+          undefined,
+        collaborationPatchUnverified: undefined,
         ...(drafts ? { draftsById: drafts } : {}),
         readState: Object.freeze({ status: 'ready', data: read, acl: this.acl })
       })

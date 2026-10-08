@@ -14,7 +14,7 @@ import { Observable, of, Subject } from 'rxjs';
 import DiffMatchPatch from 'diff-match-patch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OP } from '@zeppelin/sdk';
+import { OP, textChecksum } from '@zeppelin/sdk';
 import type { MessageService, SecurityService } from '@zeppelin/services';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 
@@ -35,6 +35,7 @@ const createHost = (
     received: () => received.asObservable(),
     isNotebookCoreCommitRequestId: (msgId: string) => msgId.startsWith('commit-'),
     isNotebookCoreRunRequestId: (msgId: string) => msgId.startsWith('run-'),
+    isNotebookCorePatchRequestId: (msgId: string) => msgId.startsWith('core-patch-'),
     sendNotebookCoreRead: (register: (msgId: string) => void) => {
       const msgId = `request-${++sequence}`;
       register(msgId);
@@ -48,6 +49,11 @@ const createHost = (
     }),
     sendNotebookCoreRun: vi.fn((register: (msgId: string) => void) => {
       const msgId = `run-${++sequence}`;
+      register(msgId);
+      return msgId;
+    }),
+    sendNotebookCorePatch: vi.fn((register: (msgId: string) => void, _op: OP, _data: unknown) => {
+      const msgId = `core-patch-${++sequence}`;
       register(msgId);
       return msgId;
     }),
@@ -69,6 +75,72 @@ afterEach(() => {
 });
 
 describe('NotebookCoreReadHost', () => {
+  it('sends one collaborative patch at a time and bases queued text on the server acknowledgement', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    received.next({ op: OP.COLLABORATIVE_MODE_STATUS, data: { noteId: 'a', status: true } });
+
+    expect(host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'hello!' }).accepted).toBe(true);
+    expect(message.sendNotebookCorePatch).toHaveBeenCalledTimes(1);
+    expect(message.sendNotebookCorePatch.mock.calls[0][2]).toMatchObject({
+      id: 'p1',
+      noteId: 'a',
+      baseChecksum: textChecksum('hello'),
+      afterChecksum: textChecksum('hello!'),
+      ackRequested: true
+    });
+    expect(host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'hello!!' })).toEqual({
+      accepted: true
+    });
+    expect(message.sendNotebookCorePatch).toHaveBeenCalledTimes(1);
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'core-patch-2',
+      data: { noteId: 'b', paragraph: { id: 'p1', text: 'hello!' }, patchApplied: true }
+    });
+    expect(message.sendNotebookCorePatch).toHaveBeenCalledTimes(1);
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'core-patch-2',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'hello!', status: 'FINISHED' }, patchApplied: true }
+    });
+    expect(message.sendNotebookCorePatch).toHaveBeenCalledTimes(2);
+    expect(message.sendNotebookCorePatch.mock.calls[1][2]).toMatchObject({
+      baseChecksum: textChecksum('hello!'),
+      afterChecksum: textChecksum('hello!!')
+    });
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'core-patch-3',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'hello!!', status: 'FINISHED' }, patchApplied: true }
+    });
+    expect(host.store.getSnapshot().draftsById?.p1).toBeUndefined();
+    host.destroy();
+  });
+
+  it('keeps the draft and stops sending when the server rejects a collaborative patch', () => {
+    const { host, received, message } = createHost();
+    host.load('a', null);
+    received.next({ op: OP.NOTE, msgId: 'request-1', data: { note: note('a') } });
+    received.next({ op: OP.COLLABORATIVE_MODE_STATUS, data: { noteId: 'a', status: true } });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'hello!' });
+    host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'hello!!' });
+
+    received.next({
+      op: OP.PARAGRAPH,
+      msgId: 'core-patch-2',
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'peer edit', status: 'FINISHED' }, patchApplied: false }
+    });
+    expect(message.sendNotebookCorePatch).toHaveBeenCalledTimes(1);
+    expect(host.store.getSnapshot().draftsById?.p1.text).toBe('hello!!');
+    expect(host.store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(host.commandPort.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'more' })).toEqual({
+      accepted: false
+    });
+    host.destroy();
+  });
+
   it('routes only note-attributed collaborative patches into the shared Core', () => {
     const { host, received } = createHost();
     host.load('a', null);

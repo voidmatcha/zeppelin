@@ -155,6 +155,7 @@ export interface ParagraphMoved {
 export interface UpdateParagraph {
   noteId?: string;
   paragraph: ParagraphItem;
+  patchApplied?: boolean;
 }
 
 export interface SaveNoteFormsSend {

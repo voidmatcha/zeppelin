@@ -52,15 +52,11 @@ it('accepts both attributed and legacy structural paragraph payloads', () => {
   expectTypeOf(removed.noteId).toEqualTypeOf<string | undefined>();
 });
 
-it('models attributed collaboration and note updates while accepting legacy broadcasts', () => {
+it('models attributed collaboration and note updates', () => {
   const patch: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH] = {
     noteId: 'note',
     paragraphId: 'paragraph',
     patch: '@@ -0,0 +1 @@\n+a\n'
-  };
-  const legacyPatch: MessageReceiveDataTypeMap[OP.PATCH_PARAGRAPH] = {
-    paragraphId: 'paragraph',
-    patch: patch.patch
   };
   const updated: MessageReceiveDataTypeMap[OP.NOTE_UPDATED] = {
     name: 'Note',
@@ -68,9 +64,19 @@ it('models attributed collaboration and note updates while accepting legacy broa
     info: {} as MessageReceiveDataTypeMap[OP.NOTE_UPDATED]['info']
   };
   const status: MessageReceiveDataTypeMap[OP.COLLABORATIVE_MODE_STATUS] = { status: true, users: [] };
+  const acknowledgement: MessageReceiveDataTypeMap[OP.PARAGRAPH] = {
+    noteId: 'note',
+    paragraph: {
+      id: 'paragraph',
+      text: 'updated',
+      status: 'READY'
+    } as MessageReceiveDataTypeMap[OP.PARAGRAPH]['paragraph'],
+    patchApplied: true
+  };
 
   expectTypeOf(patch.paragraphId).toEqualTypeOf<string>();
-  expectTypeOf(legacyPatch.noteId).toEqualTypeOf<string | undefined>();
+  expectTypeOf(patch.noteId).toEqualTypeOf<string>();
+  expectTypeOf(acknowledgement.patchApplied).toEqualTypeOf<boolean | undefined>();
   expectTypeOf(updated.noteId).toEqualTypeOf<string | undefined>();
   expectTypeOf(status.noteId).toEqualTypeOf<string | undefined>();
   assertType<MessageSendDataTypeMap[OP.PATCH_PARAGRAPH]>({

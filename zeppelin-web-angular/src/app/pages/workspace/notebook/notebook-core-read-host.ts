@@ -19,13 +19,14 @@ import {
   NotebookCoreCommand,
   NotebookCoreCommandPort,
   NotebookCoreCommandResult,
+  NotebookCorePatchIntent,
   NotebookCoreReadRequest,
   NotebookCoreReadStore,
   NotebookCoreRunIntent,
   NotebookCoreSaveIntent,
   NotebookCoreWireNote
 } from '@zeppelin/notebook-core';
-import { Note, NoteRevision, OP, ParagraphConfig } from '@zeppelin/sdk';
+import { Note, NoteRevision, OP, ParagraphConfig, textChecksum } from '@zeppelin/sdk';
 import { MessageService, SecurityService } from '@zeppelin/services';
 
 const READ_TIMEOUT_MS = 10000;
@@ -54,6 +55,10 @@ export class NotebookCoreReadHost {
     string,
     { request: NotebookCoreReadRequest; run: NotebookCoreRunIntent; timeout: ReturnType<typeof setTimeout> }
   >();
+  private pendingPatches = new Map<
+    string,
+    { request: NotebookCoreReadRequest; patch: NotebookCorePatchIntent; timeout: ReturnType<typeof setTimeout> }
+  >();
   private currentRequest?: NotebookCoreReadRequest;
   private wireSequence = 0;
 
@@ -69,6 +74,7 @@ export class NotebookCoreReadHost {
     this.clearPending();
     this.clearPendingSaves();
     this.clearPendingRuns();
+    this.clearPendingPatches();
     this.permissionSubscription?.unsubscribe();
     const request = this.store.beginRoute(noteId, revisionId);
     this.currentRequest = request;
@@ -107,6 +113,7 @@ export class NotebookCoreReadHost {
     this.clearPending();
     this.clearPendingSaves();
     this.clearPendingRuns();
+    this.clearPendingPatches(true);
     this.permissionSubscription?.unsubscribe();
     if (this.currentRequest) {
       this.store.acceptNoteFailure(this.currentRequest, 'failed');
@@ -117,6 +124,7 @@ export class NotebookCoreReadHost {
     this.clearPending();
     this.clearPendingSaves();
     this.clearPendingRuns();
+    this.clearPendingPatches();
     this.permissionSubscription?.unsubscribe();
     this.subscriptions.unsubscribe();
     this.store.dispose();
@@ -133,6 +141,14 @@ export class NotebookCoreReadHost {
       (envelope.op === OP.PARAGRAPH || envelope.op === OP.ERROR_INFO || envelope.op === OP.AUTH_INFO)
     ) {
       this.receiveRunResponse(envelope);
+      return;
+    }
+    if (
+      envelope.msgId &&
+      this.message.isNotebookCorePatchRequestId(envelope.msgId) &&
+      (envelope.op === OP.PARAGRAPH || envelope.op === OP.ERROR_INFO || envelope.op === OP.AUTH_INFO)
+    ) {
+      this.receivePatchResponse(envelope);
       return;
     }
     this.receiveParagraphChange(envelope);
@@ -191,6 +207,9 @@ export class NotebookCoreReadHost {
     const result = this.store.dispatch(command);
     if (!result.accepted) {
       return result;
+    }
+    if (result.patch) {
+      return this.sendPatch(request, result.patch) ? result : Object.freeze({ accepted: false });
     }
     if (command.type === 'insertParagraph' || command.type === 'moveParagraph' || command.type === 'removeParagraph') {
       try {
@@ -341,6 +360,74 @@ export class NotebookCoreReadHost {
     this.pendingRuns.delete(envelope.msgId);
   }
 
+  private sendPatch(request: NotebookCoreReadRequest, patch: NotebookCorePatchIntent): boolean {
+    let registeredMsgId: string | undefined;
+    try {
+      const diff = new DiffMatchPatch();
+      const patchText = diff.patch_make(patch.baseText, patch.text).toString().replace(/,@@/g, '@@');
+      this.message.sendNotebookCorePatch(
+        msgId => {
+          registeredMsgId = msgId;
+          const timeout = setTimeout(() => {
+            this.pendingPatches.delete(msgId);
+            this.store.rejectPatch(request, patch);
+          }, READ_TIMEOUT_MS);
+          this.pendingPatches.set(msgId, { request, patch, timeout });
+        },
+        OP.PATCH_PARAGRAPH,
+        {
+          id: patch.paragraphId,
+          noteId: patch.noteId,
+          patch: patchText,
+          baseChecksum: textChecksum(patch.baseText),
+          afterChecksum: textChecksum(patch.text),
+          ackRequested: true
+        }
+      );
+      return true;
+    } catch {
+      if (registeredMsgId) {
+        const pending = this.pendingPatches.get(registeredMsgId);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingPatches.delete(registeredMsgId);
+        }
+      }
+      this.store.rejectPatch(request, patch);
+      return false;
+    }
+  }
+
+  private receivePatchResponse(envelope: { op: OP; msgId?: string; data?: unknown }): void {
+    const pending = envelope.msgId && this.pendingPatches.get(envelope.msgId);
+    if (!pending || !envelope.msgId) {
+      return;
+    }
+    let next: NotebookCorePatchIntent | null = null;
+    if (envelope.op === OP.PARAGRAPH) {
+      const change = envelope.data as { noteId?: unknown; paragraph?: unknown; patchApplied?: unknown } | undefined;
+      const paragraph = normalizeReadParagraph(change?.paragraph);
+      if (change?.noteId !== pending.request.noteId || !paragraph || paragraph.id !== pending.patch.paragraphId) {
+        return;
+      }
+      next = this.store.acceptPatchAcknowledgement(
+        pending.request,
+        pending.patch,
+        paragraph,
+        change.patchApplied === true
+      );
+    } else if (envelope.op === OP.ERROR_INFO || envelope.op === OP.AUTH_INFO) {
+      this.store.rejectPatch(pending.request, pending.patch);
+    } else {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pendingPatches.delete(envelope.msgId);
+    if (next) {
+      this.sendPatch(pending.request, next);
+    }
+  }
+
   private receiveParagraphChange(envelope: { op: OP; data?: unknown }): void {
     const request = this.currentRequest;
     const data = envelope.data;
@@ -482,6 +569,16 @@ export class NotebookCoreReadHost {
       this.store.rejectRun(request, run);
     }
     this.pendingRuns.clear();
+  }
+
+  private clearPendingPatches(reject = false): void {
+    for (const { request, patch, timeout } of this.pendingPatches.values()) {
+      clearTimeout(timeout);
+      if (reject) {
+        this.store.rejectPatch(request, patch);
+      }
+    }
+    this.pendingPatches.clear();
   }
 }
 

@@ -170,4 +170,30 @@ describe('MessageService private notebook reads', () => {
     expect(legacyAdded).toHaveBeenCalledExactlyOnceWith(added);
     service.ngOnDestroy();
   });
+
+  it('keeps correlated Core patch replies out of legacy paragraph listeners', () => {
+    const service = connectedMessageService();
+    const requestId = service.sendNotebookCorePatch(() => undefined, OP.PATCH_PARAGRAPH, {
+      id: 'p1',
+      noteId: 'a',
+      patch: '@@ -1,5 +1,6 @@\n hello\n+!\n',
+      baseChecksum: 99162322,
+      afterChecksum: -1220935275,
+      ackRequested: true
+    });
+    const raw = vi.fn();
+    const legacy = vi.fn();
+    service.received().subscribe(raw);
+    service.receiveEnvelope(OP.PARAGRAPH).subscribe(legacy);
+    const reply = {
+      op: OP.PARAGRAPH,
+      msgId: requestId,
+      data: { noteId: 'a', paragraph: { id: 'p1', text: 'hello!', status: 'READY' }, patchApplied: true }
+    } as WebSocketMessage<MessageReceiveDataTypeMap>;
+    service.shortCircuit(reply);
+
+    expect(raw).toHaveBeenCalledExactlyOnceWith(reply);
+    expect(legacy).not.toHaveBeenCalled();
+    service.ngOnDestroy();
+  });
 });

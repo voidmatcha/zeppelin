@@ -336,6 +336,8 @@ export interface PatchParagraphSend {
   // checksums of this client's text before and after the patch; let receivers verify the result
   baseChecksum?: number;
   afterChecksum?: number;
+  /** Request an attributable authoritative paragraph after the server applies this patch. */
+  ackRequested?: boolean;
 }
 export interface ParagraphRemoved {
   noteId?: string;

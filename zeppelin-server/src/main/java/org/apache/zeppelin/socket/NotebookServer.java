@@ -1252,6 +1252,39 @@ public class NotebookServer implements AngularObjectRegistryListener,
     Object baseChecksum = fromMessage.get("baseChecksum");
     Object afterChecksum = fromMessage.get("afterChecksum");
 
+    if (Boolean.TRUE.equals(fromMessage.get("ackRequested"))) {
+      Integer base = checkedPatchChecksum(baseChecksum);
+      Integer after = checkedPatchChecksum(afterChecksum);
+      if (base == null || after == null) {
+        conn.send(serializeMessage(createErrorMessage(OP.ERROR_INFO,
+            new IllegalArgumentException("A Core patch requires integer checksums"), fromMessage.msgId)));
+        return;
+      }
+      getNotebookService().patchParagraphWithAck(noteId2, paragraphId, patchText, base, after, context,
+          new WebSocketServiceCallback<NotebookService.ParagraphPatchResult>(conn, fromMessage.msgId) {
+            @Override
+            public void onSuccess(NotebookService.ParagraphPatchResult result, ServiceContext context)
+                throws IOException {
+              super.onSuccess(result, context);
+              if (result.isApplied()) {
+                Message broadcast = new Message(OP.PATCH_PARAGRAPH)
+                    .put("patch", patchText)
+                    .put("paragraphId", paragraphId)
+                    .put("noteId", noteId2)
+                    .put("baseChecksum", base)
+                    .put("afterChecksum", after);
+                connectionManager.broadcastExcept(noteId2, broadcast, conn);
+              }
+              conn.send(serializeMessage(new Message(OP.PARAGRAPH)
+                  .withMsgId(fromMessage.msgId)
+                  .put("noteId", noteId2)
+                  .put("paragraph", result.getParagraph())
+                  .put("patchApplied", result.isApplied())));
+            }
+          });
+      return;
+    }
+
     getNotebookService().patchParagraph(noteId, paragraphId, patchText, context,
         new WebSocketServiceCallback<String>(conn) {
           @Override
@@ -1266,6 +1299,17 @@ public class NotebookServer implements AngularObjectRegistryListener,
             connectionManager.broadcastExcept(noteId2, message, conn);
           }
         });
+  }
+
+  private static Integer checkedPatchChecksum(Object value) {
+    if (!(value instanceof Number)) {
+      return null;
+    }
+    double number = ((Number) value).doubleValue();
+    if (!Double.isFinite(number) || number != (int) number) {
+      return null;
+    }
+    return (int) number;
   }
 
   private void getParagraph(NotebookSocket conn,

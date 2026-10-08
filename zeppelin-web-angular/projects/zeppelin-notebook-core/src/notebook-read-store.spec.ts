@@ -44,6 +44,73 @@ const note = (id: string) => ({
 const permissions = () => ({ readers: ['reader'], owners: ['owner'], writers: [], runners: [] });
 
 describe('host-owned notebook read store', () => {
+  it('serializes collaborative edits through authoritative patch acknowledgements', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.acceptCollaborativeStatus(request, { noteId: 'n1', sequence: 1, status: true });
+
+    const firstResult = store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first!' });
+    if (!firstResult.accepted || !firstResult.patch) {
+      throw new Error('Expected a collaborative patch');
+    }
+    const first = firstResult.patch;
+    expect(first).toMatchObject({ baseText: 'first', text: 'first!' });
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first!!' })).toEqual({ accepted: true });
+    const second = store.acceptPatchAcknowledgement(
+      request,
+      first,
+      { ...note('n1').paragraphs[0], text: 'first!' },
+      true
+    );
+    expect(second).toMatchObject({ baseText: 'first!', text: 'first!!' });
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first!');
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('first!!');
+    expect(
+      store.acceptPatchAcknowledgement(request, second!, { ...note('n1').paragraphs[0], text: 'first!!' }, true)
+    ).toBeNull();
+    expect(selectParagraph(store.getSnapshot(), 'p1')?.text).toBe('first!!');
+    expect(store.getSnapshot().draftsById?.p1).toBeUndefined();
+  });
+
+  it('keeps the unsent draft and blocks further edits after a rejected collaborative patch', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.acceptCollaborativeStatus(request, { noteId: 'n1', sequence: 1, status: true });
+    const result = store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first!' });
+    if (!result.accepted || !result.patch) {
+      throw new Error('Expected a collaborative patch');
+    }
+    const patch = result.patch;
+
+    expect(store.acceptPatchAcknowledgement(request, patch, note('n1').paragraphs[0], false)).toBeNull();
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('first!');
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'later' })).toEqual({ accepted: false });
+
+    const fresh = store.beginRoute('n1', null);
+    store.acceptNote(fresh, note('n1'));
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('first!');
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+  });
+
+  it('does not silently discard or resend an in-flight draft when the same note reloads', () => {
+    const store = new NotebookCoreReadStore('n1');
+    const request = store.beginRoute('n1', null);
+    store.acceptNote(request, note('n1'));
+    store.acceptCollaborativeStatus(request, { noteId: 'n1', sequence: 1, status: true });
+    store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'first!' });
+
+    const fresh = store.beginRoute('n1', null);
+    store.acceptNote(fresh, note('n1'));
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('first!');
+    expect(store.getSnapshot().collaborationPatchFailed).toBe(true);
+    expect(store.dispatch({ type: 'editParagraph', paragraphId: 'p1', text: 'another edit' })).toEqual({
+      accepted: false
+    });
+  });
+
   it('applies an attributed collaborative patch without replacing an unsaved local draft', () => {
     const store = new NotebookCoreReadStore('n1');
     const request = store.beginRoute('n1', null);
@@ -148,8 +215,8 @@ describe('host-owned notebook read store', () => {
 
     const reloaded = store.beginRoute('n1', null);
     store.acceptNote(reloaded, note('n1'));
-    expect(store.getSnapshot().draftsById).toBeUndefined();
-    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' }).accepted).toBe(true);
+    expect(store.getSnapshot().draftsById?.p1.text).toBe('unsaved');
+    expect(store.dispatch({ type: 'saveParagraph', paragraphId: 'p1' })).toEqual({ accepted: false });
   });
 
   it('applies only attributed live note metadata without changing paragraphs or local drafts', () => {

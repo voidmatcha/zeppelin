@@ -20,7 +20,7 @@ import { NotebookCoreReadComponent } from './notebook-core-read.component';
 import { NotebookCoreReadHost } from './notebook-core-read-host';
 
 describe('NotebookCoreReadComponent', () => {
-  it('sends editor changes through the Core command port only for the private edit mode', () => {
+  it('sends editable source changes through Core while blocking other collaborative actions', () => {
     const dispatch = vi.fn();
     const component = new NotebookCoreReadComponent({ markForCheck: vi.fn() } as unknown as ChangeDetectorRef);
     component.host = { commandPort: { dispatch } } as unknown as NotebookCoreReadHost;
@@ -71,7 +71,8 @@ describe('NotebookCoreReadComponent', () => {
     component.insertParagraph(1);
     component.moveParagraph('p1', 1);
     component.removeParagraph('p1');
-    expect(dispatch).toHaveBeenCalledTimes(7);
+    expect(dispatch).toHaveBeenCalledTimes(8);
+    expect(dispatch).toHaveBeenNthCalledWith(8, { type: 'editParagraph', paragraphId: 'p1', text: 'local edit' });
     component.collaborationBlocked = false;
 
     component.revisionId = 'saved-revision';
@@ -83,7 +84,7 @@ describe('NotebookCoreReadComponent', () => {
     component.insertParagraph(1);
     component.moveParagraph('p1', 1);
     component.removeParagraph('p1');
-    expect(dispatch).toHaveBeenCalledTimes(7);
+    expect(dispatch).toHaveBeenCalledTimes(8);
     vi.restoreAllMocks();
   });
 

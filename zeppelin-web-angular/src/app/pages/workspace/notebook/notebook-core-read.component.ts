@@ -47,14 +47,15 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
           <h1>{{ readData?.note?.name }}</h1>
           @if (collaborationPatchFailed) {
             <p role="alert">
-              A collaborative edit could not be verified. Copy any unsaved text before reopening the notebook.
+              A collaborative edit could not be verified. Copy any unsaved text before leaving this preview.
             </p>
           } @else if (collaborationPatchUnverified) {
             <p role="alert">Collaborative edits without checksums cannot be fully verified in this preview.</p>
           }
           @if (canEdit && collaborationBlocked) {
             <p role="alert">
-              Editing is paused because this note is in collaborative mode. Use the standard notebook to edit it.
+              Paragraph source edits are synchronized in collaborative mode. Save, run, and paragraph structure controls
+              remain paused.
             </p>
           }
           @if (state.acl.status === 'loading') {
@@ -86,7 +87,7 @@ import { NotebookCoreReadHost } from './notebook-core-read-host';
                 <textarea
                   [id]="'core-editor-' + id"
                   [value]="draftsById?.[id]?.text ?? paragraph(id)?.text"
-                  [readOnly]="collaborationBlocked"
+                  [readOnly]="collaborationPatchFailed || collaborationPatchUnverified"
                   (input)="editParagraph(id, $event)"
                 ></textarea>
                 <button type="button" [disabled]="collaborationBlocked" (click)="saveParagraph(id)">
@@ -194,7 +195,12 @@ export class NotebookCoreReadComponent implements OnInit, OnDestroy {
   }
 
   editParagraph(id: string, event: Event): void {
-    if (this.canWrite && event.target instanceof HTMLTextAreaElement) {
+    if (
+      this.canEdit &&
+      !this.collaborationPatchFailed &&
+      !this.collaborationPatchUnverified &&
+      event.target instanceof HTMLTextAreaElement
+    ) {
       this.host.commandPort.dispatch({ type: 'editParagraph', paragraphId: id, text: event.target.value });
     }
   }

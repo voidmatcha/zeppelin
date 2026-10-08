@@ -54,8 +54,13 @@ export class MessageService extends Message implements OnDestroy {
       data.msgId &&
       (this.isNotebookCoreReadRequestId(data.msgId) ||
         this.isNotebookCoreCommitRequestId(data.msgId) ||
-        this.isNotebookCoreRunRequestId(data.msgId)) &&
-      (data.op === OP.NOTE || data.op === OP.NOTE_REVISION || data.op === OP.ERROR_INFO || data.op === OP.AUTH_INFO)
+        this.isNotebookCoreRunRequestId(data.msgId) ||
+        this.isNotebookCorePatchRequestId(data.msgId)) &&
+      (data.op === OP.NOTE ||
+        data.op === OP.NOTE_REVISION ||
+        (data.op === OP.PARAGRAPH && this.isNotebookCorePatchRequestId(data.msgId)) ||
+        data.op === OP.ERROR_INFO ||
+        data.op === OP.AUTH_INFO)
     ) {
       // Private read errors belong to its route, not the global login modal or notification.
       return super.interceptReceived(data);
@@ -107,6 +112,7 @@ export class MessageService extends Message implements OnDestroy {
             !message.msgId ||
             (!this.isNotebookCoreReadRequestId(message.msgId) &&
               !this.isNotebookCoreCommitRequestId(message.msgId) &&
+              !this.isNotebookCorePatchRequestId(message.msgId) &&
               (!this.isNotebookCoreRunRequestId(message.msgId) ||
                 (message.op !== OP.PARAGRAPH && message.op !== OP.ERROR_INFO && message.op !== OP.AUTH_INFO)))
         )
