@@ -1518,8 +1518,8 @@ html.zeppelin-theme-switching *,html.zeppelin-theme-switching :before,html.zeppe
   border-radius: 4px;
   transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease;
 }
-.zaohb82::before {
-  border-radius: inherit;
+:root[data-theme] .zaohb82::before {
+  border-radius: calc(var(--hcfrxgg) - 1px);
   animation: zaohb80 2.4s ease-in-out infinite alternate;
   transition: opacity 300ms ease;
 }
