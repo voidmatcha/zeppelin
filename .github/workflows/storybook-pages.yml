@@ -40,20 +40,34 @@ jobs:
       - run: npm run build:storybook
       - run: npx playwright install --with-deps --only-shell chromium
       - run: npm run test:storybook
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
+          name: storybook-static
           path: storybook-static
+          retention-days: 7
+          if-no-files-found: error
   deploy:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: storybook-pages
+      cancel-in-progress: false
+      queue: max
     permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      contents: write
     steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: storybook-static
+          path: ${{ runner.temp }}/storybook-static
+      - uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
+        with:
+          token: ${{ github.token }}
+          branch: gh-pages
+          folder: ${{ runner.temp }}/storybook-static
+          clean: false
+          force: false
