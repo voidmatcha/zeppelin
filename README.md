@@ -14,12 +14,14 @@ limitations under the License.
 
 A simplified HTML/CSS Storybook for implementing Zeppelin Assistant screens.
 This fork preview contains no React, Ant Design, SDK, notebook core or server.
-All 46 original stories retain their titles and rendered light/dark designs.
+All 46 original stories retain their IDs and rendered light/dark designs.
 The HTML and CSS are snapshots of the validated implementation, not redesigned
 examples. This is a visual reference, not a working Assistant.
 The original 46 screens are static references. Interactive demo / Conversation
-simulates sending, streaming, stopping, earlier history, conversation search,
-read-only selection and deletion with local fixture data. Interactive demo /
+previews sending, streaming, earlier history, conversation search,
+read-only selection, and deletion of owned conversations with local fixture
+data. It does not retain separate transcripts or drafts across conversation
+switches. Interactive demo /
 Planned approval illustrates edit approval, skipping and separate execution
 approval. These examples make no server requests or real notebook changes.
 Looping flows replay the four current and two planned recordings from start to
@@ -31,9 +33,16 @@ The loading reference preserves the rendered Ant Design Skeleton markup/styles.
 
 https://voidmatcha.github.io/zeppelin/?path=/story/assistant-panel--history
 
+Start with `Assistant / 00 Work packages / Overview`. Its five proposed work
+packages map to existing stories, HTML examples, shared CSS, ownership
+boundaries, and completion criteria. The guides do not change the original story
+URLs or screen designs. Packages 01 and 02 build the display and controls;
+03 assembles the panel; 04 mounts it in the notebook; 05 verifies the full flow.
+The approval demos are labeled Future and are outside these five packages.
+
 The complete markup is in `public/screens/` and CSS in `public/reference.css`.
-`public/stories.json` lists every original story. Start with Panel / History, then inspect empty, streaming,
-read-only, error and loading states. The original component groups contain every individual example.
+`public/stories.json` lists every original story. The original component groups
+retain every individual example.
 Light and dark themes are selectable from the toolbar.
 
 ## Use without Storybook

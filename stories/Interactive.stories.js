@@ -13,4 +13,4 @@ import { conversationDemo } from '../public/demo.js';
 import { renderScreen } from './reference.js';
 export default { title: 'Assistant/Interactive demo' };
 export const Conversation = { render: (_args, context) => conversationDemo(renderScreen('assistant-panel--history', context.globals.theme)) };
-export const PlannedApproval = { render: (_args, context) => conversationDemo(renderScreen('assistant-panel--history', context.globals.theme), true) };
+export const PlannedApproval = { name: 'Future: planned approval', render: (_args, context) => conversationDemo(renderScreen('assistant-panel--history', context.globals.theme), true) };

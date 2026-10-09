@@ -19,3 +19,4 @@
 .demo-list button { display: block; width: 100%; text-align: left; }
 .demo-earlier { display: block; margin: 0 auto 12px; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .demo-note { max-width: 600px; font: 12px/1.6 sans-serif; }
+[hidden] { display: none !important; }

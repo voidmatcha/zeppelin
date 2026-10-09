@@ -11,15 +11,17 @@
  */
 
 import { test, expect } from '@playwright/test';
-test('standalone conversation sends, stops, loads history and deletes', async ({ page }) => {
+test('standalone conversation sends, completes, loads history and deletes', async ({ page }) => {
   await page.goto('/examples/conversation-light.html');
   await page.getByRole('button', { name: 'Load earlier messages' }).click();
   await expect(page.getByRole('button', { name: 'Beginning of conversation' })).toBeDisabled();
   await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Explain this notebook');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.locator('[data-role="user"]').last()).toContainText('Explain this notebook');
-  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveAttribute('readonly', '');
+  await expect(page.locator('[data-role="assistant"]').last()).toContainText('groups revenue by region.');
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).not.toHaveAttribute('readonly', '');
   await page.getByRole('button', { name: 'Delete Notebook summary', exact: true }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.locator('[data-role]')).toHaveCount(0);
@@ -30,8 +32,27 @@ test('conversation search and read-only selection', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Search conversations' }).fill('read-only');
   await page.getByRole('button', { name: 'Another user’s conversation (read-only)', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Delete Notebook summary', exact: true })).toBeHidden();
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('New question');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.locator('button[title="Delete conversation"]')).toBeVisible();
+});
+test('IME Enter does not submit the draft', async ({ page }) => {
+  await page.goto('/examples/conversation-light.html');
+  const message = page.getByRole('textbox', { name: 'Message', exact: true });
+  await message.fill('한국어 입력 중');
+  await message.evaluate(input => input.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Enter',
+    isComposing: true,
+    bubbles: true
+  })));
+  await expect(message).toHaveValue('한국어 입력 중');
+  await expect(page.locator('[data-role="user"]')).toHaveCount(1);
 });
 test('edit and execution are approved separately', async ({ page }) => {
   await page.goto('/examples/approval-light.html');

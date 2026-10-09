@@ -17,5 +17,5 @@ export const AskInThePanel = { render: make('ask') };
 export const EarlierHistory = { render: make('earlier') };
 export const ListAndSearch = { render: make('list') };
 export const ReadOnly = { render: make('readonly') };
-export const PlannedApproveEditThenRun = { render: make('approval-run') };
-export const PlannedSkipEdit = { render: make('approval-skip') };
+export const PlannedApproveEditThenRun = { name: 'Future: approve edit then run', render: make('approval-run') };
+export const PlannedSkipEdit = { name: 'Future: skip edit', render: make('approval-skip') };

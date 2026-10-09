@@ -14,19 +14,25 @@ export function conversationDemo(root, approval = false) {
   const log = scope.querySelector('[role="log"]') ?? scope.querySelector('article').parentElement;
   const input = scope.querySelector('textarea');
   const send = scope.querySelector('footer button');
-  const originalSend = send.innerHTML;
   const userTemplate = log.querySelector('[data-role="user"]').cloneNode(true);
   const answerTemplate = log.querySelector('[data-role="assistant"]').cloneNode(true);
   let timer;
-  const stop = () => { clearInterval(timer); timer = undefined; send.innerHTML = originalSend; send.disabled = !input.value.trim(); };
-  input.addEventListener('input', () => { send.disabled = !input.value.trim() && !timer; });
+  const syncSend = () => { send.disabled = !!timer || input.disabled || !input.value.trim(); };
+  const stop = () => {
+    clearInterval(timer);
+    timer = undefined;
+    input.readOnly = false;
+    syncSend();
+  };
+  input.addEventListener('input', syncSend);
   function submit() {
-    if (timer) { stop(); return; }
-    if (!input.value.trim()) return;
+    if (timer || input.disabled || !input.value.trim()) return;
     const user = userTemplate.cloneNode(true);
     user.querySelector('p, div').textContent = input.value;
     log.append(user);
     input.value = '';
+    send.disabled = true;
+    deleteButton.hidden = false;
     if (approval) { showProposal(); return; }
     const message = answerTemplate.cloneNode(true);
     const body = message.querySelector('p');
@@ -34,7 +40,7 @@ export function conversationDemo(root, approval = false) {
     log.append(message);
     const text = 'It reads the orders dataset and groups revenue by region.';
     let offset = 0;
-    send.textContent = 'Stop'; send.disabled = false;
+    input.readOnly = true;
     timer = setInterval(() => {
       if (!root.isConnected) { stop(); return; }
       offset += 3; body.textContent = text.slice(0, offset);
@@ -43,9 +49,11 @@ export function conversationDemo(root, approval = false) {
     }, 80);
   }
   send.addEventListener('click', submit);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
-  scope.querySelector('[aria-label="New conversation"]').addEventListener('click', () => { stop(); log.innerHTML = ''; scope.querySelector('button[title]').title = 'New conversation'; input.disabled = false; });
-  scope.querySelector('[title="Delete conversation"]').addEventListener('click', () => {
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submit(); } });
+  const deleteButton = scope.querySelector('[title="Delete conversation"]');
+  scope.querySelector('[aria-label="New conversation"]').addEventListener('click', () => { stop(); log.innerHTML = ''; scope.querySelector('button[title]').title = 'New conversation'; input.value = ''; input.disabled = false; deleteButton.hidden = true; syncSend(); });
+  deleteButton.addEventListener('click', () => {
+    if (input.disabled) return;
     if (scope.querySelector('.demo-confirm')) return;
     const confirmation = document.createElement('div'); confirmation.className = 'demo-confirm demo-card';
     confirmation.innerHTML = '<strong>Delete this conversation?</strong><p>This cannot be undone.</p><button>Cancel</button><button>Delete</button>';
@@ -59,7 +67,7 @@ export function conversationDemo(root, approval = false) {
     const overlay = document.createElement('div'); overlay.className = 'demo-list demo-card';
     overlay.innerHTML = '<input aria-label="Search conversations" placeholder="Search conversations"><div><button>Notebook summary</button><button>SQL query help</button><button>Another user’s conversation (read-only)</button></div>';
     overlay.querySelector('input').oninput = e => overlay.querySelectorAll('button').forEach(b => b.hidden = !b.textContent.toLowerCase().includes(e.target.value.toLowerCase()));
-    overlay.querySelectorAll('button').forEach(b => b.onclick = () => { titleButton.title = b.textContent; titleButton.querySelector('span:not([class="hcfrxgp"])').textContent = b.textContent; input.disabled = b.textContent.includes('read-only'); send.disabled = input.disabled || !input.value.trim(); overlay.remove(); });
+    overlay.querySelectorAll('button').forEach(b => b.onclick = () => { stop(); titleButton.title = b.textContent; titleButton.querySelector('span:not([class="hcfrxgp"])').textContent = b.textContent; input.value = ''; input.disabled = b.textContent.includes('read-only'); deleteButton.hidden = input.disabled; syncSend(); overlay.remove(); });
     scope.querySelector('header').append(overlay);
   });
   const earlier = document.createElement('button'); earlier.textContent = 'Load earlier messages'; earlier.className = 'demo-earlier';
