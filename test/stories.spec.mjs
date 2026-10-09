@@ -50,3 +50,12 @@ for (const story of stories) {
     });
   }
 }
+
+test('looping flow keeps the composer visible in a compact viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/?path=/story/assistant-looping-flows--ask-in-the-panel');
+  const preview = page.frameLocator('#storybook-preview-iframe');
+  await expect(preview.locator('.flow')).toBeVisible();
+  await expect(preview.locator('textarea[aria-label="Message"]')).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('#storybook-preview-iframe')).toHaveJSProperty('clientHeight', 680);
+});
