@@ -1,0 +1,156 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Publish Apache Storybook preview
+
+on:
+  workflow_run:
+    workflows: [Storybook]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: apache-storybook-pages
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+      pages: write
+      pull-requests: read
+    steps:
+      # workflow_run checks out trusted default-branch code, not the PR head.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+      - name: Resolve the current writer-owned PR build
+        id: preview
+        run: node .github/scripts/storybook-preview.mjs resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+      - name: Require the existing branch-based Pages site
+        if: steps.preview.outputs.publish == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const site = (await github.request('GET /repos/{owner}/{repo}/pages', {
+              owner, repo
+            })).data;
+            if (site.build_type !== 'legacy' ||
+                site.source?.branch !== 'gh-pages' || site.source?.path !== '/' ||
+                site.status !== 'built') {
+              throw new Error(
+                'Apache gh-pages Jekyll site must build before preview publication'
+              );
+            }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        if: steps.preview.outputs.publish == 'true'
+        with:
+          name: storybook-static
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/storybook-static
+      - name: Validate the downloaded static files
+        if: steps.preview.outputs.publish == 'true'
+        run: node .github/scripts/storybook-preview.mjs validate "$RUNNER_TEMP/storybook-static"
+      - name: Recheck the PR head before publication
+        id: current
+        if: steps.preview.outputs.publish == 'true'
+        run: node .github/scripts/storybook-preview.mjs resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+      - name: Update only this PR's Storybook directory
+        if: steps.current.outputs.publish == 'true'
+        uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
+        with:
+          token: ${{ github.token }}
+          branch: gh-pages
+          folder: ${{ runner.temp }}/storybook-static
+          target-folder: ${{ steps.current.outputs.target }}
+          clean: true
+          force: false
+      # GITHUB_TOKEN commits do not start a branch-based Pages build.
+      - name: Build Apache Pages and report the preview URL
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ steps.current.outputs.number }}
+          BUILD_SHA: ${{ steps.current.outputs.sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const previousBuild = await github.request(
+              'GET /repos/{owner}/{repo}/pages/builds/latest', { owner, repo }
+            );
+            const previous = previousBuild.data.url;
+            const pagesRef = await github.request(
+              'GET /repos/{owner}/{repo}/git/ref/heads/gh-pages', { owner, repo }
+            );
+            const publishedSha = pagesRef.data.object.sha;
+            await github.request('POST /repos/{owner}/{repo}/pages/builds', {
+              owner, repo
+            });
+            let buildId;
+            for (let attempt = 0; attempt < 30; attempt++) {
+              const { data } = await github.request(
+                'GET /repos/{owner}/{repo}/pages/builds/latest', { owner, repo }
+              );
+              if (data.url !== previous && data.commit === publishedSha) {
+                const match = data.url?.match(/\/pages\/builds\/(\d+)$/);
+                if (!match) throw new Error('Pages returned an unexpected build URL');
+                buildId = Number(match[1]);
+                break;
+              }
+              await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+            if (!Number.isSafeInteger(buildId)) {
+              throw new Error('Pages did not start a build for the published commit');
+            }
+            let completed = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+              const { data } = await github.request(
+                'GET /repos/{owner}/{repo}/pages/builds/{build_id}', {
+                  owner, repo, build_id: buildId
+                }
+              );
+              if (data.status === 'built') { completed = true; break; }
+              if (data.status === 'errored' || data.status === 'failed') {
+                throw new Error(`Pages build failed: ${data.error?.message ?? data.status}`);
+              }
+              await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+            if (!completed) throw new Error('Pages build did not complete in time');
+            const number = Number(process.env.PR_NUMBER);
+            if (!Number.isSafeInteger(number) || number < 1) throw new Error('Invalid PR number');
+            const url = `https://${owner}.github.io/${repo}/storybook/pr-${number}/`;
+            await core.summary
+              .addLink('Open Apache Storybook preview', url)
+              .addRaw(`\n\nBuilt from ${process.env.BUILD_SHA}.`)
+              .write();
