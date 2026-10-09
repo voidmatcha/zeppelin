@@ -58,4 +58,39 @@ test('looping flow keeps the composer visible in a compact viewport', async ({ p
   await expect(preview.locator('.flow')).toBeVisible();
   await expect(preview.locator('textarea[aria-label="Message"]')).toBeInViewport({ ratio: 1 });
   await expect(page.locator('#storybook-preview-iframe')).toHaveJSProperty('clientHeight', 680);
+  const region = preview.locator('[role="region"]');
+  const footer = preview.locator('footer');
+  const footerTop = (await footer.boundingBox()).y;
+  await region.evaluate(element => {
+    for (let index = 0; index < 20; index++) {
+      const message = document.createElement('p');
+      message.textContent = `Conversation message ${index}`;
+      element.append(message);
+    }
+  });
+  await region.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  expect(await region.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  expect((await footer.boundingBox()).y).toBe(footerTop);
+  await expect(preview.locator('textarea[aria-label="Message"]')).toBeInViewport({ ratio: 1 });
+});
+
+test('AI badges share their corners and show gradient motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  for (const state of ['conversation', 'active', 'navigation']) {
+    await page.goto(`/iframe.html?id=assistant-assistanticon--${state}&viewMode=story`);
+    const style = await page.locator('.zaohb82').evaluate(icon => ({
+      radius: getComputedStyle(icon).borderRadius,
+      gradientRadius: getComputedStyle(icon, '::before').borderRadius,
+      animation: getComputedStyle(icon, '::before').animationName
+    }));
+    expect(style.radius).toBe('4px');
+    expect(style.gradientRadius).toBe('4px');
+    expect(style.animation).not.toBe('none');
+    if (state === 'conversation') {
+      const position = () => page.locator('.zaohb82').evaluate(icon => getComputedStyle(icon, '::before').backgroundPosition);
+      const first = await position();
+      await page.waitForTimeout(400);
+      expect(await position()).not.toBe(first);
+    }
+  }
 });

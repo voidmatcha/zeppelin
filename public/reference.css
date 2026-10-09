@@ -1512,3 +1512,24 @@ html.zeppelin-theme-switching *,html.zeppelin-theme-switching :before,html.zeppe
 .hcfrxgo ._1s9f67a0{color:var(--hcfrxg2);margin:0;font-size:12px}._1s9f67a1{height:100%;min-height:0;overflow:hidden}
 
 }
+
+/* Keep the reference badge moving in static screens as well as live replies. */
+.zaohb82 {
+  border-radius: 4px;
+  transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease;
+}
+.zaohb82::before {
+  border-radius: inherit;
+  animation: zaohb80 2.4s ease-in-out infinite alternate;
+  transition: opacity 300ms ease;
+}
+.zaohb84::before {
+  animation: zaohb81 650ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .zaohb82,
+  .zaohb82::before {
+    animation: none;
+    transition: none;
+  }
+}
