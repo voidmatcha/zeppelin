@@ -9,7 +9,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-.flow { height: 800px; min-height: 640px; width: 100%; display: flex; flex-direction: column; background: #f1f2f5; color: #333; font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+.flow { height: min(800px, 100vh); width: 100%; display: flex; flex-direction: column; background: #f1f2f5; color: #333; font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
 .flow *, .flow *::before, .flow *::after { box-sizing: border-box; }
 .flow-main { display:flex; min-height:0; flex:1; }
 .flow-aside { width:410px; flex:none; background:#fff; border-right:1px solid #d9d9d9; display:flex; flex-direction:column; min-height:0; }
