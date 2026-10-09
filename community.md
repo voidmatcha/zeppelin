@@ -21,9 +21,11 @@ limitations under the License.
 
 <div class="row">
   <div class="col-md-6">
-    {% markdown sub-views/community/contribute.md %}
+    {% capture contribute_markdown %}{% include sub-views/community/contribute.md %}{% endcapture %}
+    {{ contribute_markdown | markdownify }}
   </div>
   <div class="col-md-6">
-    {% markdown sub-views/community/mailinglist.md %}
+    {% capture mailinglist_markdown %}{% include sub-views/community/mailinglist.md %}{% endcapture %}
+    {{ mailinglist_markdown | markdownify }}
   </div>
 </div>
