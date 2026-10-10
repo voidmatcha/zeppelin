@@ -383,7 +383,7 @@ class AssistantTest {
           if (type == AssistantEventType.TOOL_CALL_DONE) {
             completedTools.add((AssistantEventPayload.ToolCallDone) payload);
           }
-        });
+        }).get(5, TimeUnit.SECONDS);
     assertEquals(1, completedTools.size());
     assertEquals("call_1", completedTools.get(0).toolCallId);
     assertEquals(paragraphs, completedTools.get(0).result.value);
@@ -434,7 +434,7 @@ class AssistantTest {
 
   @Test
   void pendingRequestCountsRemainRunningUntilEveryRequestFinishes() {
-    var sut = new AssistantService(true, null, null, null, null, null);
+    var sut = new AssistantImpl(null, null, null, null, null, executor);
     sut.registerPendingRequest("conversation");
     sut.registerPendingRequest("conversation");
     assertTrue(sut.isConversationRunning("conversation"));

@@ -76,7 +76,8 @@ class OpenAiChatModelLifecycleTest {
     var model = new OpenAiChatModel(
         "http://127.0.0.1:" + server.getAddress().getPort(), "test-key", "test-model");
     try {
-      var run = worker.submit(() -> model.stream("instruction", List.of(), List.of(), event -> { }));
+      var run = worker.submit(
+          () -> model.stream("instruction", List.of(), List.of(), event -> { }));
       assertTrue(streaming.await(5, TimeUnit.SECONDS));
       worker.submit(model::close).get(3, TimeUnit.SECONDS);
       assertThrows(ExecutionException.class, () -> run.get(3, TimeUnit.SECONDS));

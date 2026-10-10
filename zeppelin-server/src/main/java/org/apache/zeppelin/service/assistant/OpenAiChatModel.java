@@ -139,7 +139,8 @@ public class OpenAiChatModel implements ChatModel, AutoCloseable {
     }
 
     boolean[] completed = {false};
-    try (StreamResponse<ResponseStreamEvent> stream = client().responses().createStreaming(params.build())) {
+    try (StreamResponse<ResponseStreamEvent> stream =
+        client().responses().createStreaming(params.build())) {
       stream.stream().forEach(event -> {
         if (event.completed().isPresent()) completed[0] = true;
         handleEvent(event, consumer);

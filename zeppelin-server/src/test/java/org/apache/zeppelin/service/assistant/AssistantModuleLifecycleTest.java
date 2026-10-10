@@ -17,13 +17,14 @@
 
 package org.apache.zeppelin.service.assistant;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
+import java.util.Set;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -32,10 +33,11 @@ import org.junit.jupiter.api.Test;
 class AssistantModuleLifecycleTest {
   @Test
   void shutdownInterruptsActiveRunsCancelsQueueAndRejectsSubmissions() throws Exception {
-    var module = new AssistantModule(true, "http://127.0.0.1", "key", "model", ".", null, null, null);
+    var module = new AssistantModule(
+        true, "http://127.0.0.1", "key", "model", ".", null, null, null);
     var field = AssistantModule.class.getDeclaredField("assistantExecutor");
     field.setAccessible(true);
-    var executor = (ExecutorService) field.get(module);
+    var executor = (ThreadPoolExecutor) field.get(module);
     var active = new CountDownLatch(10);
     var interrupted = new CountDownLatch(10);
     var release = new CountDownLatch(1);
@@ -52,10 +54,21 @@ class AssistantModuleLifecycleTest {
         });
       }
       assertTrue(active.await(5, TimeUnit.SECONDS));
-      var queued = executor.submit(() -> { throw new AssertionError("Queued run started"); });
+      assertEquals(10, executor.getQueue().remainingCapacity());
+      var queued = module.assistant.sendMessage("note", "pending", "hello", null,
+          Set.of(), (type, payload) -> { throw new AssertionError("Queued run started"); });
+      assertTrue(module.assistant.isConversationRunning("pending"));
+      for (int i = 0; i < 9; i++) {
+        executor.submit(() -> { throw new AssertionError("Queued run started"); });
+      }
+      assertThrows(RejectedExecutionException.class,
+          () -> module.assistant.sendMessage("note", "rejected", "hello", null,
+              Set.of(), (type, payload) -> { }));
+      assertFalse(module.assistant.isConversationRunning("rejected"));
       module.close();
       assertTrue(interrupted.await(5, TimeUnit.SECONDS));
       assertTrue(queued.isCancelled());
+      assertFalse(module.assistant.isConversationRunning("pending"));
       assertTrue(executor.isTerminated());
       assertThrows(RejectedExecutionException.class, () -> executor.submit(() -> { }));
     } finally {

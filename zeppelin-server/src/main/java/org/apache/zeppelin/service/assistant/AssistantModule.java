@@ -71,21 +71,17 @@ public class AssistantModule implements AutoCloseable {
 
   @Override
   public void close() {
+    if (assistantExecutor == null) return;
+    for (Runnable queued : assistantExecutor.shutdownNow()) {
+      if (queued instanceof Future<?>) ((Future<?>) queued).cancel(false);
+    }
     try {
-      if (assistantExecutor != null) {
-        for (Runnable queued : assistantExecutor.shutdownNow()) {
-          if (queued instanceof Future<?>) ((Future<?>) queued).cancel(false);
-        }
-        ((AssistantImpl) assistant).close();
-        try {
-          assistantExecutor.awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-        }
-      }
+      ((AssistantImpl) assistant).close();
     } finally {
-      if (model != null && !(assistant instanceof AssistantImpl)) {
-        model.close();
+      try {
+        assistantExecutor.awaitTermination(10, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
       }
     }
   }
