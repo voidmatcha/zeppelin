@@ -21,3 +21,20 @@ export interface AssistantParagraphRef {
   id: string;
   title?: string;
 }
+
+/** Notebook DOM targets for the React navigation button and panel. */
+export interface AssistantSlot {
+  element: HTMLElement;
+  kind: 'navigation' | 'panel';
+}
+
+/** The layout contract; transport and conversation props are added with notebook integration. */
+export type AssistantShellProps = {
+  noteId: string;
+  slots: AssistantSlot[];
+  panelWidth: number;
+  onPanelWidthChange: (width: number) => void;
+  onPanelVisibilityChange: (visible: boolean) => void;
+  subscribePanelClose: (listener: () => void) => () => void;
+  onError?: (error: unknown) => void;
+};
