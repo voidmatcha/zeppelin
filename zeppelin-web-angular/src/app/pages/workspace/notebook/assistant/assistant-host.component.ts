@@ -140,8 +140,11 @@ export class AssistantHostComponent implements OnInit, DoCheck, OnDestroy {
       // Slots are registered during child view checks; publish once that pass finishes.
       queueMicrotask(() => {
         if (this.destroyed) return;
+        // Update the live remote without dropping its conversation or socket session.
         if (this.assistantProps) {
           this.assistantProps = { ...this.assistantProps, slots: this.slots.slots.value };
+        } else {
+          this.ngDoCheck();
         }
         this.cdr.markForCheck();
       });
