@@ -34,10 +34,6 @@ const SURFACES: Record<ReactSurface, ReactSurfaceConfig> = {
     queryParam: 'reactConfiguration',
     defaultEnabled: false
   },
-  assistantPanel: {
-    queryParam: 'reactAssistant',
-    defaultEnabled: false
-  },
   notebookRepoList: {
     queryParam: 'reactNotebookRepos',
     defaultEnabled: false
