@@ -10,10 +10,23 @@
  * limitations under the License.
  */
 
-export * from './angular-object';
-export * from './assistant';
-export * from './assistant-ui';
-export * from './interfaces/public-api';
+export interface AssistantSendMessage {
+  noteId: string;
+  conversationId: string;
+  content: string;
+}
 
-export * from './message';
-export * from './paragraph-state';
+export type AssistantEventType =
+  | 'run.started'
+  | 'run.completed'
+  | 'run.failed'
+  | 'message.delta'
+  | 'message.done'
+  | 'tool_call.started'
+  | 'tool_call.done';
+
+export interface AssistantEvent {
+  conversationId: string;
+  type: AssistantEventType;
+  payload: unknown;
+}
