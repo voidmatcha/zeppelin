@@ -28,6 +28,8 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 
 import java.lang.reflect.Type;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 
 /**
  * JSON wire format for an assistant conversation.
@@ -48,8 +50,19 @@ final class ConversationJsonCodec {
   static Conversation deserialize(String json) {
     Conversation conversation = GSON.fromJson(json, Conversation.class);
     if (conversation == null || conversation.getId() == null || conversation.getNoteId() == null
+        || conversation.getOwnerId() == null || conversation.getOwnerId().isBlank()
         || conversation.getCreatedAt() == null || conversation.getMessages() == null) {
       throw new JsonParseException("Invalid assistant conversation storage");
+    }
+    try {
+      Instant.parse(conversation.getCreatedAt());
+    } catch (DateTimeParseException e) {
+      throw new JsonParseException("Invalid assistant conversation creation time");
+    }
+    for (Message message : conversation.getMessages()) {
+      if (message == null) {
+        throw new JsonParseException("Invalid null assistant message storage");
+      }
     }
     return conversation;
   }
@@ -64,20 +77,42 @@ final class ConversationJsonCodec {
     @Override
     public Message deserialize(JsonElement json, Type type, JsonDeserializationContext ctx)
         throws JsonParseException {
-      JsonObject obj = json.getAsJsonObject();
-      if (!obj.has("role")) {
-        throw new JsonParseException("Message missing 'role' field");
+      if (!json.isJsonObject()) {
+        throw new JsonParseException("Invalid assistant message storage");
       }
-      Message.Role role = Message.Role.fromValue(obj.get("role").getAsString());
+      JsonObject obj = json.getAsJsonObject();
+      requireString(obj, "id", false);
+      requireString(obj, "content", true);
+      JsonElement roleElement = obj.get("role");
+      if (roleElement == null || !roleElement.isJsonPrimitive()
+          || !roleElement.getAsJsonPrimitive().isString()) {
+        throw new JsonParseException("Message missing or invalid 'role' field");
+      }
+      Message.Role role;
+      try {
+        role = Message.Role.fromValue(roleElement.getAsString());
+      } catch (IllegalArgumentException e) {
+        throw new JsonParseException("Invalid assistant message role");
+      }
       switch (role) {
         case USER:
           return SUBTYPE.fromJson(json, Message.User.class);
         case ASSISTANT:
           return SUBTYPE.fromJson(json, Message.Assistant.class);
         case TOOL:
+          requireString(obj, "toolCallId", false);
           return SUBTYPE.fromJson(json, Message.Tool.class);
         default:
           throw new JsonParseException("Unsupported role: " + role);
+      }
+    }
+
+    private static void requireString(JsonObject obj, String field, boolean allowEmpty) {
+      JsonElement value = obj.get(field);
+      if (value == null || !value.isJsonPrimitive()
+          || !value.getAsJsonPrimitive().isString()
+          || (!allowEmpty && value.getAsString().isBlank())) {
+        throw new JsonParseException("Message missing or invalid '" + field + "' field");
       }
     }
 

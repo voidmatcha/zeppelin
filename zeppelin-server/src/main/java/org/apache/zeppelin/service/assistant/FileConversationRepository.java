@@ -17,6 +17,7 @@
 
 package org.apache.zeppelin.service.assistant;
 
+import com.google.gson.JsonParseException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,8 +30,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import org.apache.zeppelin.util.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class FileConversationRepository implements ConversationRepository {
+  private static final Logger LOGGER = LoggerFactory.getLogger(FileConversationRepository.class);
   private final File directory;
 
   public FileConversationRepository(File directory) {
@@ -45,7 +49,13 @@ public final class FileConversationRepository implements ConversationRepository 
     if (files == null) throw new IOException();
 
     List<Conversation> conversations = new ArrayList<>();
-    for (File file : files) read(file).ifPresent(conversations::add);
+    for (File file : files) {
+      try {
+        read(file).ifPresent(conversations::add);
+      } catch (JsonParseException e) {
+        LOGGER.warn("Skipping invalid assistant conversation file {}", file.getName());
+      }
+    }
     conversations.sort(Comparator.comparing(c -> Instant.parse(c.getCreatedAt())));
     return Collections.unmodifiableList(conversations);
   }

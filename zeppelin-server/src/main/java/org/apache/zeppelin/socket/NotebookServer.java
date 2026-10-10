@@ -36,6 +36,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -92,6 +94,7 @@ import org.apache.zeppelin.scheduler.Job.Status;
 import org.apache.zeppelin.service.JobManagerService;
 import org.apache.zeppelin.service.NotebookService;
 import org.apache.zeppelin.service.assistant.AssistantEventListener;
+import org.apache.zeppelin.service.assistant.AssistantEventType;
 import org.apache.zeppelin.service.assistant.Assistant;
 import org.apache.zeppelin.service.ServiceContext;
 import org.apache.zeppelin.service.SimpleServiceCallback;
@@ -1279,14 +1282,26 @@ public class NotebookServer implements AngularObjectRegistryListener,
         LOGGER.warn("Failed to send assistant event to connection", e);
       }
     };
-    getAssistant().sendMessage(
-        noteId,
-        conversationId,
-        content,
-        context.getAutheInfo(),
-        context.getUserAndRoles(),
-        sink
-    );
+    try {
+      getAssistant().sendMessage(
+          noteId,
+          conversationId,
+          content,
+          context.getAutheInfo(),
+          context.getUserAndRoles(),
+          sink
+      );
+    } catch (RejectedExecutionException e) {
+      try {
+        conn.send(serializeMessage(new Message(OP.ASSISTANT_EVENT)
+            .put("conversationId", conversationId)
+            .put("type", AssistantEventType.RUN_FAILED.wireName)
+            .put("payload", Map.of("runId", UUID.randomUUID().toString(),
+                "error", Map.of("status", 429)))));
+      } catch (IOException sendError) {
+        LOGGER.warn("Failed to send assistant rejection to connection", sendError);
+      }
+    }
   }
 
   private void cloneNote(NotebookSocket conn,

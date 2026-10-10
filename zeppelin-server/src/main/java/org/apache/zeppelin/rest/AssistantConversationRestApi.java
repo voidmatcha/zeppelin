@@ -75,7 +75,8 @@ public class AssistantConversationRestApi extends AbstractRestApi {
         Response.Status.OK,
         "",
         assistant.listConversations(noteId, context.getUserAndRoles()).stream()
-            .map(c -> ConversationMetadata.of(c, context.getAutheInfo().getUser()))
+            .map(c -> ConversationMetadata.of(
+                c, context.getAutheInfo().getUser(), assistant.isConversationRunning(c.getId())))
             .collect(Collectors.toList())
     ).build();
   }
@@ -96,7 +97,8 @@ public class AssistantConversationRestApi extends AbstractRestApi {
     return new JsonResponse<>(
         Response.Status.OK,
         "",
-        ConversationResponse.of(conversation, context.getAutheInfo().getUser())
+        ConversationResponse.of(conversation, context.getAutheInfo().getUser(),
+            assistant.isConversationRunning(conversation.getId()))
     ).build();
   }
 
@@ -116,7 +118,8 @@ public class AssistantConversationRestApi extends AbstractRestApi {
     return new JsonResponse<>(
         Response.Status.CREATED,
         "",
-        ConversationMetadata.of(conversation, context.getAutheInfo().getUser())
+        ConversationMetadata.of(conversation, context.getAutheInfo().getUser(),
+            assistant.isConversationRunning(conversation.getId()))
     ).build();
   }
 
@@ -138,7 +141,8 @@ public class AssistantConversationRestApi extends AbstractRestApi {
     return new JsonResponse<>(
         Response.Status.OK,
         "",
-        ConversationMetadata.of(conversation, context.getAutheInfo().getUser())
+        ConversationMetadata.of(conversation, context.getAutheInfo().getUser(),
+            assistant.isConversationRunning(conversation.getId()))
     ).build();
   }
 

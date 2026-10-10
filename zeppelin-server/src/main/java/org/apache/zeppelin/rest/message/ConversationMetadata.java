@@ -27,6 +27,7 @@ public final class ConversationMetadata {
   private final String createdAt;
   private final String updatedAt;
   private final boolean canSendMessage;
+  private final boolean running;
 
   private ConversationMetadata(
       String id,
@@ -35,7 +36,8 @@ public final class ConversationMetadata {
       String title,
       String createdAt,
       String updatedAt,
-      boolean canSendMessage
+      boolean canSendMessage,
+      boolean running
   ) {
     this.id = id;
     this.noteId = noteId;
@@ -44,12 +46,13 @@ public final class ConversationMetadata {
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
     this.canSendMessage = canSendMessage;
+    this.running = running;
   }
 
-  public static ConversationMetadata of(Conversation c, String userId) {
+  public static ConversationMetadata of(Conversation c, String userId, boolean running) {
     return new ConversationMetadata(
         c.getId(), c.getNoteId(), c.getOwnerId(), c.getTitle(), c.getCreatedAt(), c.getUpdatedAt(),
-        c.isOwner(userId)
+        c.isOwner(userId), running
     );
   }
 }

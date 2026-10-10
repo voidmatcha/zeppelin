@@ -24,7 +24,6 @@ public class ToolCall {
   private String id;
   private String name;
   private Map<String, Object> arguments;
-  private ToolResult result;
 
   private ToolCall() {}
 
@@ -37,7 +36,4 @@ public class ToolCall {
   public String getId() { return id; }
   public String getName() { return name; }
   public Map<String, Object> getArguments() { return arguments; }
-  public ToolResult getResult() { return result; }
-
-  public void setResult(ToolResult result) { this.result = result; }
 }

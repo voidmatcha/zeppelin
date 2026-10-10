@@ -19,7 +19,8 @@ package org.apache.zeppelin.service.assistant;
 
 import com.google.gson.Gson;
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.client.OpenAIClientImpl;
+import com.openai.core.ClientOptions;
 import com.openai.core.JsonValue;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.responses.EasyInputMessage;
@@ -30,10 +31,13 @@ import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseStreamEvent;
 
 import java.time.Duration;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -48,6 +52,7 @@ public class OpenAiChatModel implements ChatModel, AutoCloseable {
   private final String model;
   private OpenAIClient cachedClient;
   private boolean closed;
+  private final Set<okhttp3.Call> activeCalls = ConcurrentHashMap.newKeySet();
 
   public OpenAiChatModel(String baseUrl, String apiKey, String model) {
     this.baseUrl = baseUrl;
@@ -56,13 +61,42 @@ public class OpenAiChatModel implements ChatModel, AutoCloseable {
   }
 
   private synchronized OpenAIClient client() {
-    if (closed) throw new CancellationException();
+    if (closed) {
+      throw new CancellationException("Assistant model is closed");
+    }
     if (cachedClient == null) {
-      cachedClient = OpenAIOkHttpClient.builder()
-          .baseUrl(baseUrl)
-          .apiKey(apiKey)
-          .timeout(Duration.ofMinutes(1))
+      var options = ClientOptions.builder().baseUrl(baseUrl).apiKey(apiKey)
+          .timeout(Duration.ofMinutes(1));
+      var timeout = options.timeout();
+      var httpClient = new okhttp3.OkHttpClient.Builder()
+          .connectTimeout(timeout.connect())
+          .readTimeout(timeout.read())
+          .writeTimeout(timeout.write())
+          .callTimeout(timeout.request())
+          .followRedirects(false)
+          .retryOnConnectionFailure(false)
+          .eventListener(new okhttp3.EventListener() {
+            @Override
+            public void callStart(okhttp3.Call call) {
+              synchronized (OpenAiChatModel.this) {
+                if (closed) call.cancel();
+                else activeCalls.add(call);
+              }
+            }
+
+            @Override
+            public void callEnd(okhttp3.Call call) {
+              activeCalls.remove(call);
+            }
+
+            @Override
+            public void callFailed(okhttp3.Call call, IOException error) {
+              activeCalls.remove(call);
+            }
+          })
           .build();
+      cachedClient = new OpenAIClientImpl(options
+          .httpClient(new com.openai.client.okhttp.OkHttpClient(httpClient)).build());
     }
     return cachedClient;
   }
@@ -71,6 +105,7 @@ public class OpenAiChatModel implements ChatModel, AutoCloseable {
   public synchronized void close() {
     if (closed) return;
     closed = true;
+    activeCalls.forEach(okhttp3.Call::cancel);
     if (cachedClient != null) {
       cachedClient.close();
     }
@@ -104,11 +139,8 @@ public class OpenAiChatModel implements ChatModel, AutoCloseable {
     }
 
     boolean[] completed = {false};
-    try (
-        StreamResponse<ResponseStreamEvent> stream = client()
-            .responses()
-            .createStreaming(params.build())
-    ) {
+    try (StreamResponse<ResponseStreamEvent> stream =
+        client().responses().createStreaming(params.build())) {
       stream.stream().forEach(event -> {
         if (event.completed().isPresent()) completed[0] = true;
         handleEvent(event, consumer);

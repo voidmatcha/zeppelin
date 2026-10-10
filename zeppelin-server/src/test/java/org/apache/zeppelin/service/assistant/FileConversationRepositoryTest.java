@@ -19,9 +19,12 @@ package org.apache.zeppelin.service.assistant;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -52,6 +55,91 @@ class FileConversationRepositoryTest {
     var sut = new FileConversationRepository(directory);
     Files.createDirectories(new File(directory, "noteId/unreadable.json").toPath());
     assertThrows(IOException.class, () -> sut.findAll("noteId"));
+    assertThrows(IOException.class, () -> sut.find("noteId", "unreadable"));
+  }
+
+  @Test
+  void skipsMalformedSiblingWithoutTreatingItAsMissing(@TempDir File directory) throws IOException {
+    var sut = new FileConversationRepository(directory);
+    var conversation = Conversation.create("noteId", "valid", "holden");
+    sut.create(conversation);
+    Files.writeString(new File(directory, "noteId/corrupt.json").toPath(), "{incomplete");
+
+    assertEquals(List.of(conversation.getId()), sut.findAll("noteId").stream()
+        .map(Conversation::getId).collect(Collectors.toList()));
+    assertThrows(JsonParseException.class, () -> sut.find("noteId", "corrupt"));
+  }
+
+  @Test
+  void rejectsMissingOwnerAndInvalidCreationTime(@TempDir File directory) throws IOException {
+    var sut = new FileConversationRepository(directory);
+    var conversation = Conversation.create("noteId", "valid", "holden");
+    sut.create(conversation);
+
+    for (String field : List.of("ownerId", "createdAt")) {
+      var json = JsonParser.parseString(ConversationJsonCodec.serialize(conversation))
+          .getAsJsonObject();
+      json.remove(field);
+      Files.writeString(new File(directory, "noteId/missing-" + field + ".json").toPath(),
+          json.toString());
+      assertThrows(JsonParseException.class, () -> sut.find("noteId", "missing-" + field));
+
+      json.addProperty(field, "");
+      Files.writeString(new File(directory, "noteId/invalid-" + field + ".json").toPath(),
+          json.toString());
+      assertThrows(JsonParseException.class, () -> sut.find("noteId", "invalid-" + field));
+    }
+
+    assertEquals(List.of(conversation.getId()), sut.findAll("noteId").stream()
+        .map(Conversation::getId).collect(Collectors.toList()));
+  }
+
+  @Test
+  void skipsSiblingWithInvalidMessageRole(@TempDir File directory) throws IOException {
+    var sut = new FileConversationRepository(directory);
+    var conversation = Conversation.create("noteId", "valid", "holden");
+    sut.create(conversation);
+    conversation.addMessage(Message.user("msg", "content"));
+    var json = JsonParser.parseString(ConversationJsonCodec.serialize(conversation))
+        .getAsJsonObject();
+    json.getAsJsonArray("messages").get(0).getAsJsonObject().addProperty("role", "unknown");
+    Files.writeString(new File(directory, "noteId/invalid-role.json").toPath(), json.toString());
+
+    assertEquals(List.of(conversation.getId()), sut.findAll("noteId").stream()
+        .map(Conversation::getId).collect(Collectors.toList()));
+    assertThrows(JsonParseException.class, () -> sut.find("noteId", "invalid-role"));
+  }
+
+  @Test
+  void rejectsNullAndIncompleteMessages(@TempDir File directory) throws IOException {
+    var sut = new FileConversationRepository(directory);
+    var valid = Conversation.create("noteId", "valid", "holden");
+    valid.addMessage(Message.user("user", "hello"));
+    valid.addMessage(Message.assistant("assistant", ""));
+    valid.addMessage(Message.tool("tool", "call", ""));
+    sut.create(valid);
+
+    var invalidMessages = List.of("null", "{}",
+        "{\"role\":\"user\",\"content\":\"hello\"}",
+        "{\"role\":\"user\",\"id\":\" \",\"content\":\"hello\"}",
+        "{\"role\":\"user\",\"id\":1,\"content\":\"hello\"}",
+        "{\"role\":\"user\",\"id\":\"user\"}",
+        "{\"role\":\"assistant\",\"id\":\"assistant\",\"content\":null}",
+        "{\"role\":\"assistant\",\"id\":\"assistant\",\"content\":1}",
+        "{\"role\":\"tool\",\"id\":\"tool\",\"content\":\"result\"}");
+    for (int i = 0; i < invalidMessages.size(); i++) {
+      var json = JsonParser.parseString(ConversationJsonCodec.serialize(valid)).getAsJsonObject();
+      json.getAsJsonArray("messages").set(0, JsonParser.parseString(invalidMessages.get(i)));
+      String id = "invalid-message-" + i;
+      Files.writeString(new File(directory, "noteId/" + id + ".json").toPath(), json.toString());
+      assertThrows(JsonParseException.class, () -> sut.find("noteId", id), id);
+    }
+
+    assertEquals(List.of(valid.getId()), sut.findAll("noteId").stream()
+        .map(Conversation::getId).collect(Collectors.toList()));
+    var loaded = sut.find("noteId", valid.getId()).orElseThrow();
+    assertEquals("", ((Message.Assistant) loaded.getMessages().get(1)).getContent());
+    assertEquals("", ((Message.Tool) loaded.getMessages().get(2)).getContent());
   }
 
   @Test

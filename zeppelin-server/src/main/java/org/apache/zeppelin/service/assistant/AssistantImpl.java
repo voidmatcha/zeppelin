@@ -32,12 +32,15 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.ServiceUnavailableException;
 import jakarta.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.zeppelin.notebook.AuthorizationService;
@@ -46,7 +49,7 @@ import org.apache.zeppelin.rest.exception.NoteNotFoundException;
 import org.apache.zeppelin.service.NotebookService;
 import org.apache.zeppelin.user.AuthenticationInfo;
 
-public class AssistantImpl implements Assistant {
+public class AssistantImpl implements Assistant, AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AssistantImpl.class);
   private static final Gson GSON = new Gson();
@@ -60,7 +63,9 @@ public class AssistantImpl implements Assistant {
   private final ExecutorService assistantExecutor;
 
   private final Set<String> busyConversations = ConcurrentHashMap.newKeySet();
+  private final Map<String, Integer> pendingRequests = new ConcurrentHashMap<>();
 
+  private final AtomicBoolean closed = new AtomicBoolean();
   private final Notebook notebook;
   private final ChatModel modelClient;
   private final ConversationRepository conversationRepository;
@@ -88,10 +93,25 @@ public class AssistantImpl implements Assistant {
   }
 
   @Override
+  public void close() {
+    if (closed.compareAndSet(false, true)) {
+      pendingRequests.clear();
+      if (modelClient != null) modelClient.close();
+    }
+  }
+
+  private void checkRunActive() {
+    if (closed.get() || Thread.currentThread().isInterrupted()) {
+      throw new CancellationException("Assistant run stopped");
+    }
+  }
+
+  @Override
   public List<Conversation> listConversations(
       String noteId,
       Set<String> userAndRoles
   ) throws IOException {
+    if (closed.get()) throw new ServiceUnavailableException();
     if (!authorizationService.isReader(noteId, userAndRoles)) {
       throw new ForbiddenException();
     }
@@ -109,6 +129,7 @@ public class AssistantImpl implements Assistant {
       AuthenticationInfo authInfo,
       Set<String> userAndRoles
   ) throws IOException {
+    if (closed.get()) throw new ServiceUnavailableException();
     if (!authorizationService.isReader(noteId, userAndRoles)) throw new ForbiddenException();
     if (AuthenticationInfo.isAnonymous(authInfo)) throw new ForbiddenException();
 
@@ -126,6 +147,7 @@ public class AssistantImpl implements Assistant {
       String conversationId,
       Set<String> userAndRoles
   ) throws IOException {
+    if (closed.get()) throw new ServiceUnavailableException();
     if (!authorizationService.isReader(noteId, userAndRoles)) throw new ForbiddenException();
 
     return notebook.processNote(noteId, note -> {
@@ -136,6 +158,23 @@ public class AssistantImpl implements Assistant {
   }
 
   @Override
+  public boolean isConversationRunning(String conversationId) {
+    return !closed.get() && (busyConversations.contains(conversationId)
+        || pendingRequests.containsKey(conversationId));
+  }
+
+  public void registerPendingRequest(String conversationId) {
+    if (conversationId == null) return;
+    pendingRequests.compute(conversationId,
+        (id, count) -> closed.get() ? null : count == null ? 1 : count + 1);
+  }
+
+  public void releasePendingRequest(String conversationId) {
+    if (conversationId == null) return;
+    pendingRequests.computeIfPresent(conversationId, (id, count) -> count == 1 ? null : count - 1);
+  }
+
+  @Override
   public Conversation updateTitle(
       String noteId,
       String conversationId,
@@ -143,6 +182,7 @@ public class AssistantImpl implements Assistant {
       String userId,
       Set<String> userAndRoles
   ) throws IOException {
+    if (closed.get()) throw new ServiceUnavailableException();
     if (!busyConversations.add(conversationId)) {
       throw new ClientErrorException("", Response.Status.CONFLICT);
     }
@@ -166,6 +206,7 @@ public class AssistantImpl implements Assistant {
       String userId,
       Set<String> userAndRoles
   ) throws IOException {
+    if (closed.get()) throw new ServiceUnavailableException();
     if (!busyConversations.add(conversationId)) {
       throw new ClientErrorException("", Response.Status.CONFLICT);
     }
@@ -219,9 +260,20 @@ public class AssistantImpl implements Assistant {
       Set<String> userAndRoles,
       AssistantEventListener sink
   ) {
-    return assistantExecutor.submit(() -> runMessage(
-        noteId, conversationId, userContent, authInfo, userAndRoles, sink)
-    );
+    if (closed.get()) throw new ServiceUnavailableException();
+    registerPendingRequest(conversationId);
+    try {
+      return assistantExecutor.submit(() -> {
+        try {
+          runMessage(noteId, conversationId, userContent, authInfo, userAndRoles, sink);
+        } finally {
+          releasePendingRequest(conversationId);
+        }
+      });
+    } catch (RuntimeException e) {
+      releasePendingRequest(conversationId);
+      throw e;
+    }
   }
 
   private void runMessage(
@@ -235,6 +287,8 @@ public class AssistantImpl implements Assistant {
     var runId = "run_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     boolean acquired = false;
     try {
+      if (closed.get()) throw new ServiceUnavailableException();
+      checkRunActive();
       if (StringUtils.isBlank(userContent)) throw new BadRequestException();
       if (!busyConversations.add(conversationId)) {
         throw new ClientErrorException("", Response.Status.CONFLICT);
@@ -245,6 +299,7 @@ public class AssistantImpl implements Assistant {
       if (!conversation.isOwner(authInfo.getUser())) throw new ForbiddenException();
 
       notebook.processNote(noteId, note -> {
+        checkRunActive();
         if (note == null) throw new NoteNotFoundException(noteId);
         conversationRepository.update(
             conversation, c -> c.addMessage(Message.user(Message.id(), userContent))
@@ -262,6 +317,7 @@ public class AssistantImpl implements Assistant {
       tokens.put("output", 0);
 
       runLoop(noteId, conversation, authInfo, userAndRoles, sink, tokens);
+      checkRunActive();
 
       sink.onEvent(
           AssistantEventType.RUN_COMPLETED,
@@ -270,7 +326,10 @@ public class AssistantImpl implements Assistant {
               new AssistantEventPayload.Usage(tokens.get("input"), tokens.get("output"))
           )
       );
+    } catch (CancellationException e) {
+      // Shutdown has already closed the connection and must not publish a successful turn.
     } catch (Exception e) {
+      if (closed.get()) return;
       LOGGER.error("Error during Assistant run", e);
       sink.onEvent(
           AssistantEventType.RUN_FAILED,
@@ -290,6 +349,7 @@ public class AssistantImpl implements Assistant {
       Map<String, Integer> tokens
   ) throws IOException {
     for (int iteration = 0; iteration < 10; iteration++) {
+      checkRunActive();
       String assistantId = Message.id();
       var textBuffer = new StringBuilder();
       List<ToolCall> toolCalls = new ArrayList<>();
@@ -299,6 +359,7 @@ public class AssistantImpl implements Assistant {
           conversation.getRecentMessages(HISTORY_MESSAGE_LIMIT),
           toolExecutor.specs(),
           event -> {
+            checkRunActive();
             if (event instanceof AssistantEvent.TextDelta) {
               String delta = ((AssistantEvent.TextDelta) event).delta;
               textBuffer.append(delta);
@@ -317,6 +378,7 @@ public class AssistantImpl implements Assistant {
           }
       );
 
+      checkRunActive();
       if (!toolCalls.isEmpty()) {
         Message.Assistant assistantMsg = Message.assistant(assistantId, textBuffer.toString());
         toolCalls.forEach(assistantMsg::addToolCall);
@@ -332,6 +394,7 @@ public class AssistantImpl implements Assistant {
         }
 
         for (ToolCall tc : assistantMsg.getToolCalls()) {
+          checkRunActive();
           sink.onEvent(
               AssistantEventType.TOOL_CALL_STARTED,
               new AssistantEventPayload.ToolCallStarted(tc.getId(), tc.getName(), tc.getArguments())
@@ -339,7 +402,7 @@ public class AssistantImpl implements Assistant {
           ToolResult result = toolExecutor.callTool(
               noteId, tc.getName(), tc.getArguments(), authInfo, userAndRoles
           );
-          tc.setResult(result);
+          checkRunActive();
           turn.add(Message.tool(Message.id(), tc.getId(), GSON.toJson(result)));
           sink.onEvent(
               AssistantEventType.TOOL_CALL_DONE,
@@ -348,6 +411,7 @@ public class AssistantImpl implements Assistant {
         }
 
         notebook.processNote(noteId, note -> {
+          checkRunActive();
           if (note == null) throw new NoteNotFoundException(noteId);
           conversationRepository.update(conversation, c -> turn.forEach(c::addMessage));
           return null;
@@ -356,6 +420,7 @@ public class AssistantImpl implements Assistant {
         // No tool calls; finish the run.
         String assistantText = textBuffer.toString();
         notebook.processNote(noteId, note -> {
+          checkRunActive();
           if (note == null) throw new NoteNotFoundException(noteId);
           conversationRepository.update(
               conversation,
