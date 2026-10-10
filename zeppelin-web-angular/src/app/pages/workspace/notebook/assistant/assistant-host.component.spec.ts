@@ -76,6 +76,7 @@ describe('AssistantHostComponent assistant panel', () => {
   let socketSend: ReturnType<typeof vi.fn>;
   let socketEvents: Subject<unknown>;
   let socketClosed = new Subject<CloseEvent>();
+  let messages: MessageService;
   // Props as the template would see them after a change-detection pass.
   const current = () => {
     component.ngDoCheck();
@@ -91,6 +92,11 @@ describe('AssistantHostComponent assistant panel', () => {
     revealParagraph = vi.fn(async () => 'shown');
     socketSend = vi.fn();
     socketEvents = new Subject();
+    messages = {
+      send: socketSend,
+      receive: vi.fn(() => socketEvents),
+      closed: () => socketClosed
+    } as unknown as MessageService;
     const baseUrl = new BaseUrlService();
     vi.spyOn(baseUrl, 'getRestApiBase').mockReturnValue('https://example.test/zeppelin/api');
     logoutResponse = new Subject<void>();
@@ -109,7 +115,7 @@ describe('AssistantHostComponent assistant panel', () => {
       ticket,
       entry,
       { reveal: revealParagraph } as unknown as AssistantReveal,
-      { send: socketSend, receive: vi.fn(() => socketEvents), closed: () => socketClosed } as unknown as MessageService
+      messages
     );
     component.note = note('note');
     component.enabled = true;
@@ -143,6 +149,7 @@ describe('AssistantHostComponent assistant panel', () => {
     ticket.ticket$.next(ticket.ticket);
     expect(current().draftOwner).toBe('new-account');
     expect(current().socket).not.toBe(old.socket);
+    expect(old.socket.connectionKey).toBe(messages);
     expect(current().socket.connectionKey).toBe(old.socket.connectionKey);
     expect(current()).not.toBe(old);
     const refreshed = current();
