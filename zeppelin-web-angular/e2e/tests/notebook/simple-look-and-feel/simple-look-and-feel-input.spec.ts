@@ -22,12 +22,11 @@ import {
   waitForZeppelinReady
 } from '../../../utils';
 
-const lookAndFeelButton = (page: Page): Locator => page.locator('button[nz-dropdown]:has(i[nzType="down"])').last();
-
 const setLookAndFeel = async (page: Page, value: 'default' | 'simple'): Promise<void> => {
-  await lookAndFeelButton(page).click();
-  await page.locator('li[nz-menu-item]').filter({ hasText: value }).last().click();
-  await expect(lookAndFeelButton(page)).toContainText(value, { timeout: 15000 });
+  const dropdown = new NotebookActionBarPage(page).lookAndFeelDropdown;
+  await dropdown.click();
+  await page.getByRole('menuitem', { name: value, exact: true }).click();
+  await expect(dropdown).toContainText(value, { timeout: 15000 });
 };
 
 const openTestNotebook = async (page: Page): Promise<void> => {
@@ -52,11 +51,12 @@ test.describe('Simple look-and-feel input capability handling', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_ACTION_BAR);
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_SIDEBAR);
 
-  test('keeps notebook controls accessible in a touch-only WebKit context', async ({ browser, browserName }) => {
+  test('keeps controls accessible on touch-only WebKit', async ({ browser, browserName, baseURL }) => {
     test.skip(browserName !== 'webkit', 'Touch-only coverage uses the WebKit iPhone 15 Pro context from the issue');
 
     const context = await browser.newContext({
       ...devices['iPhone 15 Pro'],
+      baseURL,
       storageState: 'playwright/.auth/user.json'
     });
 
