@@ -78,6 +78,7 @@ import org.apache.zeppelin.search.SearchService;
 import org.apache.zeppelin.storage.ConfigStorage;
 import org.apache.zeppelin.user.AuthenticationInfo;
 import org.apache.zeppelin.user.Credentials;
+import org.bitbucket.cowwoc.diffmatchpatch.DiffMatchPatch;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -974,5 +975,83 @@ class NotebookServiceTest {
       assertEquals("text without checksum", note.getParagraph(paragraphId).getText());
       return null;
     });
+  }
+
+  @Test
+  void testCommitAfterPatchInPersonalizedModeIsNotRejected() throws IOException {
+    String noteId = notebookService.createNote("/note_personalized_patch_commit", "test", true,
+        context, callback);
+    authorizationService.setOwners(noteId, Collections.singleton("admin"));
+    ServiceContext user1Context = new ServiceContext(new AuthenticationInfo("user1"),
+        new HashSet<>(Collections.singleton("user1")));
+
+    String paragraphId = notebook.processNote(noteId,
+      note -> {
+        note.setPersonalizedMode(true);
+        Paragraph p = note.getParagraph(0);
+        p.setText("hello");
+        p.getUserParagraph("user1");
+        return p.getId();
+      });
+
+    // user1 types one character: the client sends a patch and then treats "hello!" as the text
+    // the server holds
+    DiffMatchPatch dmp = new DiffMatchPatch();
+    String patchText = dmp.patchToText(dmp.patchMake("hello", "hello!"));
+    notebookService.patchParagraph(noteId, paragraphId, patchText, user1Context, callback);
+
+    // then user1 changes the title, which commits the paragraph with that text as its base
+    notebookService.updateParagraph(noteId, paragraphId, "new title", "hello!",
+        new HashMap<>(), new HashMap<>(), "hello!".hashCode(), user1Context, callback);
+
+    notebook.processNote(noteId,
+      note -> {
+        Paragraph user1Copy = note.getParagraph(paragraphId).getUserParagraph("user1");
+        assertEquals("hello!", user1Copy.getText());
+        assertEquals("new title", user1Copy.getTitle());
+        return null;
+      });
+  }
+
+  @Test
+  void testPatchInPersonalizedModeUpdatesTheMasterParagraphOnlyForTheOwner() throws IOException {
+    String noteId = notebookService.createNote("/note_personalized_patch_owner", "test", true,
+        context, callback);
+    authorizationService.setOwners(noteId, Collections.singleton("admin"));
+    ServiceContext user1Context = new ServiceContext(new AuthenticationInfo("user1"),
+        new HashSet<>(Collections.singleton("user1")));
+    ServiceContext ownerContext = new ServiceContext(new AuthenticationInfo("admin"),
+        new HashSet<>(Collections.singleton("admin")));
+
+    String paragraphId = notebook.processNote(noteId,
+      note -> {
+        note.setPersonalizedMode(true);
+        Paragraph p = note.getParagraph(0);
+        p.setText("hello");
+        p.getUserParagraph("user1");
+        p.getUserParagraph("admin");
+        return p.getId();
+      });
+
+    DiffMatchPatch dmp = new DiffMatchPatch();
+    String patchText = dmp.patchToText(dmp.patchMake("hello", "hello!"));
+
+    notebookService.patchParagraph(noteId, paragraphId, patchText, user1Context, callback);
+    notebook.processNote(noteId,
+      note -> {
+        Paragraph p = note.getParagraph(paragraphId);
+        assertEquals("hello", p.getText());
+        assertEquals("hello!", p.getUserParagraph("user1").getText());
+        return null;
+      });
+
+    notebookService.patchParagraph(noteId, paragraphId, patchText, ownerContext, callback);
+    notebook.processNote(noteId,
+      note -> {
+        Paragraph p = note.getParagraph(paragraphId);
+        assertEquals("hello!", p.getText());
+        assertEquals("hello!", p.getUserParagraph("admin").getText());
+        return null;
+      });
   }
 }

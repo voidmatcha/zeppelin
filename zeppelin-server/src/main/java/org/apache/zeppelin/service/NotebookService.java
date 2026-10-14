@@ -1583,9 +1583,15 @@ public class NotebookService {
             return null;
           }
 
-          String paragraphText = p.getText() == null ? "" : p.getText();
-          paragraphText = (String) dmp.patchApply(patches, paragraphText)[0];
-          p.setText(paragraphText);
+          // Same targets as a commit: the master paragraph (in personalized mode only for the
+          // owner) and the user's own copy, which is the text the client's checksum describes.
+          if (!note.isPersonalizedMode()
+              || authorizationService.isOwner(noteId, context.getUserAndRoles())) {
+            applyPatch(dmp, patches, p);
+          }
+          if (note.isPersonalizedMode()) {
+            applyPatch(dmp, patches, p.getUserParagraph(context.getAutheInfo().getUser()));
+          }
           callback.onSuccess(patchText, context);
           return null;
       });
@@ -1619,6 +1625,12 @@ public class NotebookService {
             ? p.getUserParagraph(context.getAutheInfo().getUser()) : p, context);
         return null;
       });
+  }
+
+  private static void applyPatch(DiffMatchPatch dmp, LinkedList<DiffMatchPatch.Patch> patches,
+                                 Paragraph paragraph) {
+    String paragraphText = paragraph.getText() == null ? "" : paragraph.getText();
+    paragraph.setText((String) dmp.patchApply(patches, paragraphText)[0]);
   }
 
   /**
