@@ -530,15 +530,7 @@ export class NotebookParagraphComponent
     // in collaborative mode let the server reject this commit when our text is based on a
     // paragraph state the server no longer holds
     const baseChecksum = this.collaborativeMode ? textChecksum(this.originalText || '') : undefined;
-    const msgId = this.messageService.commitParagraph(
-      id,
-      title,
-      text,
-      config,
-      params,
-      this.note.id,
-      baseChecksum
-    );
+    const msgId = this.messageService.commitParagraph(id, title, text, config, params, this.note.id, baseChecksum);
     this.trackParagraphSave(msgId);
     this.cdr.markForCheck();
   }
