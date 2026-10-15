@@ -63,6 +63,7 @@ import {
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NotebookParagraphResultComponent } from '../../share/result/result.component';
 import { NotebookParagraphCodeEditorComponent } from './code-editor/code-editor.component';
+import { findParagraphInterpreter } from './paragraph-interpreter';
 
 type Mode = 'edit' | 'command';
 
@@ -103,6 +104,12 @@ export class NotebookParagraphComponent
 
   get shouldUseReactFooter(): boolean {
     return this.useReactFooter && !this.reactFooterFailed;
+  }
+
+  // The interpreter setting the paragraph runs on. It is a stable reference into the bindings, so
+  // the control only sees a change when the paragraph moves to another setting.
+  get interpreter(): InterpreterBindingItem | undefined {
+    return findParagraphInterpreter(this.paragraph.text, this.interpreterBindings);
   }
 
   readonly onReactFooterError = (error: unknown): void => {

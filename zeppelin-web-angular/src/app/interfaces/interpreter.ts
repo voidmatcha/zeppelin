@@ -111,6 +111,36 @@ export interface InterpreterSettingRequest {
   }>;
 }
 
+/**
+ * Why an interpreter process is, or is not, healthy (InterpreterHealthCheck.Reason).
+ * Only `OK` is healthy. `LAUNCHING` and `NOT_RUNNING` are normal states, not failures.
+ */
+export type InterpreterHealthReason = 'OK' | 'NOT_REACHABLE' | 'PROBE_TIMEOUT' | 'LAUNCHING' | 'NOT_RUNNING';
+
+/** Health of one interpreter process (InterpreterHealthCheck.GroupHealth). */
+export interface InterpreterGroupHealth {
+  groupId: string;
+  healthy: boolean;
+  reason: InterpreterHealthReason;
+  /** Omitted when no probe was made, so a process found dead differs from one never probed. */
+  alive?: boolean;
+  /** Omitted when no probe was made. */
+  running?: boolean;
+  probeTookMs: number;
+}
+
+/**
+ * Response of POST /interpreter/setting/{settingId}/healthcheck (InterpreterHealthCheck.java).
+ * A setting owns one process per user or note, so the verdict is reported per group.
+ */
+export interface InterpreterHealthCheck {
+  settingId: string;
+  settingName: string;
+  /** Only `NOT_RUNNING`, and only when the setting holds no group at all. */
+  reason?: InterpreterHealthReason;
+  groups: InterpreterGroupHealth[];
+}
+
 interface InterpreterGroupItem {
   name: string;
   class: string;

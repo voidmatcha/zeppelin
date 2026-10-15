@@ -14,13 +14,16 @@ import { CommonModule } from '@angular/common';
 import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { NzBadgeModule } from 'ng-zorro-antd/badge';
 import { NzInputModule } from 'ng-zorro-antd/input';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 
 import { ElasticInputComponent } from './elastic-input/elastic-input.component';
+import { NotebookInterpreterHealthComponent } from './interpreter-health/interpreter-health.component';
 
 @NgModule({
-  declarations: [ElasticInputComponent],
-  exports: [ElasticInputComponent],
-  imports: [CommonModule, NzInputModule, FormsModule]
+  declarations: [ElasticInputComponent, NotebookInterpreterHealthComponent],
+  exports: [ElasticInputComponent, NotebookInterpreterHealthComponent],
+  imports: [CommonModule, NzInputModule, FormsModule, NzBadgeModule, NzTooltipModule]
 })
 export class NotebookShareModule {}

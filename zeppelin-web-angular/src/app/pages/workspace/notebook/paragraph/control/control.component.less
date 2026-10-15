@@ -37,6 +37,20 @@
   opacity: 0.7;
 }
 
+// The item's content sits in a wrapper that ng-zorro adds, so it does not take the flex layout of
+// .list-item. The row lines the label up with the status itself, and lets the status wrap under it.
+.interpreter-health-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+
+  zeppelin-notebook-interpreter-health,
+  .short-cut {
+    margin-left: auto;
+  }
+}
+
 .paragraph-id {
   text-align: center;
 }

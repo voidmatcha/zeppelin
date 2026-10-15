@@ -24,6 +24,7 @@ export class BasePage {
   readonly zeppelinHeader: Locator;
 
   readonly modalTitle: Locator;
+  readonly errorMessage: Locator;
 
   readonly okButton: Locator;
   readonly cancelButton: Locator;
@@ -39,6 +40,8 @@ export class BasePage {
     this.zeppelinHeader = page.locator('zeppelin-header');
 
     this.modalTitle = page.locator('.ant-modal-confirm-title, .ant-modal-title');
+    // NzMessageService renders its toasts without a role or a test id to find them by.
+    this.errorMessage = page.locator('.ant-message-error');
 
     this.okButton = page.locator('button:has-text("OK")');
     this.cancelButton = page.locator('button:has-text("Cancel")');

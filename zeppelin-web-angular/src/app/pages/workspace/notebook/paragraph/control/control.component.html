@@ -58,7 +58,14 @@
   <a (click)="toggleOutput()" nz-tooltip nzTooltipTitle="Show/hide the output">
     <i nz-icon [nzType]="tableHide ? 'book' : 'read'" nzTheme="outline"></i>
   </a>
-  <a nz-dropdown [nzDropdownMenu]="menu" [nzTrigger]="'click'" [nzClickHide]="false" [(nzVisible)]="dropdownVisible">
+  <a
+    nz-dropdown
+    [nzDropdownMenu]="menu"
+    [nzTrigger]="'click'"
+    [nzClickHide]="false"
+    [(nzVisible)]="dropdownVisible"
+    (nzVisibleChange)="onDropdownVisibleChange($event)"
+  >
     <span nz-tooltip nzTooltipTitle="More">
       <i nz-icon nzType="setting" nzTheme="outline"></i>
     </span>
@@ -121,6 +128,29 @@
           </li>
         }
       }
+      <li nz-menu-divider></li>
+      <li
+        nz-menu-item
+        class="list-item"
+        data-testid="check-interpreter-health"
+        [nzDisabled]="!interpreter || interpreterHealthLoading"
+        (click)="checkInterpreterHealth()"
+      >
+        <div class="interpreter-health-row">
+          <span>
+            <i nz-icon nzType="heart" nzTheme="outline"></i>
+            Check interpreter health
+          </span>
+          @if (interpreter) {
+            <zeppelin-notebook-interpreter-health
+              [verdict]="interpreterHealth"
+              [loading]="interpreterHealthLoading"
+            ></zeppelin-notebook-interpreter-health>
+          } @else {
+            <span class="short-cut">No interpreter</span>
+          }
+        </div>
+      </li>
     </ul>
   </nz-dropdown-menu>
 }

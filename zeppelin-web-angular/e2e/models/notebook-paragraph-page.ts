@@ -18,6 +18,7 @@ export class NotebookParagraphPage extends BasePage {
   readonly addParagraphAbove: Locator;
   readonly addParagraphBelow: Locator;
   readonly controlPanel: Locator;
+  readonly controlPanels: Locator;
   readonly codeEditor: Locator;
   readonly dynamicForms: Locator;
   readonly resultDisplay: Locator;
@@ -28,13 +29,19 @@ export class NotebookParagraphPage extends BasePage {
   readonly cancelButton: Locator;
   readonly exportDropdownTrigger: Locator;
   readonly exportMenu: Locator;
+  readonly checkInterpreterHealthItem: Locator;
+  readonly interpreterHealthStatus: Locator;
+  readonly interpreterHealthPulse: Locator;
+  readonly interpreterHealthLabel: Locator;
+  readonly noInterpreterHint: Locator;
 
   constructor(page: Page) {
     super(page);
     this.paragraphContainer = page.locator('.paragraph-container').first();
     this.addParagraphAbove = page.locator('zeppelin-notebook-add-paragraph').first();
     this.addParagraphBelow = page.locator('zeppelin-notebook-add-paragraph').last();
-    this.controlPanel = page.locator('zeppelin-notebook-paragraph-control').first();
+    this.controlPanels = page.locator('zeppelin-notebook-paragraph-control');
+    this.controlPanel = this.controlPanels.first();
     this.codeEditor = page.locator('zeppelin-notebook-paragraph-code-editor').first();
     this.dynamicForms = page.locator('zeppelin-notebook-paragraph-dynamic-forms').first();
     this.resultDisplay = page.locator('zeppelin-notebook-paragraph-result').first();
@@ -57,6 +64,13 @@ export class NotebookParagraphPage extends BasePage {
     // The export controls render only for a TABLE result.
     this.exportDropdownTrigger = this.resultDisplay.locator('.export-dropdown-icon-btn');
     this.exportMenu = page.locator('.ant-dropdown-menu');
+    // ng-zorro renders the menu items as plain list items, so there is no role to look them up by.
+    this.checkInterpreterHealthItem = page.getByTestId('check-interpreter-health');
+    this.interpreterHealthStatus = this.checkInterpreterHealthItem.getByTestId('interpreter-health');
+    // The badge is ng-zorro's: the dot pulses only for a check under way, and the text is the label.
+    this.interpreterHealthPulse = this.interpreterHealthStatus.locator('.ant-badge-status-processing');
+    this.interpreterHealthLabel = this.interpreterHealthStatus.locator('.ant-badge-status-text');
+    this.noInterpreterHint = this.checkInterpreterHealthItem.getByText('No interpreter', { exact: true });
   }
 
   // The export dropdown is declared without nzTrigger, so ng-zorro opens it on hover, not click.
@@ -73,7 +87,23 @@ export class NotebookParagraphPage extends BasePage {
     await this.runButton.click();
   }
 
-  async openSettingsDropdown(): Promise<void> {
-    await this.settingsDropdown.click();
+  async openSettingsDropdown(paragraphIndex = 0): Promise<void> {
+    await this.controlPanels.nth(paragraphIndex).locator('a[nz-dropdown]').click();
+  }
+
+  // A menu that opens upwards or is pushed up by the edge of the screen can cover its own gear, so it
+  // is closed with the keyboard.
+  async closeSettingsDropdown(): Promise<void> {
+    await this.page.keyboard.press('Escape');
+    await expect(this.checkInterpreterHealthItem).toBeHidden();
+  }
+
+  // The interpreter bindings arrive over the WebSocket after the note, and the item stays disabled
+  // under the hint until they do.
+  async checkInterpreterHealth(): Promise<void> {
+    await this.openSettingsDropdown();
+    await expect(this.checkInterpreterHealthItem).toBeVisible();
+    await expect(this.noInterpreterHint).toBeHidden();
+    await this.checkInterpreterHealthItem.click();
   }
 }

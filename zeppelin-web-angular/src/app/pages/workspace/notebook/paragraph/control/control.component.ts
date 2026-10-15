@@ -18,16 +18,25 @@ import {
   EventEmitter,
   Input,
   OnChanges,
+  OnDestroy,
   OnInit,
-  Output
+  Output,
+  SimpleChanges
 } from '@angular/core';
+import { Subscription } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 import { copyTextToClipboard } from '@zeppelin/core';
 
 import { NzMessageService } from 'ng-zorro-antd/message';
 
 import { ActivatedRoute } from '@angular/router';
-import { RuntimeInfos } from '@zeppelin/sdk';
-import { MessageService } from '@zeppelin/services';
+import { InterpreterBindingItem, RuntimeInfos } from '@zeppelin/sdk';
+import { InterpreterService, MessageService } from '@zeppelin/services';
+
+import {
+  interpreterHealthErrorMessage,
+  InterpreterHealthVerdict
+} from '../../share/interpreter-health/interpreter-health';
 
 @Component({
   selector: 'zeppelin-notebook-paragraph-control',
@@ -37,12 +46,14 @@ import { MessageService } from '@zeppelin/services';
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false
 })
-export class NotebookParagraphControlComponent implements OnInit, OnChanges {
+export class NotebookParagraphControlComponent implements OnInit, OnChanges, OnDestroy {
   @Input() status!: string;
   @Input() progress = 0;
   @Input() revisionView = false;
   @Input() enabled?: boolean = true;
   @Input() pid!: string;
+  @Input() noteId?: string;
+  @Input() interpreter?: InterpreterBindingItem;
   @Input() tableHide?: boolean = false;
   @Input() editorHide?: boolean = false;
   @Input() colWidth?: number;
@@ -76,6 +87,8 @@ export class NotebookParagraphControlComponent implements OnInit, OnChanges {
   @Output() readonly openSingleParagraph = new EventEmitter<string>();
   fontSizeOption = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
   dropdownVisible = false;
+  interpreterHealth?: InterpreterHealthVerdict;
+  interpreterHealthLoading = false;
   isMac = navigator.appVersion.indexOf('Mac') !== -1;
   listOfMenu: Array<{
     label: string;
@@ -85,6 +98,7 @@ export class NotebookParagraphControlComponent implements OnInit, OnChanges {
     shortCut: string;
     trigger(): void;
   }> = [];
+  private interpreterHealthRequest?: Subscription;
 
   formatShortcut(shortcut: string, isMac: boolean) {
     if (isMac) {
@@ -255,6 +269,42 @@ export class NotebookParagraphControlComponent implements OnInit, OnChanges {
     this.removeParagraph.emit();
   }
 
+  onDropdownVisibleChange(visible: boolean) {
+    if (!visible) {
+      return;
+    }
+    // Every opening starts clean, so that the menu never shows the answer to an earlier question.
+    this.resetInterpreterHealth();
+    // The bindings come with the note, and a paragraph can start to use a setting that was not bound
+    // then. Ask again before the menu has to say that there is no interpreter.
+    if (!this.interpreter && this.noteId) {
+      this.messageService.getInterpreterBindings(this.noteId);
+    }
+  }
+
+  checkInterpreterHealth() {
+    const interpreter = this.interpreter;
+    if (!interpreter || this.interpreterHealthLoading) {
+      return;
+    }
+    this.interpreterHealth = undefined;
+    this.interpreterHealthLoading = true;
+    this.interpreterHealthRequest = this.interpreterService
+      .checkInterpreterHealth(interpreter.id, this.noteId)
+      .pipe(
+        finalize(() => {
+          this.interpreterHealthLoading = false;
+          this.cdr.markForCheck();
+        })
+      )
+      .subscribe({
+        next: health => {
+          this.interpreterHealth = { health, checkedAt: new Date() };
+        },
+        error: error => this.nzMessageService.error(interpreterHealthErrorMessage(error))
+      });
+  }
+
   trigger(event: EventEmitter<void>) {
     if (!this.isEntireNoteRunning) {
       this.dropdownVisible = false;
@@ -266,14 +316,30 @@ export class NotebookParagraphControlComponent implements OnInit, OnChanges {
     private cdr: ChangeDetectorRef,
     private nzMessageService: NzMessageService,
     private activatedRoute: ActivatedRoute,
-    private messageService: MessageService
+    private messageService: MessageService,
+    private interpreterService: InterpreterService
   ) {}
 
   ngOnInit() {
     this.updateListOfMenu();
   }
 
-  ngOnChanges(): void {
+  ngOnChanges(changes: SimpleChanges): void {
     this.updateListOfMenu();
+    const { interpreter } = changes;
+    if (interpreter && interpreter.previousValue?.id !== interpreter.currentValue?.id) {
+      this.resetInterpreterHealth();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.interpreterHealthRequest?.unsubscribe();
+  }
+
+  // A verdict belongs to the setting it was asked of, so it must not outlive a switch to another one,
+  // nor an answer that is still on its way.
+  private resetInterpreterHealth() {
+    this.interpreterHealthRequest?.unsubscribe();
+    this.interpreterHealth = undefined;
   }
 }
