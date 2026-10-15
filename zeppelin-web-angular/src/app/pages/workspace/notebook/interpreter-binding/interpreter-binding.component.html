@@ -27,11 +27,27 @@
   </div>
   <div class="interpreter-settings">
     <div cdkDropList class="interpreter-list" (cdkDropListDropped)="drop($event)">
-      @for (item of interpreterBindings; track item; let pFirst = $first) {
+      @for (item of bindings; track item.id; let pFirst = $first) {
         <div class="interpreter-box" cdkDrag>
           <a class="refresh" (click)="restartInterpreter(item)">
             <i nz-icon nzType="sync" nzTheme="outline"></i>
           </a>
+          <div class="health-controls">
+            <button
+              nz-button
+              nzSize="small"
+              [attr.aria-label]="'Check health of ' + item.name"
+              [nzLoading]="checkingHealth[item.id]"
+              (click)="checkHealth(item)"
+            >
+              <i nz-icon nzType="heart" nzTheme="outline"></i>
+              Check health
+            </button>
+            <zeppelin-notebook-interpreter-health
+              [verdict]="interpreterHealth[item.id]"
+              [loading]="checkingHealth[item.id]"
+            ></zeppelin-notebook-interpreter-health>
+          </div>
           <div class="interpreter-name">
             <button nz-button [nzType]="item.selected ? 'primary' : 'default'" (click)="item.selected = !item.selected">
               <span class="main-name">{{ item.name }}</span>

@@ -12,6 +12,25 @@
 
 @import "theme-mixin";
 
+// Gives the health controls a column of their own in front of the names, so that they line up
+// whatever the width of a name.
+.interpreter-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.health-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+
+  zeppelin-notebook-interpreter-health {
+    min-width: 96px;
+  }
+}
+
 .themeMixin({
   .interpreter-binding {
     .interpreter-list {
