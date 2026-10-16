@@ -14,31 +14,42 @@ export interface AssistantConversation {
   id: string;
   title?: string;
   /** Account that created the conversation, shown as "Started by …". */
-  ownerId?: string;
+  ownerId: string;
   /** Whether the requesting user can send messages to the conversation, as the server decides. */
-  canSendMessage?: boolean;
+  canSendMessage: boolean;
   /** Last activity (ISO time), shown in the conversation list. */
-  updatedAt?: string;
+  updatedAt: string;
 }
-export interface AssistantMessage {
+export type AssistantMessage = AssistantUserMessage | AssistantAnswerMessage;
+export interface AssistantUserMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user';
   content: string;
-  /** From history: the tools the server called before this answer. Live runs report them as events instead. */
-  toolCalls?: AssistantToolCallRef[];
+}
+export interface AssistantAnswerMessage {
+  /** The last assistant round's id, used as the bubble key. */
+  id: string;
+  role: 'assistant';
+  /** Ordered assistant rounds as stored by the server, including tool-only rounds. */
+  segments: AssistantMessageSegment[];
 }
 export interface AssistantToolCallRef {
   id: string;
   name: string;
 }
+export interface AssistantMessageSegment {
+  id: string;
+  content: string;
+  toolCalls?: AssistantToolCallRef[];
+}
 /** One page of a conversation's history, oldest first. */
 export interface AssistantMessagePage {
   messages: AssistantMessage[];
-  /** Pass as `before` to load the page before this one; null when this page starts the conversation. */
-  earlierCursor: string | null;
+  /** Pass as `before` to load older messages; null at the start of the conversation. */
+  cursor: string | null;
 }
 export interface AssistantRunBody {
-  prompt: string;
+  content: string;
 }
 export type AssistantRunEvent =
   | { type: 'run.started'; runId?: string }
@@ -47,8 +58,7 @@ export type AssistantRunEvent =
   | { type: 'message.delta'; messageId: string; delta: string }
   | { type: 'message.done'; messageId: string; content: string }
   | { type: 'tool_call.started'; toolCallId: string; name: string }
-  // The server does not repeat the tool name on completion.
-  | { type: 'tool_call.done'; toolCallId: string; name?: string };
+  | { type: 'tool_call.done'; toolCallId: string };
 
 export type AssistantRunState = 'idle' | 'running' | 'disconnected';
 
@@ -57,10 +67,11 @@ export interface AssistantTransport {
   listConversations(): Promise<AssistantConversation[]>;
   createConversation(body: { title?: string }): Promise<AssistantConversation>;
   deleteConversation(conversationId: string): Promise<void>;
-  /** The latest page of history, or the page before `before` (an `earlierCursor`). */
+  /** The latest page of history, or the page before `before` (a page cursor). */
   getMessages(conversationId: string, before?: string): Promise<AssistantMessagePage>;
   /** Observe local run state, including a lost connection until history is reloaded. */
   subscribeRunState?(conversationId: string, listener: (state: AssistantRunState) => void): () => void;
+  /** Aborting stops local event consumption; it does not cancel a run already accepted by the server. */
   openRun(conversationId: string, body: AssistantRunBody, signal: AbortSignal): AsyncIterable<AssistantRunEvent>;
 }
 
