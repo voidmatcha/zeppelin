@@ -132,7 +132,7 @@
             [dateFinished]="paragraph.dateFinished"
           ></zeppelin-notebook-paragraph-footer>
         }
-        @if (interpreter) {
+        @if (interpreter && !revisionView) {
           <zeppelin-notebook-interpreter-health-chip
             [interpreter]="interpreter"
             [noteId]="note.id"

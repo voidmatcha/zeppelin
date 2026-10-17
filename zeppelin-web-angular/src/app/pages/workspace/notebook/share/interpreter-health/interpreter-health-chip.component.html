@@ -11,6 +11,7 @@
 -->
 
 <button
+  #tip="nzTooltip"
   type="button"
   class="chip"
   data-testid="interpreter-health-chip"
@@ -19,7 +20,11 @@
   [nzTooltipTitle]="state === 'checking' ? null : tooltipTemplate"
   [attr.data-state]="state"
   [attr.aria-label]="ariaLabel"
+  [attr.aria-busy]="loading"
   (click)="check()"
+  (focus)="tip.show()"
+  (blur)="tip.hide()"
+  (keydown.escape)="tip.hide()"
 >
   <img class="logo" [src]="logoUrl" alt="" width="16" height="16" />
   <span class="dot"></span>
@@ -29,6 +34,12 @@
     <div>
       <strong>{{ interpreter.name }}: {{ label }}</strong>
     </div>
+    @for (group of listedGroups; track group.name) {
+      <div>{{ group.name }}: {{ group.detail }}</div>
+    }
+    @if (hiddenGroupCount > 0) {
+      <div>and {{ hiddenGroupCount }} more</div>
+    }
     @if (state === 'not-running') {
       <div>No interpreter process is running.</div>
       <div>It starts on first use.</div>

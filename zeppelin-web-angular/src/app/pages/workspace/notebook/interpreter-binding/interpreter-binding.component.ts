@@ -11,8 +11,17 @@
  */
 
 import { moveItemInArray, CdkDragDrop } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
-import { finalize } from 'rxjs/operators';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  Output
+} from '@angular/core';
+import { Subject } from 'rxjs';
+import { finalize, takeUntil } from 'rxjs/operators';
 
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
@@ -32,8 +41,9 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false
 })
-export class NotebookInterpreterBindingComponent {
+export class NotebookInterpreterBindingComponent implements OnDestroy {
   private restarting = false;
+  private readonly destroy$ = new Subject<void>();
   /** What the last check of each setting found, by setting id. */
   interpreterHealth: Record<string, InterpreterHealthVerdict | undefined> = {};
   checkingHealth: Record<string, boolean | undefined> = {};
@@ -79,7 +89,8 @@ export class NotebookInterpreterBindingComponent {
         finalize(() => {
           this.checkingHealth[interpreter.id] = false;
           this.cdr.markForCheck();
-        })
+        }),
+        takeUntil(this.destroy$)
       )
       .subscribe({
         next: health => {
@@ -87,6 +98,11 @@ export class NotebookInterpreterBindingComponent {
         },
         error: error => this.nzMessageService.error(interpreterHealthErrorMessage(error))
       });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   drop(event: CdkDragDrop<InterpreterBindingItem[]>) {

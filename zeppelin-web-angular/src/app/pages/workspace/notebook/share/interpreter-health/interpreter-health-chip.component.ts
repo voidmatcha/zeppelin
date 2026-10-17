@@ -10,22 +10,38 @@
  * limitations under the License.
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input } from '@angular/core';
-import { finalize } from 'rxjs/operators';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  Input,
+  OnChanges,
+  OnDestroy,
+  SimpleChanges,
+  ViewChild
+} from '@angular/core';
+import { Subject } from 'rxjs';
+import { finalize, takeUntil } from 'rxjs/operators';
 
 import { NzMessageService } from 'ng-zorro-antd/message';
+import { NzTooltipDirective } from 'ng-zorro-antd/tooltip';
 
 import { InterpreterBindingItem } from '@zeppelin/sdk';
 import { InterpreterService } from '@zeppelin/services';
 
 import {
+  describeInterpreterGroups,
+  InterpreterGroupDetail,
   InterpreterHealthVerdict,
   interpreterHealthErrorMessage,
-  summarizeInterpreterHealth
+  summarizeInterpreterHealth,
+  summarizeInterpreterHealthReason
 } from './interpreter-health';
 import { interpreterLogoUrl } from './interpreter-logo';
 
 type ChipState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checking' | 'unknown';
+
+const MAX_LISTED_GROUPS = 3;
 
 /**
  * The health of the interpreter a paragraph runs on, at the bottom right of the paragraph. It shows the logo of
@@ -39,14 +55,17 @@ type ChipState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checkin
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false
 })
-export class NotebookInterpreterHealthChipComponent {
+export class NotebookInterpreterHealthChipComponent implements OnChanges, OnDestroy {
   @Input() interpreter!: InterpreterBindingItem;
   @Input() noteId!: string;
   /** The `%name` of the paragraph, a fallback for choosing the logo. */
   @Input() replName?: string;
+  @ViewChild(NzTooltipDirective) tooltip?: NzTooltipDirective;
 
   verdict?: InterpreterHealthVerdict;
   loading = false;
+  private readonly destroy$ = new Subject<void>();
+  private cancel$ = new Subject<void>();
 
   get logoUrl(): string {
     return interpreterLogoUrl(this.interpreter?.name, this.replName);
@@ -63,8 +82,35 @@ export class NotebookInterpreterHealthChipComponent {
     return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : 'Not checked';
   }
 
+  get reason(): string | undefined {
+    return this.verdict ? summarizeInterpreterHealthReason(this.verdict.health) : undefined;
+  }
+
+  get groups(): InterpreterGroupDetail[] {
+    return this.verdict ? describeInterpreterGroups(this.verdict.health) : [];
+  }
+
+  get listedGroups(): InterpreterGroupDetail[] {
+    return this.state === 'unhealthy' ? this.groups.slice(0, MAX_LISTED_GROUPS) : [];
+  }
+
+  get hiddenGroupCount(): number {
+    return this.state === 'unhealthy' ? Math.max(0, this.groups.length - MAX_LISTED_GROUPS) : 0;
+  }
+
   get ariaLabel(): string {
-    return `${this.interpreter?.name} interpreter: ${this.label}. Activate to check again`;
+    const reason = this.reason ? ` (${this.reason})` : '';
+    return `${this.interpreter?.name} interpreter: ${this.label}${reason}. Activate to check again`;
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    const change = changes.interpreter;
+    if (change && change.previousValue?.id !== change.currentValue?.id) {
+      // A verdict belongs to one setting: when the paragraph moves to another one, the old answer is void.
+      this.cancel$.next();
+      this.verdict = undefined;
+      this.loading = false;
+    }
   }
 
   check(): void {
@@ -73,13 +119,16 @@ export class NotebookInterpreterHealthChipComponent {
     }
     this.verdict = undefined;
     this.loading = true;
+    this.tooltip?.hide();
     this.interpreterService
       .checkInterpreterHealth(this.interpreter.id, this.noteId)
       .pipe(
         finalize(() => {
           this.loading = false;
           this.cdr.markForCheck();
-        })
+        }),
+        takeUntil(this.cancel$),
+        takeUntil(this.destroy$)
       )
       .subscribe({
         next: health => {
@@ -87,6 +136,11 @@ export class NotebookInterpreterHealthChipComponent {
         },
         error: error => this.nzMessageService.error(interpreterHealthErrorMessage(error))
       });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   constructor(

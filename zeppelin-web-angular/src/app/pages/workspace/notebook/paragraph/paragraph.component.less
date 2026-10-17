@@ -72,7 +72,8 @@
         visibility: hidden;
       }
 
-      &:hover {
+      &:hover,
+      &:focus-within {
         border: 1px solid @border-color-split;
         box-shadow: @card-shadow;
 
@@ -83,6 +84,10 @@
     }
 
     &.report {
+      zeppelin-notebook-interpreter-health-chip {
+        display: none;
+      }
+
       &:hover {
         box-shadow: none;
         border-color: transparent;
@@ -101,3 +106,10 @@
     }
   }
 });
+
+// In the simple look the health chip fades instead of being hidden, so that the keyboard can still reach it. A focus
+// inside a paragraph selects it and the paragraph then takes the focus itself (command mode), so the chip stays shown
+// while the paragraph host is focused or selected, besides on hover.
+:host(:not(:focus-within)) .paragraph.simple:not(:hover):not(:focus-within):not(.focused) zeppelin-notebook-interpreter-health-chip {
+  opacity: 0;
+}

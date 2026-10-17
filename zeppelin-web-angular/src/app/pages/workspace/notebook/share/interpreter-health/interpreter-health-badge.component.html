@@ -16,8 +16,10 @@
   data-testid="interpreter-health-badge"
   [attr.data-state]="state"
   [attr.aria-label]="ariaLabel"
+  [attr.aria-busy]="loading"
+  [attr.title]="verdict ? 'Checked at ' + (verdict.checkedAt | date: 'mediumTime') : null"
   (click)="onClick()"
 >
   <span class="dot"></span>
-  <span class="text">{{ label }}</span>
+  <span class="text">{{ text }}</span>
 </button>

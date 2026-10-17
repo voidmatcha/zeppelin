@@ -12,7 +12,11 @@
 
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
-import { InterpreterHealthVerdict, summarizeInterpreterHealth } from './interpreter-health';
+import {
+  InterpreterHealthVerdict,
+  summarizeInterpreterHealth,
+  summarizeInterpreterHealthReason
+} from './interpreter-health';
 
 type BadgeState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checking' | 'unknown';
 
@@ -49,8 +53,18 @@ export class NotebookInterpreterHealthBadgeComponent {
     return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : 'Not checked';
   }
 
+  get reason(): string | undefined {
+    return !this.loading && this.verdict ? summarizeInterpreterHealthReason(this.verdict.health) : undefined;
+  }
+
+  /** What the badge says: the state, and after a bar why, written as one text so that it reads the same to everyone. */
+  get text(): string {
+    return this.reason ? `${this.label} | ${this.reason}` : this.label;
+  }
+
   get ariaLabel(): string {
-    return `${this.name}: ${this.label}. Check again`;
+    const reason = this.reason ? `, ${this.reason}` : '';
+    return `${this.name}: ${this.label}${reason}. Check again`;
   }
 
   onClick(): void {

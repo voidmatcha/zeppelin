@@ -65,6 +65,32 @@
     border: 1.5px dashed @text-color-secondary;
     background: transparent;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-state='checking'] .dot {
+      animation: none;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .dot {
+      forced-color-adjust: none;
+      border: 1.5px solid CanvasText;
+    }
+
+    [data-state='healthy'] .dot,
+    [data-state='unhealthy'] .dot {
+      background: CanvasText;
+    }
+
+    [data-state='unhealthy'] .dot::after {
+      background: Canvas;
+    }
+
+    [data-state='starting'] .dot {
+      background: linear-gradient(90deg, CanvasText 50%, Canvas 50%);
+    }
+  }
 }
 
 @keyframes interpreter-health-spin {

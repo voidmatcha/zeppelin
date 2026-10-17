@@ -21,6 +21,11 @@ export interface InterpreterHealthSummary {
   label: string;
 }
 
+export interface InterpreterGroupDetail {
+  name: string;
+  detail: string;
+}
+
 /** What a check found and when, since the badge stays on screen after the answer has aged. */
 export interface InterpreterHealthVerdict {
   health: InterpreterHealthCheck;
@@ -50,6 +55,40 @@ export const summarizeInterpreterHealth = (check: InterpreterHealthCheck): Inter
   return { state: 'not-running', label: 'Not running' };
 };
 
+const describeGroup = (group: InterpreterGroupHealth): string => {
+  switch (group.reason) {
+    case 'OK':
+      return `Answered in ${group.probeTookMs} ms`;
+    case 'NOT_REACHABLE':
+      if (group.alive === true) {
+        return 'Process exists but does not answer';
+      }
+      return group.alive === false ? 'Process is gone' : 'Could not be reached';
+    case 'PROBE_TIMEOUT':
+      return `No answer within ${group.probeTookMs} ms`;
+    case 'LAUNCHING':
+      return 'Starting';
+    case 'NOT_RUNNING':
+      return 'Not running';
+    default:
+      return group.reason;
+  }
+};
+
+/**
+ * One line per interpreter process, named without the setting id every group id starts with. The
+ * failing ones come first, so that a list cut short does not hide the reason for a red badge.
+ */
+export const describeInterpreterGroups = (check: InterpreterHealthCheck): InterpreterGroupDetail[] => {
+  const prefix = `${check.settingId}-`;
+  return [...check.groups]
+    .sort((a, b) => Number(isFailure(b)) - Number(isFailure(a)))
+    .map(group => ({
+      name: group.groupId.startsWith(prefix) ? group.groupId.slice(prefix.length) : group.groupId,
+      detail: describeGroup(group)
+    }));
+};
+
 export const interpreterHealthErrorMessage = (error: unknown): string => {
   if (error instanceof HttpErrorResponse) {
     // The web server can turn the caller away before the endpoint is reached, and then it only says
@@ -66,4 +105,38 @@ export const interpreterHealthErrorMessage = (error: unknown): string => {
     }
   }
   return 'Failed to check the interpreter health';
+};
+
+const failingGroups = (check: InterpreterHealthCheck): InterpreterGroupHealth[] => check.groups.filter(isFailure);
+
+const shortReason = (group: InterpreterGroupHealth): string => {
+  switch (group.reason) {
+    case 'PROBE_TIMEOUT':
+      return 'Timed out';
+    case 'NOT_REACHABLE':
+      if (group.alive === true) {
+        return 'No answer';
+      }
+      return group.alive === false ? 'Process gone' : 'Unreachable';
+    default:
+      return group.reason;
+  }
+};
+
+/**
+ * The few words that say why a badge is not green, written next to its label so that nobody has to hover
+ * for them: why a failing setting fails, and that a setting with nothing running starts on first use. With
+ * several processes the number of failing ones follows ("Timed out (1 of 2)").
+ */
+export const summarizeInterpreterHealthReason = (check: InterpreterHealthCheck): string | undefined => {
+  const summary = summarizeInterpreterHealth(check);
+  if (summary.state === 'not-running') {
+    return 'starts on use';
+  }
+  if (summary.state !== 'unhealthy') {
+    return undefined;
+  }
+  const failing = failingGroups(check);
+  const reason = shortReason(failing[0]);
+  return check.groups.length > 1 ? `${reason} (${failing.length} of ${check.groups.length})` : reason;
 };

@@ -19,10 +19,12 @@
       padding: 12px;
     }
 
-    // The health badge sits at the far right of the row.
+    // The health badge sits at the far right of the row and wraps below the name on a narrow panel.
     .interpreter-box {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
+      row-gap: 4px;
 
       zeppelin-notebook-interpreter-health-badge {
         margin-inline-start: auto;

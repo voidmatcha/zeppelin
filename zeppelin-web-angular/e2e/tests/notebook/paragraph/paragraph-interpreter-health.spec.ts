@@ -20,7 +20,9 @@ import {
   launchingInterpreter,
   mockInterpreterBindings,
   mockInterpreterHealthCheck,
+  mockInterpreterHealthCheckForbidden,
   notRunningInterpreter,
+  partlyUnhealthyInterpreter,
   timedOutInterpreter,
   unreachableInterpreter
 } from '../../../models/interpreter-health.util';
@@ -111,6 +113,50 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
     });
   }
 
+  test('Given an unhealthy interpreter, When hovering its chip, Then the tooltip says why and when', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1']);
+    await mockInterpreterHealthCheck(page, partlyUnhealthyInterpreter);
+    await paragraphPage.healthChips.first().click();
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'unhealthy');
+
+    await paragraphPage.healthChips.first().hover();
+
+    await expect(paragraphPage.healthTooltip).toContainText('alpha: Unhealthy');
+    await expect(paragraphPage.healthTooltip).toContainText('bob: Process is gone');
+    await expect(paragraphPage.healthTooltip).toContainText(/Checked at /);
+    await expect(paragraphPage.healthTooltip).toContainText('Click to check again');
+  });
+
+  test('Given a check under way, When clicking again, Then only one request is made and the chip is checking', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1']);
+    let release!: () => void;
+    const requests = await mockInterpreterHealthCheck(page, healthyInterpreter, new Promise<void>(r => (release = r)));
+
+    await paragraphPage.healthChips.first().click();
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'checking');
+    await paragraphPage.healthChips.first().click();
+    release();
+
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'healthy');
+    expect(requests).toHaveLength(1);
+  });
+
+  test('Given the server refuses, When checking, Then the reason is shown and the chip is not checked again', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1']);
+    await mockInterpreterHealthCheckForbidden(page, 'Forbidden');
+
+    await paragraphPage.healthChips.first().click();
+
+    await expect(paragraphPage.errorMessage).toContainText('No privilege to check the interpreter health');
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'unknown');
+  });
+
   test('Given a paragraph of an interpreter that is not bound, When the notebook opens, Then it has no chip', async ({
     page
   }) => {
@@ -120,6 +166,20 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
     // an empty footer without a chip is as small as it was: 12px of margin, not the 30px a chip needs
     const row = await paragraphPage.paragraphContainers.first().locator('.footer-row').boundingBox();
     expect(row!.height).toBeLessThan(20);
+  });
+
+  test('Given a keyboard user, When focusing the chip, Then the tooltip opens and Escape closes it', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1']);
+    const chip = paragraphPage.healthChips.first();
+
+    await chip.focus();
+    await expect(paragraphPage.healthTooltip).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await expect(paragraphPage.healthTooltip).toBeHidden();
+    await expect(chip).toBeFocused();
   });
 
   test('Given the settings icon of a paragraph, When the chip is drawn, Then its dot is centered under that icon, in the corner', async ({

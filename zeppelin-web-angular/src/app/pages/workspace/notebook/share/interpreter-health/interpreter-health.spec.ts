@@ -15,7 +15,12 @@ import { describe, expect, it } from 'vitest';
 
 import { InterpreterGroupHealth, InterpreterHealthCheck, InterpreterHealthReason } from '@zeppelin/interfaces';
 
-import { interpreterHealthErrorMessage, summarizeInterpreterHealth } from './interpreter-health';
+import {
+  describeInterpreterGroups,
+  interpreterHealthErrorMessage,
+  summarizeInterpreterHealth,
+  summarizeInterpreterHealthReason
+} from './interpreter-health';
 
 const group = (
   suffix: string,
@@ -51,6 +56,42 @@ describe('summarizeInterpreterHealth', () => {
   it('treats a setting with nothing running as neutral', () => {
     expect(summarizeInterpreterHealth(check()).state).toBe('not-running');
     expect(summarizeInterpreterHealth(check(group('a', 'NOT_RUNNING'))).state).toBe('not-running');
+  });
+});
+
+describe('summarizeInterpreterHealthReason', () => {
+  it('says why a process fails in a few words', () => {
+    expect(summarizeInterpreterHealthReason(check(group('a', 'NOT_REACHABLE', { alive: true })))).toBe('No answer');
+    expect(summarizeInterpreterHealthReason(check(group('a', 'NOT_REACHABLE', { alive: false })))).toBe('Process gone');
+    expect(summarizeInterpreterHealthReason(check(group('a', 'NOT_REACHABLE')))).toBe('Unreachable');
+    expect(summarizeInterpreterHealthReason(check(group('a', 'PROBE_TIMEOUT')))).toBe('Timed out');
+  });
+
+  it('counts the failing processes when there are several', () => {
+    expect(summarizeInterpreterHealthReason(check(group('a', 'OK'), group('b', 'PROBE_TIMEOUT')))).toBe(
+      'Timed out (1 of 2)'
+    );
+  });
+
+  it('tells that a setting with nothing running starts on first use', () => {
+    expect(summarizeInterpreterHealthReason(check())).toBe('starts on use');
+  });
+
+  it('has nothing to add for a healthy or a starting setting', () => {
+    expect(summarizeInterpreterHealthReason(check(group('a', 'OK')))).toBeUndefined();
+    expect(summarizeInterpreterHealthReason(check(group('a', 'LAUNCHING')))).toBeUndefined();
+  });
+});
+
+describe('describeInterpreterGroups', () => {
+  it('names a process without the setting id and lists the failing ones first', () => {
+    const lines = describeInterpreterGroups(
+      check(group('shared_process', 'OK'), group('bob', 'NOT_REACHABLE', { alive: false }))
+    );
+
+    expect(lines.map(line => line.name)).toEqual(['bob', 'shared_process']);
+    expect(lines[0].detail).toBe('Process is gone');
+    expect(lines[1].detail).toBe('Answered in 12 ms');
   });
 });
 
