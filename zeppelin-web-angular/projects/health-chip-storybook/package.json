@@ -1,0 +1,22 @@
+{
+  "name": "zeppelin-health-chip-storybook",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "storybook": "storybook dev -p 6006 --host 0.0.0.0",
+    "build-storybook": "storybook build -o storybook-static",
+    "test:storybook": "playwright test --config playwright.config.mjs"
+  },
+  "devDependencies": {
+    "@floating-ui/dom": "1.8.0",
+    "@playwright/test": "1.64.0",
+    "@storybook/addon-a11y": "10.6.1",
+    "@storybook/html-vite": "10.6.1",
+    "storybook": "10.6.1",
+    "vite": "7.3.7"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

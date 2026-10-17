@@ -22,3 +22,6 @@ e2e/fixtures/performance/*.json
 projects/zeppelin-react/storybook-static/
 projects/zeppelin-react/storybook-report/
 projects/zeppelin-react/storybook-test-results/
+projects/health-chip-storybook/storybook-static/
+projects/health-chip-storybook/playwright-report/
+projects/health-chip-storybook/test-results/
