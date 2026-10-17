@@ -1,0 +1,50 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@import 'theme-mixin';
+@import 'interpreter-health-dot';
+
+:host {
+  display: inline-flex;
+}
+
+.themeMixin({
+  .chip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+
+    &:hover {
+      background: fade(@text-color-secondary, 18%);
+    }
+
+    &:focus-visible {
+      outline: 2px solid @primary-color;
+      outline-offset: 1px;
+    }
+  }
+
+  .logo {
+    width: 16px;
+    height: 16px;
+  }
+
+  .interpreter-health-dot(10px);
+});

@@ -30,6 +30,8 @@ type ParagraphSettingsMenuItem =
 
 export class NotebookParagraphPage extends BasePage {
   readonly paragraphContainers: Locator;
+  readonly healthChips: Locator;
+  readonly healthTooltip: Locator;
   readonly paragraphContainer: Locator;
   readonly addParagraphAboveLink: Locator;
   readonly addParagraphBelowLink: Locator;
@@ -67,6 +69,9 @@ export class NotebookParagraphPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
+    this.healthChips = page.getByTestId('interpreter-health-chip');
+    // ng-zorro renders the tooltip in an overlay outside the paragraph.
+    this.healthTooltip = page.getByTestId('interpreter-health-tooltip');
     this.paragraphContainers = page.locator('.paragraph-container');
     // JUSTIFIED: fresh test notebooks contain one paragraph; its container is the primary target.
     this.paragraphContainer = this.paragraphContainers.first();

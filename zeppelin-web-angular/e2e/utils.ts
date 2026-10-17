@@ -58,6 +58,10 @@ export const PAGES = {
     NOTEBOOK_PERMISSIONS: 'src/app/pages/workspace/notebook/permissions/permissions.component',
     NOTEBOOK_REVISIONS: 'src/app/pages/workspace/notebook/revisions-comparator/revisions-comparator.component',
     NOTEBOOK_ELASTIC_INPUT: 'src/app/pages/workspace/notebook/share/elastic-input/elastic-input.component',
+    NOTEBOOK_INTERPRETER_HEALTH_BADGE:
+      'src/app/pages/workspace/notebook/share/interpreter-health/interpreter-health-badge.component',
+    NOTEBOOK_INTERPRETER_HEALTH_CHIP:
+      'src/app/pages/workspace/notebook/share/interpreter-health/interpreter-health-chip.component',
     NOTEBOOK_SIDEBAR: 'src/app/pages/workspace/notebook/sidebar/sidebar.component',
     NOTEBOOK_PARAGRAPH: 'src/app/pages/workspace/notebook/paragraph/paragraph.component',
     NOTEBOOK_PARAGRAPH_CODE_EDITOR: 'src/app/pages/workspace/notebook/paragraph/code-editor/code-editor.component',

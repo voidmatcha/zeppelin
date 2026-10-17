@@ -16,6 +16,7 @@ import { Injectable } from '@angular/core';
 import {
   CreateInterpreterRepositoryForm,
   Interpreter,
+  InterpreterHealthCheck,
   InterpreterMap,
   InterpreterPropertyTypes,
   InterpreterRepository,
@@ -78,6 +79,16 @@ export class InterpreterService extends BaseRest {
 
   restartInterpreter(interpreterId: string, noteId: string) {
     return this.http.put<InterpreterItem>(this.restUrl`/interpreter/setting/restart/${interpreterId}`, { noteId });
+  }
+
+  /**
+   * Probes the processes of a setting. The server never starts an interpreter for it and bounds the wait, so a click can
+   * trigger it. `noteId` is what a caller without access to the interpreter endpoints is authorized against.
+   */
+  checkInterpreterHealth(settingId: string, noteId?: string) {
+    return this.http.post<InterpreterHealthCheck>(this.restUrl`/interpreter/setting/${settingId}/healthcheck`, {
+      noteId
+    });
   }
 
   removeInterpreterSetting(settingId: string) {

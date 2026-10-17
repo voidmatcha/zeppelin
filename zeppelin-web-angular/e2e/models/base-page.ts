@@ -30,6 +30,7 @@ export class BasePage {
   readonly runButton: Locator;
 
   readonly welcomeTitle: Locator;
+  readonly errorMessage: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -44,6 +45,8 @@ export class BasePage {
     this.cancelButton = page.locator('button:has-text("Cancel")');
     this.runButton = page.locator('button:has-text("Run")');
 
+    // NzMessageService renders its toasts without a role or a test id to find them by.
+    this.errorMessage = page.locator('.ant-message-error');
     this.welcomeTitle = page.getByRole('heading', { name: 'Welcome to Zeppelin!' });
   }
 

@@ -59,6 +59,12 @@
               </small>
             </button>
           </div>
+          <zeppelin-notebook-interpreter-health-badge
+            [name]="item.name"
+            [verdict]="interpreterHealth[item.id]"
+            [loading]="!!checkingHealth[item.id]"
+            (check)="checkHealth(item)"
+          ></zeppelin-notebook-interpreter-health-badge>
         </div>
       }
     </div>

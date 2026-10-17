@@ -15,12 +15,19 @@ import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { NzInputModule } from 'ng-zorro-antd/input';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 
 import { ElasticInputComponent } from './elastic-input/elastic-input.component';
+import { NotebookInterpreterHealthBadgeComponent } from './interpreter-health/interpreter-health-badge.component';
+import { NotebookInterpreterHealthChipComponent } from './interpreter-health/interpreter-health-chip.component';
 
 @NgModule({
-  declarations: [ElasticInputComponent],
-  exports: [ElasticInputComponent],
-  imports: [CommonModule, NzInputModule, FormsModule]
+  declarations: [
+    ElasticInputComponent,
+    NotebookInterpreterHealthBadgeComponent,
+    NotebookInterpreterHealthChipComponent
+  ],
+  exports: [ElasticInputComponent, NotebookInterpreterHealthBadgeComponent, NotebookInterpreterHealthChipComponent],
+  imports: [CommonModule, NzInputModule, NzTooltipModule, FormsModule]
 })
 export class NotebookShareModule {}

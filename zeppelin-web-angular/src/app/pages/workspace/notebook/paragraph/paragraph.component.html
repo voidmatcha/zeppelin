@@ -114,23 +114,32 @@
           ></zeppelin-notebook-paragraph-result>
         }
       }
-      @if (shouldUseReactFooter) {
-        <div
-          data-testid="react-paragraph-footer"
-          zeppelin-react-mount="./ParagraphFooter"
-          [reactProps]="reactFooterProps"
-        ></div>
-      } @else {
-        <zeppelin-notebook-paragraph-footer
-          data-testid="angular-paragraph-footer"
-          [showExecutionTime]="!paragraph.config.tableHide && !viewOnly"
-          [showElapsedTime]="paragraph.status === 'RUNNING'"
-          [user]="paragraph.user"
-          [dateUpdated]="paragraph.dateUpdated"
-          [dateStarted]="paragraph.dateStarted"
-          [dateFinished]="paragraph.dateFinished"
-        ></zeppelin-notebook-paragraph-footer>
-      }
+      <div class="footer-row">
+        @if (shouldUseReactFooter) {
+          <div
+            data-testid="react-paragraph-footer"
+            zeppelin-react-mount="./ParagraphFooter"
+            [reactProps]="reactFooterProps"
+          ></div>
+        } @else {
+          <zeppelin-notebook-paragraph-footer
+            data-testid="angular-paragraph-footer"
+            [showExecutionTime]="!paragraph.config.tableHide && !viewOnly"
+            [showElapsedTime]="paragraph.status === 'RUNNING'"
+            [user]="paragraph.user"
+            [dateUpdated]="paragraph.dateUpdated"
+            [dateStarted]="paragraph.dateStarted"
+            [dateFinished]="paragraph.dateFinished"
+          ></zeppelin-notebook-paragraph-footer>
+        }
+        @if (interpreter) {
+          <zeppelin-notebook-interpreter-health-chip
+            [interpreter]="interpreter"
+            [noteId]="note.id"
+            [replName]="replName"
+          ></zeppelin-notebook-interpreter-health-chip>
+        }
+      </div>
     </div>
     @if (!viewOnly && !revisionView && last && looknfeel !== 'report') {
       <zeppelin-notebook-add-paragraph

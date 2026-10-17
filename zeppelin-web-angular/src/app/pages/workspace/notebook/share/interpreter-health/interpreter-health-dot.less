@@ -1,0 +1,74 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// The dot of a health state, shared by the paragraph chip and the settings badge. Meaning never rests on colour
+// alone: healthy is filled, unhealthy carries a bar, starting is half filled, not running is a ring, checking is
+// a spinning arc and not checked is a dashed outline.
+.interpreter-health-dot(@size) {
+  .dot {
+    position: relative;
+    display: inline-block;
+    flex: none;
+    box-sizing: border-box;
+    width: @size;
+    height: @size;
+    border-radius: 50%;
+  }
+
+  [data-state='healthy'] .dot {
+    background: @success-color;
+  }
+
+  [data-state='unhealthy'] .dot {
+    background: @error-color;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 2px;
+      height: (@size / 2);
+      margin: (-@size / 4) 0 0 -1px;
+      border-radius: 1px;
+      background: @component-background;
+    }
+  }
+
+  [data-state='starting'] .dot {
+    border: 1.5px solid @warning-color;
+    background: linear-gradient(90deg, @warning-color 50%, @component-background 50%);
+  }
+
+  [data-state='not-running'] .dot {
+    border: 2px solid @text-color-secondary;
+    background: @component-background;
+  }
+
+  [data-state='checking'] .dot {
+    border: 2px solid @primary-color;
+    border-top-color: transparent;
+    background: @component-background;
+    animation: interpreter-health-spin 0.8s linear infinite;
+  }
+
+  [data-state='unknown'] .dot {
+    border: 1.5px dashed @text-color-secondary;
+    background: transparent;
+  }
+}
+
+@keyframes interpreter-health-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -38,6 +38,32 @@
       margin-top: 24px;
     }
 
+    // The footer and the health chip share a row, which is at least 30px tall where a chip is drawn so that the chip
+    // never covers the footer text. An empty footer without a chip stays as small as it was.
+    .footer-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      &:has(zeppelin-notebook-interpreter-health-chip) {
+        min-height: 30px;
+      }
+
+      > :first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      // The chip sits in the corner, under the settings icon of the control above: its dot is centered on that icon (the
+      // chip pads its dot by 5px and the icon is 14px wide, so the chip reaches 3px into the padding of the card) and
+      // it is 6px closer to the bottom edge than the footer row.
+      zeppelin-notebook-interpreter-health-chip {
+        align-self: flex-end;
+        margin-block-end: -6px;
+        margin-inline: auto -3px;
+      }
+    }
+
     &.simple {
       box-shadow: none;
       border-color: transparent;
