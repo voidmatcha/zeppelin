@@ -20,6 +20,6 @@
   [attr.title]="title"
   (click)="onClick()"
 >
-  <span class="dot"></span>
-  <span class="text">{{ text }}</span>
+  <span class="text">{{ view.text }}</span>
+  <zeppelin-notebook-interpreter-health-dot [state]="state" />
 </button>

@@ -11,7 +11,6 @@
  */
 
 @import 'theme-mixin';
-@import 'interpreter-health-dot';
 
 :host {
   display: inline-flex;
@@ -22,10 +21,15 @@
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     min-width: 24px;
-    height: 24px;
-    padding: 0 5px;
+    max-width: 100%;
+    min-height: 24px;
+    padding: 0 6px;
+    color: @text-color-secondary;
+    font: inherit;
+    font-size: 12px;
+    text-align: end;
     border: 0;
     border-radius: 6px;
     background: transparent;
@@ -45,10 +49,7 @@
     }
   }
 
-  .logo {
-    width: 16px;
-    height: 16px;
+  .text {
+    overflow-wrap: anywhere;
   }
-
-  .interpreter-health-dot(10px);
 });

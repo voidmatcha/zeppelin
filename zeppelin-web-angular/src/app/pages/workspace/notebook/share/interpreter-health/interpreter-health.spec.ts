@@ -20,7 +20,8 @@ import {
   describeInterpreterGroups,
   interpreterHealthErrorMessage,
   summarizeInterpreterHealth,
-  summarizeInterpreterHealthReason
+  summarizeInterpreterHealthReason,
+  viewInterpreterHealth
 } from './interpreter-health';
 
 const group = (
@@ -132,5 +133,47 @@ describe('interpreterHealthErrorMessage', () => {
 
   it('falls back for anything else', () => {
     expect(interpreterHealthErrorMessage(new Error('x'))).toBe('Failed to check the interpreter health');
+  });
+});
+
+describe('viewInterpreterHealth', () => {
+  const verdict = (...groups: InterpreterGroupHealth[]) => ({ health: check(...groups), checkedAt: new Date() });
+
+  it('says that nothing was checked yet', () => {
+    expect(viewInterpreterHealth({ loading: false })).toMatchObject({ state: 'unknown', text: 'Not checked' });
+  });
+
+  it('says that a check is under way, whatever was known', () => {
+    expect(viewInterpreterHealth({ loading: true, verdict: verdict(group('a', 'OK')) })).toMatchObject({
+      state: 'checking',
+      text: 'Checking'
+    });
+  });
+
+  it('writes the state alone when it is healthy', () => {
+    expect(viewInterpreterHealth({ loading: false, verdict: verdict(group('a', 'OK')) })).toMatchObject({
+      state: 'healthy',
+      text: 'Healthy'
+    });
+  });
+
+  it('writes why after the state, so that nobody has to hover for it', () => {
+    expect(
+      viewInterpreterHealth({ loading: false, verdict: verdict(group('a', 'NOT_REACHABLE', { alive: true })) }).text
+    ).toBe('Unhealthy | No answer');
+    expect(viewInterpreterHealth({ loading: false, verdict: verdict() }).text).toBe('Not running | starts on use');
+  });
+
+  it('says that a check failed and why, with nothing else known', () => {
+    expect(viewInterpreterHealth({ loading: false, error: 'No privilege' })).toMatchObject({
+      state: 'failed',
+      text: 'Check failed | No privilege'
+    });
+  });
+
+  it('keeps the last answer in view beside a failed check', () => {
+    expect(
+      viewInterpreterHealth({ loading: false, error: 'No privilege', verdict: verdict(group('a', 'OK')) })
+    ).toMatchObject({ state: 'failed', lastLabel: 'Healthy', text: 'Check failed | No privilege (last: Healthy)' });
   });
 });

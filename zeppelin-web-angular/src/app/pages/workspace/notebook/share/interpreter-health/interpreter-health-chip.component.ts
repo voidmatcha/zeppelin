@@ -30,26 +30,21 @@ import {
   describeInterpreterGroups,
   InterpreterGroupDetail,
   InterpreterHealthVerdict,
-  summarizeInterpreterHealth,
-  summarizeInterpreterHealthReason
+  InterpreterHealthView,
+  viewInterpreterHealth
 } from './interpreter-health';
 import { InterpreterHealthService } from './interpreter-health.service';
-import { interpreterLogoUrl } from './interpreter-logo';
-
-type ChipState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checking' | 'failed' | 'unknown';
 
 const MAX_LISTED_GROUPS = 3;
 
-// A run is over when a paragraph that was waiting or running is finished, failed or aborted. A paragraph that fails
-// at once, for an interpreter it cannot find, goes from ready to error without being seen running.
+// A run is over when a paragraph goes from waiting or running to finished, error or aborted (a failure at once goes
+// from ready to error).
 const BEFORE_OVER_STATUSES = ['READY', 'PENDING', 'RUNNING'];
 const OVER_STATUSES = ['FINISHED', 'ERROR', 'ABORT'];
 
 /**
- * The health of the interpreter a paragraph runs on, at the bottom right of the paragraph. It shows the logo of
- * the interpreter and a dot and says what it found in a tooltip, because the chip has no text of its own. A click
- * checks (the server never starts an interpreter for it), and so does the end of a run, in the background. What is
- * found is shared with every other place that shows the same setting.
+ * The health of the interpreter a paragraph runs on, at the bottom right of the paragraph: a dot, and in words what is wrong.
+ * A click checks (the server never starts an interpreter for it), and so does the end of a run, in the background.
  */
 @Component({
   selector: 'zeppelin-notebook-interpreter-health-chip',
@@ -61,9 +56,7 @@ const OVER_STATUSES = ['FINISHED', 'ERROR', 'ABORT'];
 export class NotebookInterpreterHealthChipComponent implements OnChanges, OnDestroy {
   @Input() interpreter!: InterpreterBindingItem;
   @Input() noteId!: string;
-  /** The `%name` of the paragraph, a fallback for choosing the logo. */
-  @Input() replName?: string;
-  /** The status of the paragraph: when a run is over, the health of its interpreter is refreshed. */
+  /** The paragraph status: when a run is over, the health is refreshed. */
   @Input() status?: string;
   @ViewChild(NzTooltipDirective) tooltip?: NzTooltipDirective;
 
@@ -77,37 +70,26 @@ export class NotebookInterpreterHealthChipComponent implements OnChanges, OnDest
     private cdr: ChangeDetectorRef
   ) {}
 
-  get logoUrl(): string {
-    return interpreterLogoUrl(this.interpreter?.name, this.replName);
+  get view(): InterpreterHealthView {
+    return viewInterpreterHealth({ verdict: this.verdict, loading: this.loading, error: this.error });
   }
 
-  get state(): ChipState {
-    if (this.loading) {
-      return 'checking';
-    }
-    if (this.error) {
-      return 'failed';
-    }
-    return this.verdict ? summarizeInterpreterHealth(this.verdict.health).state : 'unknown';
+  /** Healthy and checking are a dot; every other state is written out. */
+  get showText(): boolean {
+    return this.state !== 'healthy' && this.state !== 'checking';
+  }
+
+  get state(): InterpreterHealthView['state'] {
+    return this.view.state;
   }
 
   get label(): string {
-    if (this.error && !this.loading) {
-      return 'Check failed';
-    }
-    return this.lastLabel ?? 'Not checked';
+    return this.view.label;
   }
 
-  /** What the last answer said, which stays beside a failed check. */
+  /** What the last answer said, kept beside a failed check. */
   get lastLabel(): string | undefined {
-    return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : undefined;
-  }
-
-  get reason(): string | undefined {
-    if (this.error) {
-      return this.error;
-    }
-    return this.verdict ? summarizeInterpreterHealthReason(this.verdict.health) : undefined;
+    return this.view.lastLabel;
   }
 
   get groups(): InterpreterGroupDetail[] {
@@ -123,14 +105,14 @@ export class NotebookInterpreterHealthChipComponent implements OnChanges, OnDest
   }
 
   get ariaLabel(): string {
-    const reason = this.reason ? ` (${this.reason})` : '';
+    const reason = this.view.reason ? ` (${this.view.reason})` : '';
     return `${this.interpreter?.name} interpreter: ${this.label}${reason}. Activate to check again`;
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     const { interpreter, status } = changes;
     if (interpreter && interpreter.previousValue?.id !== interpreter.currentValue?.id) {
-      // A verdict belongs to one setting: when the paragraph moves to another one, it reads the entry of that one.
+      // A verdict belongs to one setting: when the paragraph moves to another one, read that one.
       this.subscription?.unsubscribe();
       this.subscription = this.interpreter
         ? this.healthService.entry$(this.interpreter.id).subscribe(entry => {

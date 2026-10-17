@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import { InterpreterBindingItem } from '@zeppelin/sdk';
 
-import { findParagraphInterpreter, findReplName } from './paragraph-interpreter';
+import { findParagraphInterpreter } from './paragraph-interpreter';
 
 const item = (id: string, name: string, selected: boolean, interpreters: string[]) =>
   ({
@@ -29,18 +29,6 @@ const bindings = [
   item('p1', 'python', true, ['python']),
   item('m1', 'md', false, ['md'])
 ];
-
-describe('findReplName', () => {
-  it('reads the %name at the start of a paragraph', () => {
-    expect(findReplName('%spark.pyspark\nprint(1)')).toBe('spark.pyspark');
-    expect(findReplName('\n  %md hello')).toBe('md');
-  });
-
-  it('has none for a paragraph without a directive', () => {
-    expect(findReplName('print(1)')).toBeUndefined();
-    expect(findReplName(undefined)).toBeUndefined();
-  });
-});
 
 describe('findParagraphInterpreter', () => {
   it('runs a paragraph without a directive on the first bound setting', () => {

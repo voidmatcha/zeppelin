@@ -12,22 +12,20 @@
 
 import { InterpreterBindingItem } from '@zeppelin/sdk';
 
-// Mirrors ParagraphTextParser.REPL_PATTERN on the server: `%spark.pyspark`, which may be followed
-// by `(local properties)` or by the script. The whitespace is spelled out, since the server's `\s`
-// is ASCII only and the one of JavaScript is not.
+// Mirrors ParagraphTextParser.REPL_PATTERN on the server: `%spark.pyspark`, optionally followed by `(local properties)`.
+// The whitespace is spelled out because the server's `\s` is ASCII only.
 const REPL_PATTERN = /^[ \t\n\v\f\r]*%([a-zA-Z0-9_-]+(?:\.\w+)*)/;
 
-// Every interpreter group accepts it, though the server does not list it among its interpreters.
+// Every group accepts it, though the server does not list it among its interpreters.
 const CONF_INTERPRETER = 'conf';
 
-/** The `%name` a paragraph starts with, e.g. `spark.pyspark`, or undefined when it has no directive. */
-export const findReplName = (text: string | undefined): string | undefined => REPL_PATTERN.exec(text ?? '')?.[1];
+/** The `%name` a paragraph starts with, e.g. `spark.pyspark`, or undefined without a directive. */
+const findReplName = (text: string | undefined): string | undefined => REPL_PATTERN.exec(text ?? '')?.[1];
 
 /**
- * Finds the interpreter setting a paragraph runs on, by the rules the server applies when it runs
- * the paragraph (InterpreterFactory#getInterpreter): `%group.name` names both parts, a lone `%name`
- * is first read as an interpreter of the note's default setting and then as a setting, and a
- * paragraph without a directive runs on the default setting, which is the first bound one.
+ * Finds the setting a paragraph runs on by the server's rules (InterpreterFactory#getInterpreter): `%group.name` names
+ * both parts, a lone `%name` is read as an interpreter of the default setting and then as a setting, and no directive
+ * means the default (first bound) setting.
  */
 export const findParagraphInterpreter = (
   text: string | undefined,

@@ -38,12 +38,12 @@
       margin-top: 24px;
     }
 
-    // The footer and the health chip share a row, which is at least 30px tall where a chip is drawn so that the chip
-    // never covers the footer text. An empty footer without a chip stays as small as it was.
+    // The footer and the chip share a row, at least 30px tall where a chip is drawn so that it never covers the footer text.
     .footer-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
+      column-gap: 8px;
 
       &:has(zeppelin-notebook-interpreter-health-chip) {
         min-height: 30px;
@@ -54,13 +54,11 @@
         min-width: 0;
       }
 
-      // The chip sits in the corner, under the settings icon of the control above: its dot is centered on that icon (the
-      // chip pads its dot by 5px and the icon is 14px wide, so the chip reaches 3px into the padding of the card) and
-      // it is 6px closer to the bottom edge than the footer row.
+      // In the corner, under the settings icon above: the dot is centered on that icon and the chip is 6px lower than the footer.
       zeppelin-notebook-interpreter-health-chip {
         align-self: flex-end;
         margin-block-end: -6px;
-        margin-inline: auto -3px;
+        margin-inline: auto -5px;
       }
     }
 
@@ -107,9 +105,8 @@
   }
 });
 
-// In the simple look the health chip fades instead of being hidden, so that the keyboard can still reach it. A focus
-// inside a paragraph selects it and the paragraph then takes the focus itself (command mode), so the chip stays shown
-// while the paragraph host is focused or selected, besides on hover.
+// In the simple look the chip fades instead of hiding so that the keyboard can reach it; it stays shown while the
+// paragraph host is focused or selected, besides on hover.
 :host(:not(:focus-within)) .paragraph.simple:not(:hover):not(:focus-within):not(.focused) zeppelin-notebook-interpreter-health-chip {
   opacity: 0;
 }

@@ -30,6 +30,7 @@ const BETA: BoundInterpreter = { id: 'id-beta', name: 'beta' };
 
 test.describe('Notebook Interpreter Binding - Health badge', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_INTERPRETER_HEALTH_BADGE);
+  addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_INTERPRETER_HEALTH_DOT);
 
   let bindingPage: InterpreterBindingPage;
 
@@ -42,8 +43,11 @@ test.describe('Notebook Interpreter Binding - Health badge', () => {
     await mockInterpreterBindings(page, [ALPHA, BETA]);
     await page.goto(`/#/notebook/${noteId}`);
     // A mock of the WebSocket only reaches a connection that opens after it, and moving within the SPA keeps the old one.
-    await page.reload();
-    await expect(page.locator('.paragraph-container').first()).toBeVisible({ timeout: 30000 });
+    // A note can also come back blank when its first answer races the socket, so the page is loaded again until it shows.
+    await expect(async () => {
+      await page.reload();
+      await expect(page.locator('.paragraph-container').first()).toBeVisible({ timeout: 10000 });
+    }).toPass({ timeout: 45000 });
     await bindingPage.open();
     return noteId;
   };
@@ -57,6 +61,8 @@ test.describe('Notebook Interpreter Binding - Health badge', () => {
     await expect(bindingPage.healthBadges).toHaveCount(2);
     await expect(bindingPage.panel.getByText('Check health')).toHaveCount(0);
     await expect(bindingPage.badgeOf('alpha')).toContainText('Not checked');
+    // the text first and the dot last, so that the dots of all rows stand in one column at the right
+    await expect(bindingPage.badgeOf('alpha').locator(':scope > :last-child')).toHaveClass(/dot/);
     for (const box of await bindingPage.interpreterBoxes.all()) {
       const [boxRect, badgeRect] = [
         await box.boundingBox(),
@@ -114,11 +120,13 @@ test.describe('Notebook Interpreter Binding - Health badge', () => {
     await expect(bindingPage.badgeOf('alpha')).toContainText('Unhealthy | No answer');
     await expect(bindingPage.badgeOf('alpha')).toHaveAttribute('title', /^Checked at /);
     // the bar in the dot is what tells unhealthy from healthy without the colour
-    const bar = await bindingPage
-      .badgeOf('alpha')
-      .locator('.dot')
-      .evaluate(dot => getComputedStyle(dot, '::after').height);
-    expect(bar, 'the dot of an unhealthy setting carries a bar').toBe('4px');
+    const dot = bindingPage.badgeOf('alpha').locator('.dot');
+    const bar = bindingPage.badgeOf('alpha').locator('.dot .mark');
+    const [dotBox, barBox] = await Promise.all([dot.boundingBox(), bar.boundingBox()]);
+    expect(
+      barBox!.height / dotBox!.height,
+      'the dot of an unhealthy setting carries a bar of half its height'
+    ).toBeCloseTo(0.5, 1);
   });
 
   test('Given a setting with several processes, When one is gone, Then the badge counts the failing ones', async ({

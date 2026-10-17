@@ -26,8 +26,10 @@
   (blur)="tip.hide()"
   (keydown.escape)="tip.hide()"
 >
-  <img class="logo" [src]="logoUrl" alt="" width="16" height="16" />
-  <span class="dot"></span>
+  @if (showText) {
+    <span class="text">{{ view.text }}</span>
+  }
+  <zeppelin-notebook-interpreter-health-dot [state]="state" />
 </button>
 <ng-template #tooltipTemplate>
   <div data-testid="interpreter-health-tooltip">

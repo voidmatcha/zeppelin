@@ -13,18 +13,11 @@
 import { formatDate } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
-import {
-  InterpreterHealthVerdict,
-  summarizeInterpreterHealth,
-  summarizeInterpreterHealthReason
-} from './interpreter-health';
-
-type BadgeState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checking' | 'failed' | 'unknown';
+import { InterpreterHealthVerdict, InterpreterHealthView, viewInterpreterHealth } from './interpreter-health';
 
 /**
- * The health of one interpreter setting in the note's interpreter binding panel, at the right end of its row. The
- * badge is the control: a click checks again. A state that is not healthy says why in the row, so the reason is
- * visible without hovering; the check time is the native title.
+ * The health of one interpreter setting in the binding panel, at the right end of its row. The badge is the control: a
+ * click checks again. A state that is not healthy says why in the row; the native title carries the check time.
  */
 @Component({
   selector: 'zeppelin-notebook-interpreter-health-badge',
@@ -34,7 +27,7 @@ type BadgeState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checki
   standalone: false
 })
 export class NotebookInterpreterHealthBadgeComponent {
-  /** The name of the interpreter setting, for the accessible name. */
+  /** The setting name, for the accessible name. */
   @Input() name = '';
   @Input() verdict?: InterpreterHealthVerdict;
   @Input() loading = false;
@@ -42,60 +35,27 @@ export class NotebookInterpreterHealthBadgeComponent {
   @Input() error?: string;
   @Output() readonly check = new EventEmitter<void>();
 
-  get state(): BadgeState {
-    if (this.loading) {
-      return 'checking';
-    }
-    if (this.error) {
-      return 'failed';
-    }
-    return this.verdict ? summarizeInterpreterHealth(this.verdict.health).state : 'unknown';
+  get view(): InterpreterHealthView {
+    return viewInterpreterHealth({ verdict: this.verdict, loading: this.loading, error: this.error });
   }
 
-  get label(): string {
-    if (this.loading) {
-      return 'Checking';
-    }
-    if (this.error) {
-      return 'Check failed';
-    }
-    return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : 'Not checked';
+  get state(): InterpreterHealthView['state'] {
+    return this.view.state;
   }
 
-  get reason(): string | undefined {
-    if (this.loading) {
-      return undefined;
-    }
-    if (this.error) {
-      return this.error;
-    }
-    return this.verdict ? summarizeInterpreterHealthReason(this.verdict.health) : undefined;
-  }
-
-  /** What the last answer said, which stays in view beside a failed check. */
-  get lastLabel(): string | undefined {
-    return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : undefined;
-  }
-
-  /** What the badge says: the state, and after a bar why, written as one text so that it reads the same to everyone. */
-  get text(): string {
-    const last = this.state === 'failed' && this.lastLabel ? ` (last: ${this.lastLabel})` : '';
-    return this.reason ? `${this.label} | ${this.reason}${last}` : this.label;
-  }
-
-  /** The native title: when the answer shown was given. After a failure it is the time of the last answer, said so. */
+  /** The native title: when the answer shown was given (after a failure, the time of the last answer). */
   get title(): string | null {
     if (!this.verdict) {
       return null;
     }
     const time = formatDate(this.verdict.checkedAt, 'mediumTime', 'en-US');
-    return this.state === 'failed' ? `Last result: ${this.lastLabel}, checked at ${time}` : `Checked at ${time}`;
+    return this.state === 'failed' ? `Last result: ${this.view.lastLabel}, checked at ${time}` : `Checked at ${time}`;
   }
 
   get ariaLabel(): string {
-    const reason = this.reason ? `, ${this.reason}` : '';
-    const last = this.state === 'failed' && this.lastLabel ? `, last result ${this.lastLabel}` : '';
-    return `${this.name}: ${this.label}${reason}${last}. Check again`;
+    const { label, reason, lastLabel } = this.view;
+    const last = this.state === 'failed' && lastLabel ? `, last result ${lastLabel}` : '';
+    return `${this.name}: ${label}${reason ? `, ${reason}` : ''}${last}. Check again`;
   }
 
   onClick(): void {

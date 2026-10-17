@@ -33,17 +33,49 @@ import { addPageAnnotationBeforeEach, performLoginIfRequired, waitForZeppelinRea
 const ALPHA: BoundInterpreter = { id: 'id-alpha', name: 'alpha', interpreters: ['alpha', 'sql'] };
 const BETA: BoundInterpreter = { id: 'id-beta', name: 'beta' };
 
-const STATE_OF: Array<{ name: string; respond: Parameters<typeof mockInterpreterHealthCheck>[1]; state: string }> = [
-  { name: 'answers', respond: healthyInterpreter, state: 'healthy' },
-  { name: 'is alive but does not answer', respond: unreachableInterpreter, state: 'unhealthy' },
-  { name: 'times out', respond: timedOutInterpreter, state: 'unhealthy' },
-  { name: 'is starting', respond: launchingInterpreter, state: 'starting' },
-  { name: 'was never used', respond: idleInterpreter, state: 'not-running' },
-  { name: 'was closed by a restart', respond: () => notRunningInterpreter(), state: 'not-running' }
+const STATE_OF: Array<{
+  name: string;
+  respond: Parameters<typeof mockInterpreterHealthCheck>[1];
+  state: string;
+  label: string;
+  /** Healthy is a dot alone; every other state is written beside it. */
+  text: string;
+}> = [
+  { name: 'answers', respond: healthyInterpreter, state: 'healthy', label: 'Healthy', text: '' },
+  {
+    name: 'is alive but does not answer',
+    respond: unreachableInterpreter,
+    state: 'unhealthy',
+    label: 'Unhealthy',
+    text: 'Unhealthy | No answer'
+  },
+  {
+    name: 'times out',
+    respond: timedOutInterpreter,
+    state: 'unhealthy',
+    label: 'Unhealthy',
+    text: 'Unhealthy | Timed out'
+  },
+  { name: 'is starting', respond: launchingInterpreter, state: 'starting', label: 'Starting', text: 'Starting' },
+  {
+    name: 'was never used',
+    respond: idleInterpreter,
+    state: 'not-running',
+    label: 'Not running',
+    text: 'Not running | starts on use'
+  },
+  {
+    name: 'was closed by a restart',
+    respond: () => notRunningInterpreter(),
+    state: 'not-running',
+    label: 'Not running',
+    text: 'Not running | starts on use'
+  }
 ];
 
 test.describe('Notebook Paragraph - Interpreter health chip', () => {
   addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_INTERPRETER_HEALTH_CHIP);
+  addPageAnnotationBeforeEach(PAGES.WORKSPACE.NOTEBOOK_INTERPRETER_HEALTH_DOT);
 
   let paragraphPage: NotebookParagraphPage;
 
@@ -58,8 +90,11 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
     await mockInterpreterBindings(page, bindings);
     await page.goto(`/#/notebook/${noteId}`);
     // A mock of the WebSocket only reaches a connection that opens after it, and moving within the SPA keeps the old one.
-    await page.reload();
-    await expect(paragraphPage.paragraphContainers.first()).toBeVisible({ timeout: 30000 });
+    // A note can also come back blank when its first answer races the socket, so the page is loaded again until it shows.
+    await expect(async () => {
+      await page.reload();
+      await expect(paragraphPage.paragraphContainers.first()).toBeVisible({ timeout: 10000 });
+    }).toPass({ timeout: 45000 });
     return noteId;
   };
 
@@ -73,6 +108,7 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
       await expect(paragraphPage.healthChips).toHaveCount(2);
       for (const chip of await paragraphPage.healthChips.all()) {
         await expect(chip).toHaveAttribute('data-state', 'unknown');
+        await expect(chip).toContainText('Not checked');
       }
     });
 
@@ -94,7 +130,7 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
     expect(requests).toEqual([{ method: 'POST', settingId: 'id-beta', noteId }]);
   });
 
-  for (const { name, respond, state } of STATE_OF) {
+  for (const { name, respond, state, label, text } of STATE_OF) {
     test(`Given the interpreter ${name}, When checking its health, Then the chip is ${state}`, async ({ page }) => {
       await openNotebook(page, ['%alpha\nselect 1']);
       await mockInterpreterHealthCheck(page, respond);
@@ -102,13 +138,25 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
       await paragraphPage.healthChips.first().click();
 
       await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', state);
+      // a problem is written beside the dot, and every state is in the accessible name, so nothing depends on colour
+      await expect(paragraphPage.healthChips.first()).toHaveText(
+        new RegExp(`^\\s*${text.replace(/[|]/g, '\\|')}\\s*$`)
+      );
+      await expect(paragraphPage.healthChips.first()).toHaveAttribute('aria-label', new RegExp(`: ${label}`));
+      if (!text) {
+        // a dot alone sits in a square, so that its hover area is even on every side
+        const box = await paragraphPage.healthChips.first().boundingBox();
+        expect(box!.width).toBe(box!.height);
+      }
       if (state === 'unhealthy') {
         // the bar in the dot is what tells unhealthy from healthy without the colour
-        const bar = await paragraphPage.healthChips
-          .first()
-          .locator('.dot')
-          .evaluate(dot => getComputedStyle(dot, '::after').height);
-        expect(bar, 'the dot of an unhealthy interpreter carries a bar').toBe('5px');
+        const dot = paragraphPage.healthChips.first().locator('.dot');
+        const bar = paragraphPage.healthChips.first().locator('.dot .mark');
+        const [dotBox, barBox] = await Promise.all([dot.boundingBox(), bar.boundingBox()]);
+        expect(
+          barBox!.height / dotBox!.height,
+          'the dot of an unhealthy interpreter carries a bar of half its height'
+        ).toBeCloseTo(0.5, 1);
       }
     });
   }
@@ -271,6 +319,8 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
 
     const [cardBox, rowBox, chipBox] = [await card.boundingBox(), await row.boundingBox(), await chip.boundingBox()];
 
+    // the dot comes last, so that it stands under the settings icon above
+    await expect(chip.locator(':scope > :last-child')).toHaveClass(/dot/);
     expect(rowBox!.height).toBeGreaterThanOrEqual(30);
     expect(chipBox!.x + chipBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
     expect(chipBox!.x + chipBox!.width).toBeGreaterThan(rowBox!.x + rowBox!.width - 24);

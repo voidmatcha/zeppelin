@@ -20,12 +20,14 @@ import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { ElasticInputComponent } from './elastic-input/elastic-input.component';
 import { NotebookInterpreterHealthBadgeComponent } from './interpreter-health/interpreter-health-badge.component';
 import { NotebookInterpreterHealthChipComponent } from './interpreter-health/interpreter-health-chip.component';
+import { NotebookInterpreterHealthDotComponent } from './interpreter-health/interpreter-health-dot.component';
 
 @NgModule({
   declarations: [
     ElasticInputComponent,
     NotebookInterpreterHealthBadgeComponent,
-    NotebookInterpreterHealthChipComponent
+    NotebookInterpreterHealthChipComponent,
+    NotebookInterpreterHealthDotComponent
   ],
   exports: [ElasticInputComponent, NotebookInterpreterHealthBadgeComponent, NotebookInterpreterHealthChipComponent],
   imports: [CommonModule, NzInputModule, NzTooltipModule, FormsModule]

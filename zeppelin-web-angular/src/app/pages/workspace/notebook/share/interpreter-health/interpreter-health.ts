@@ -27,22 +27,17 @@ export interface InterpreterGroupDetail {
   detail: string;
 }
 
-/** What a check found and when, since the badge stays on screen after the answer has aged. */
+/** What a check found and when. */
 export interface InterpreterHealthVerdict {
   health: InterpreterHealthCheck;
   checkedAt: Date;
 }
 
-// Not being up yet, or not any more after a restart, is a normal state and never a failure.
+// Not running (never started, or closed by a restart) is a normal state, not a failure.
 const isFailure = (group: InterpreterGroupHealth): boolean =>
   !group.healthy && group.reason !== 'LAUNCHING' && group.reason !== 'NOT_RUNNING';
 
-/**
- * Reduces the verdicts of the interpreter processes of a setting to the one state a badge shows.
- * A failing process outweighs a healthy one, because the setting is then not fully usable. A
- * setting with nothing running is neutral: a restart only closes the processes and the next use
- * starts them again.
- */
+/** Reduces the verdicts of a setting's processes to one state; a failing process outweighs a healthy one. */
 export const summarizeInterpreterHealth = (check: InterpreterHealthCheck): InterpreterHealthSummary => {
   if (check.groups.some(isFailure)) {
     return { state: 'unhealthy', label: 'Unhealthy' };
@@ -76,10 +71,7 @@ const describeGroup = (group: InterpreterGroupHealth): string => {
   }
 };
 
-/**
- * One line per interpreter process, named without the setting id every group id starts with. The
- * failing ones come first, so that a list cut short does not hide the reason for a red badge.
- */
+/** One line per process, failing ones first so that a cut-short list keeps the reason. */
 export const describeInterpreterGroups = (check: InterpreterHealthCheck): InterpreterGroupDetail[] => {
   const prefix = `${check.settingId}-`;
   return [...check.groups]
@@ -95,8 +87,7 @@ export const interpreterHealthErrorMessage = (error: unknown): string => {
     return 'The server did not answer in time';
   }
   if (error instanceof HttpErrorResponse) {
-    // The web server can turn the caller away before the endpoint is reached, and then it only says
-    // 'Forbidden', so every refusal gets the same wording.
+    // A proxy can answer 403 before the endpoint is reached, so every refusal gets the same wording.
     if (error.status === 403) {
       return 'No privilege to check the interpreter health';
     }
@@ -105,8 +96,7 @@ export const interpreterHealthErrorMessage = (error: unknown): string => {
       return message;
     }
     if (error.status === 404) {
-      // A missing setting is answered in the JSON of Zeppelin; a 404 in anything else (the page of the web server)
-      // means that the endpoint itself is not there, as on a server that does not have the health check yet.
+      // A 404 that is not Zeppelin's JSON means the endpoint itself is missing (an older server).
       const isZeppelinAnswer = typeof error.error === 'object' && error.error !== null && 'status' in error.error;
       return isZeppelinAnswer
         ? 'Interpreter setting not found'
@@ -132,11 +122,7 @@ const shortReason = (group: InterpreterGroupHealth): string => {
   }
 };
 
-/**
- * The few words that say why a badge is not green, written next to its label so that nobody has to hover
- * for them: why a failing setting fails, and that a setting with nothing running starts on first use. With
- * several processes the number of failing ones follows ("Timed out (1 of 2)").
- */
+/** The few words next to the label that say why a state is not green; "(1 of 2)" counts failing processes. */
 export const summarizeInterpreterHealthReason = (check: InterpreterHealthCheck): string | undefined => {
   const summary = summarizeInterpreterHealth(check);
   if (summary.state === 'not-running') {
@@ -148,4 +134,46 @@ export const summarizeInterpreterHealthReason = (check: InterpreterHealthCheck):
   const failing = failingGroups(check);
   const reason = shortReason(failing[0]);
   return check.groups.length > 1 ? `${reason} (${failing.length} of ${check.groups.length})` : reason;
+};
+
+export type InterpreterHealthViewState = InterpreterHealthState | 'checking' | 'failed' | 'unknown';
+
+export interface InterpreterHealthView {
+  state: InterpreterHealthViewState;
+  /** The state in a word or two. */
+  label: string;
+  /** Why, in a few words: the reason of a failure, or why the last check failed. */
+  reason?: string;
+  /** What the last answer said, which stays in view beside a failed check. */
+  lastLabel?: string;
+  /** What is written: the label, then the reason, then after a failed check the last answer. */
+  text: string;
+}
+
+/** What the chip and the badge show for a setting. */
+export const viewInterpreterHealth = (known: {
+  verdict?: InterpreterHealthVerdict;
+  loading: boolean;
+  error?: string;
+}): InterpreterHealthView => {
+  const summary = known.verdict ? summarizeInterpreterHealth(known.verdict.health) : undefined;
+  const lastLabel = summary?.label;
+  if (known.loading) {
+    return { state: 'checking', label: 'Checking', lastLabel, text: 'Checking' };
+  }
+  if (known.error) {
+    const text = `Check failed | ${known.error}${lastLabel ? ` (last: ${lastLabel})` : ''}`;
+    return { state: 'failed', label: 'Check failed', reason: known.error, lastLabel, text };
+  }
+  if (!known.verdict || !summary) {
+    return { state: 'unknown', label: 'Not checked', text: 'Not checked' };
+  }
+  const reason = summarizeInterpreterHealthReason(known.verdict.health);
+  return {
+    state: summary.state,
+    label: summary.label,
+    reason,
+    lastLabel,
+    text: reason ? `${summary.label} | ${reason}` : summary.label
+  };
 };

@@ -62,6 +62,8 @@ export const PAGES = {
       'src/app/pages/workspace/notebook/share/interpreter-health/interpreter-health-badge.component',
     NOTEBOOK_INTERPRETER_HEALTH_CHIP:
       'src/app/pages/workspace/notebook/share/interpreter-health/interpreter-health-chip.component',
+    NOTEBOOK_INTERPRETER_HEALTH_DOT:
+      'src/app/pages/workspace/notebook/share/interpreter-health/interpreter-health-dot.component',
     NOTEBOOK_SIDEBAR: 'src/app/pages/workspace/notebook/sidebar/sidebar.component',
     NOTEBOOK_PARAGRAPH: 'src/app/pages/workspace/notebook/paragraph/paragraph.component',
     NOTEBOOK_PARAGRAPH_CODE_EDITOR: 'src/app/pages/workspace/notebook/paragraph/code-editor/code-editor.component',

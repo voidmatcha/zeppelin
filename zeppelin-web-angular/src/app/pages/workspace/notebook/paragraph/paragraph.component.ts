@@ -63,7 +63,7 @@ import {
 import { NzResizeEvent } from 'ng-zorro-antd/resizable';
 import { NotebookParagraphResultComponent } from '../../share/result/result.component';
 import { NotebookParagraphCodeEditorComponent } from './code-editor/code-editor.component';
-import { findParagraphInterpreter, findReplName } from './paragraph-interpreter';
+import { findParagraphInterpreter } from './paragraph-interpreter';
 import { makeParagraphPatch } from './paragraph-patch';
 
 type Mode = 'edit' | 'command';
@@ -107,14 +107,9 @@ export class NotebookParagraphComponent
     return this.note?.id;
   }
 
-  // The interpreter setting the paragraph runs on. It is a stable reference into the bindings, so the health chip
-  // only sees a change when the paragraph moves to another setting.
+  // The setting the paragraph runs on, a stable reference into the bindings: the chip changes only when it moves.
   get interpreter(): InterpreterBindingItem | undefined {
     return findParagraphInterpreter(this.paragraph.text, this.interpreterBindings);
-  }
-
-  get replName(): string | undefined {
-    return findReplName(this.paragraph.text);
   }
 
   get shouldUseReactFooter(): boolean {

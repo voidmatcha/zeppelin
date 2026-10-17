@@ -1,0 +1,103 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@import 'theme-mixin';
+
+:host {
+  display: inline-flex;
+  flex: none;
+}
+
+.themeMixin({
+  .dot {
+    display: block;
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: none;
+  }
+
+  .body {
+    fill: @success-color;
+  }
+
+  [data-state='unhealthy'] .body {
+    fill: @error-color;
+  }
+
+  [data-state='failed'] .body {
+    fill: @text-color-secondary;
+  }
+
+  .mark {
+    fill: @component-background;
+  }
+
+  [data-state='starting'] .ring {
+    fill: @component-background;
+    stroke: @warning-color;
+  }
+
+  .half {
+    fill: @warning-color;
+  }
+
+  [data-state='not-running'] .ring {
+    fill: @component-background;
+    stroke: @text-color-secondary;
+  }
+
+  .arc {
+    stroke: @primary-color;
+  }
+
+  .dashed {
+    stroke: @text-color-secondary;
+  }
+
+  [data-state='checking'] {
+    animation: interpreter-health-spin 0.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-state='checking'] {
+      animation: none;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .dot {
+      forced-color-adjust: none;
+    }
+
+    .body,
+    .half {
+      fill: CanvasText;
+    }
+
+    .mark {
+      fill: Canvas;
+    }
+
+    .ring,
+    .arc,
+    .dashed {
+      stroke: CanvasText;
+    }
+  }
+});
+
+@keyframes interpreter-health-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
