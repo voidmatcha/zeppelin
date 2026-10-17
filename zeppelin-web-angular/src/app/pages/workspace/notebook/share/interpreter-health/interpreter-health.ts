@@ -11,6 +11,7 @@
  */
 
 import { HttpErrorResponse } from '@angular/common/http';
+import { TimeoutError } from 'rxjs';
 
 import { InterpreterGroupHealth, InterpreterHealthCheck } from '@zeppelin/interfaces';
 
@@ -90,6 +91,9 @@ export const describeInterpreterGroups = (check: InterpreterHealthCheck): Interp
 };
 
 export const interpreterHealthErrorMessage = (error: unknown): string => {
+  if (error instanceof TimeoutError) {
+    return 'The server did not answer in time';
+  }
   if (error instanceof HttpErrorResponse) {
     // The web server can turn the caller away before the endpoint is reached, and then it only says
     // 'Forbidden', so every refusal gets the same wording.
@@ -101,7 +105,12 @@ export const interpreterHealthErrorMessage = (error: unknown): string => {
       return message;
     }
     if (error.status === 404) {
-      return 'Interpreter setting not found';
+      // A missing setting is answered in the JSON of Zeppelin; a 404 in anything else (the page of the web server)
+      // means that the endpoint itself is not there, as on a server that does not have the health check yet.
+      const isZeppelinAnswer = typeof error.error === 'object' && error.error !== null && 'status' in error.error;
+      return isZeppelinAnswer
+        ? 'Interpreter setting not found'
+        : 'This server does not support interpreter health checks';
     }
   }
   return 'Failed to check the interpreter health';

@@ -11,28 +11,14 @@
  */
 
 import { moveItemInArray, CdkDragDrop } from '@angular/cdk/drag-drop';
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  EventEmitter,
-  Input,
-  OnDestroy,
-  Output
-} from '@angular/core';
-import { Subject } from 'rxjs';
-import { finalize, takeUntil } from 'rxjs/operators';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
 
-import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
 
 import { InterpreterBindingItem } from '@zeppelin/sdk';
 import { InterpreterService, MessageService } from '@zeppelin/services';
 
-import {
-  InterpreterHealthVerdict,
-  interpreterHealthErrorMessage
-} from '../share/interpreter-health/interpreter-health';
+import { InterpreterHealthService } from '../share/interpreter-health/interpreter-health.service';
 
 @Component({
   selector: 'zeppelin-notebook-interpreter-binding',
@@ -41,12 +27,8 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false
 })
-export class NotebookInterpreterBindingComponent implements OnDestroy {
+export class NotebookInterpreterBindingComponent {
   private restarting = false;
-  private readonly destroy$ = new Subject<void>();
-  /** What the last check of each setting found, by setting id. */
-  interpreterHealth: Record<string, InterpreterHealthVerdict | undefined> = {};
-  checkingHealth: Record<string, boolean | undefined> = {};
   @Input() noteId!: string;
   @Input() interpreterBindings: InterpreterBindingItem[] = [];
   @Input() activatedExtension: 'interpreter' | 'permissions' | 'revisions' | 'hide' = 'hide';
@@ -64,6 +46,8 @@ export class NotebookInterpreterBindingComponent implements OnDestroy {
           this.restarting = true;
           this.interpreterService.restartInterpreter(interpreter.id, this.noteId).subscribe(
             _data => {
+              // After a restart the processes are closed, so what was found before no longer holds.
+              this.healthService.clear(interpreter.id);
               this.restarting = false;
               this.cdr.markForCheck();
               resolve();
@@ -75,34 +59,6 @@ export class NotebookInterpreterBindingComponent implements OnDestroy {
           );
         })
     });
-  }
-
-  checkHealth(interpreter: InterpreterBindingItem) {
-    if (this.checkingHealth[interpreter.id]) {
-      return;
-    }
-    delete this.interpreterHealth[interpreter.id];
-    this.checkingHealth[interpreter.id] = true;
-    this.interpreterService
-      .checkInterpreterHealth(interpreter.id, this.noteId)
-      .pipe(
-        finalize(() => {
-          this.checkingHealth[interpreter.id] = false;
-          this.cdr.markForCheck();
-        }),
-        takeUntil(this.destroy$)
-      )
-      .subscribe({
-        next: health => {
-          this.interpreterHealth[interpreter.id] = { health, checkedAt: new Date() };
-        },
-        error: error => this.nzMessageService.error(interpreterHealthErrorMessage(error))
-      });
-  }
-
-  ngOnDestroy() {
-    this.destroy$.next();
-    this.destroy$.complete();
   }
 
   drop(event: CdkDragDrop<InterpreterBindingItem[]>) {
@@ -122,8 +78,8 @@ export class NotebookInterpreterBindingComponent implements OnDestroy {
   }
 
   constructor(
+    protected healthService: InterpreterHealthService,
     private nzModalService: NzModalService,
-    private nzMessageService: NzMessageService,
     private interpreterService: InterpreterService,
     private cdr: ChangeDetectorRef,
     private messageService: MessageService

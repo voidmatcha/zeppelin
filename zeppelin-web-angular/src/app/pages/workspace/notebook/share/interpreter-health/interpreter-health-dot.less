@@ -61,6 +61,12 @@
     animation: interpreter-health-spin 0.8s linear infinite;
   }
 
+  [data-state='failed'] .dot {
+    border-radius: 0;
+    background: @warning-color;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+
   [data-state='unknown'] .dot {
     border: 1.5px dashed @text-color-secondary;
     background: transparent;
@@ -79,7 +85,8 @@
     }
 
     [data-state='healthy'] .dot,
-    [data-state='unhealthy'] .dot {
+    [data-state='unhealthy'] .dot,
+    [data-state='failed'] .dot {
       background: CanvasText;
     }
 

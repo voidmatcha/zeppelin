@@ -10,6 +10,7 @@
  * limitations under the License.
  */
 
+import { formatDate } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import {
@@ -18,7 +19,7 @@ import {
   summarizeInterpreterHealthReason
 } from './interpreter-health';
 
-type BadgeState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checking' | 'unknown';
+type BadgeState = 'healthy' | 'unhealthy' | 'starting' | 'not-running' | 'checking' | 'failed' | 'unknown';
 
 /**
  * The health of one interpreter setting in the note's interpreter binding panel, at the right end of its row. The
@@ -37,11 +38,16 @@ export class NotebookInterpreterHealthBadgeComponent {
   @Input() name = '';
   @Input() verdict?: InterpreterHealthVerdict;
   @Input() loading = false;
+  /** Why the last check failed, if it did. */
+  @Input() error?: string;
   @Output() readonly check = new EventEmitter<void>();
 
   get state(): BadgeState {
     if (this.loading) {
       return 'checking';
+    }
+    if (this.error) {
+      return 'failed';
     }
     return this.verdict ? summarizeInterpreterHealth(this.verdict.health).state : 'unknown';
   }
@@ -50,21 +56,46 @@ export class NotebookInterpreterHealthBadgeComponent {
     if (this.loading) {
       return 'Checking';
     }
+    if (this.error) {
+      return 'Check failed';
+    }
     return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : 'Not checked';
   }
 
   get reason(): string | undefined {
-    return !this.loading && this.verdict ? summarizeInterpreterHealthReason(this.verdict.health) : undefined;
+    if (this.loading) {
+      return undefined;
+    }
+    if (this.error) {
+      return this.error;
+    }
+    return this.verdict ? summarizeInterpreterHealthReason(this.verdict.health) : undefined;
+  }
+
+  /** What the last answer said, which stays in view beside a failed check. */
+  get lastLabel(): string | undefined {
+    return this.verdict ? summarizeInterpreterHealth(this.verdict.health).label : undefined;
   }
 
   /** What the badge says: the state, and after a bar why, written as one text so that it reads the same to everyone. */
   get text(): string {
-    return this.reason ? `${this.label} | ${this.reason}` : this.label;
+    const last = this.state === 'failed' && this.lastLabel ? ` (last: ${this.lastLabel})` : '';
+    return this.reason ? `${this.label} | ${this.reason}${last}` : this.label;
+  }
+
+  /** The native title: when the answer shown was given. After a failure it is the time of the last answer, said so. */
+  get title(): string | null {
+    if (!this.verdict) {
+      return null;
+    }
+    const time = formatDate(this.verdict.checkedAt, 'mediumTime', 'en-US');
+    return this.state === 'failed' ? `Last result: ${this.lastLabel}, checked at ${time}` : `Checked at ${time}`;
   }
 
   get ariaLabel(): string {
     const reason = this.reason ? `, ${this.reason}` : '';
-    return `${this.name}: ${this.label}${reason}. Check again`;
+    const last = this.state === 'failed' && this.lastLabel ? `, last result ${this.lastLabel}` : '';
+    return `${this.name}: ${this.label}${reason}${last}. Check again`;
   }
 
   onClick(): void {

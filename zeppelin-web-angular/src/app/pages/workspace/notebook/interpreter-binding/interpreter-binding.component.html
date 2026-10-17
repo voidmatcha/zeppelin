@@ -59,11 +59,13 @@
               </small>
             </button>
           </div>
+          @let health = healthService.entry$(item.id) | async;
           <zeppelin-notebook-interpreter-health-badge
             [name]="item.name"
-            [verdict]="interpreterHealth[item.id]"
-            [loading]="!!checkingHealth[item.id]"
-            (check)="checkHealth(item)"
+            [verdict]="health?.verdict"
+            [loading]="!!health?.loading"
+            [error]="health?.error"
+            (check)="healthService.check(item.id, noteId)"
           ></zeppelin-notebook-interpreter-health-badge>
         </div>
       }

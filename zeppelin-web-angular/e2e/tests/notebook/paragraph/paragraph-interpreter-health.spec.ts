@@ -145,7 +145,7 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
     expect(requests).toHaveLength(1);
   });
 
-  test('Given the server refuses, When checking, Then the reason is shown and the chip is not checked again', async ({
+  test('Given the server refuses, When checking, Then the reason is shown and the chip says the check failed', async ({
     page
   }) => {
     await openNotebook(page, ['%alpha\nselect 1']);
@@ -154,7 +154,39 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
     await paragraphPage.healthChips.first().click();
 
     await expect(paragraphPage.errorMessage).toContainText('No privilege to check the interpreter health');
-    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'unknown');
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'failed');
+  });
+
+  test('Given a healthy chip, When a later check fails, Then the tooltip gives the last result with its own time', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1']);
+    await mockInterpreterHealthCheck(page, healthyInterpreter);
+    await paragraphPage.healthChips.first().click();
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'healthy');
+
+    await mockInterpreterHealthCheckForbidden(page, 'Forbidden');
+    await paragraphPage.healthChips.first().click();
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'failed');
+    // the pointer is still on the chip after the click, and a tooltip opens on entering it
+    await page.mouse.move(0, 0);
+    await paragraphPage.healthChips.first().hover();
+
+    await expect(paragraphPage.healthTooltip).toContainText('alpha: Check failed');
+    await expect(paragraphPage.healthTooltip).toContainText(/Last result: Healthy, checked at /);
+    await expect(paragraphPage.healthTooltip).not.toContainText(/(^|\n)Checked at /);
+  });
+
+  test('Given the server never answers, When the time is up, Then the chip says the check failed', async ({ page }) => {
+    test.setTimeout(45000);
+    await openNotebook(page, ['%alpha\\nselect 1']);
+    await mockInterpreterHealthCheck(page, healthyInterpreter, new Promise(() => undefined));
+
+    await paragraphPage.healthChips.first().click();
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'checking');
+
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'failed', { timeout: 15000 });
+    await expect(paragraphPage.errorMessage).toContainText('The server did not answer in time');
   });
 
   test('Given a paragraph of an interpreter that is not bound, When the notebook opens, Then it has no chip', async ({
@@ -180,6 +212,32 @@ test.describe('Notebook Paragraph - Interpreter health chip', () => {
 
     await expect(paragraphPage.healthTooltip).toBeHidden();
     await expect(chip).toBeFocused();
+  });
+
+  test('Given a chip that was never clicked, When its paragraph has been run, Then it shows the state without a click', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1']);
+    const requests = await mockInterpreterHealthCheck(page, healthyInterpreter);
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'unknown');
+
+    await paragraphPage.runParagraph();
+
+    await expect(paragraphPage.healthChips.first()).toHaveAttribute('data-state', 'healthy');
+    expect(requests.map(request => request.settingId)).toEqual(['id-alpha']);
+  });
+
+  test('Given a setting under two paragraphs, When one chip is checked, Then the other chip shows it too', async ({
+    page
+  }) => {
+    await openNotebook(page, ['%alpha\nselect 1', '%alpha\nselect 2', '%beta\nselect 3']);
+    const requests = await mockInterpreterHealthCheck(page, unreachableInterpreter);
+
+    await paragraphPage.healthChips.nth(0).click();
+
+    await expect(paragraphPage.healthChips.nth(1)).toHaveAttribute('data-state', 'unhealthy');
+    await expect(paragraphPage.healthChips.nth(2)).toHaveAttribute('data-state', 'unknown');
+    expect(requests).toHaveLength(1);
   });
 
   test('Given the settings icon of a paragraph, When the chip is drawn, Then its dot is centered under that icon, in the corner', async ({

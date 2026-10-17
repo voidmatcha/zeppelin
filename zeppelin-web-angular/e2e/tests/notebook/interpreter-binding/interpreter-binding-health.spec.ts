@@ -67,6 +67,29 @@ test.describe('Notebook Interpreter Binding - Health badge', () => {
     expect(requests).toEqual([]);
   });
 
+  test('Given a paragraph chip, When it is checked, Then the badge of its setting in the panel shows the answer too', async ({
+    page
+  }) => {
+    await mockInterpreterHealthCheck(page, healthyInterpreter);
+    await openPanel(page);
+
+    await page.getByTestId('interpreter-health-chip').first().click();
+
+    await expect(bindingPage.badgeOf('alpha')).toContainText('Healthy');
+    await expect(bindingPage.badgeOf('beta')).toContainText('Not checked');
+  });
+
+  test('Given the panel, When a badge is clicked, Then the chip of a paragraph of that setting shows it too', async ({
+    page
+  }) => {
+    await mockInterpreterHealthCheck(page, healthyInterpreter);
+    await openPanel(page);
+
+    await bindingPage.badgeOf('alpha').click();
+
+    await expect(page.getByTestId('interpreter-health-chip').first()).toHaveAttribute('data-state', 'healthy');
+  });
+
   test('Given the panel, When clicking a badge, Then only that setting is asked and its badge says Healthy', async ({
     page
   }) => {
@@ -121,7 +144,7 @@ test.describe('Notebook Interpreter Binding - Health badge', () => {
     await expect(bindingPage.errorMessage).toHaveCount(0);
   });
 
-  test('Given the server refuses, When checking, Then the reason is shown and the badge is not checked again', async ({
+  test('Given the server refuses, When checking, Then the reason is shown and the badge says the check failed', async ({
     page
   }) => {
     await mockInterpreterHealthCheckForbidden(page, 'Forbidden');
@@ -130,7 +153,26 @@ test.describe('Notebook Interpreter Binding - Health badge', () => {
     await bindingPage.badgeOf('alpha').click();
 
     await expect(bindingPage.errorMessage).toContainText('No privilege to check the interpreter health');
-    await expect(bindingPage.badgeOf('alpha')).toContainText('Not checked');
+    await expect(bindingPage.badgeOf('alpha')).toContainText(
+      'Check failed | No privilege to check the interpreter health'
+    );
+  });
+
+  test('Given a healthy setting, When a later check fails, Then the badge keeps the last result in view', async ({
+    page
+  }) => {
+    await mockInterpreterHealthCheck(page, healthyInterpreter);
+    await openPanel(page);
+    await bindingPage.badgeOf('alpha').click();
+    await expect(bindingPage.badgeOf('alpha')).toContainText('Healthy');
+
+    await mockInterpreterHealthCheckForbidden(page, 'Forbidden');
+    await bindingPage.badgeOf('alpha').click();
+
+    await expect(bindingPage.badgeOf('alpha')).toContainText(
+      'Check failed | No privilege to check the interpreter health (last: Healthy)'
+    );
+    await expect(bindingPage.badgeOf('alpha')).toHaveAttribute('title', /^Last result: Healthy, checked at /);
   });
 
   test('Given a narrow screen, When the panel is open, Then nothing overflows sideways', async ({ page }) => {

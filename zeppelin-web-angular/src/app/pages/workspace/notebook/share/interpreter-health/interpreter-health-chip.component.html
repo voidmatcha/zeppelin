@@ -44,13 +44,21 @@
       <div>No interpreter process is running.</div>
       <div>It starts on first use.</div>
     }
+    @if (state === 'failed') {
+      <div>{{ error }}</div>
+      @if (verdict) {
+        <div>Last result: {{ lastLabel }}, checked at {{ verdict.checkedAt | date: 'mediumTime' }}</div>
+      }
+    }
     @if (state === 'starting') {
       <div>The interpreter process is starting.</div>
     }
-    @if (verdict) {
-      <div>Checked at {{ verdict.checkedAt | date: 'mediumTime' }}</div>
-    } @else {
-      <div>Not checked yet.</div>
+    @if (state !== 'failed') {
+      @if (verdict) {
+        <div>Checked at {{ verdict.checkedAt | date: 'mediumTime' }}</div>
+      } @else {
+        <div>Not checked yet.</div>
+      }
     }
     <div>Click to check again</div>
   </div>

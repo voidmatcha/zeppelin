@@ -11,6 +11,7 @@
  */
 
 import { HttpErrorResponse } from '@angular/common/http';
+import { TimeoutError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
 import { InterpreterGroupHealth, InterpreterHealthCheck, InterpreterHealthReason } from '@zeppelin/interfaces';
@@ -108,8 +109,28 @@ describe('interpreterHealthErrorMessage', () => {
     );
   });
 
-  it('knows a missing setting and falls back for anything else', () => {
-    expect(interpreterHealthErrorMessage(new HttpErrorResponse({ status: 404 }))).toBe('Interpreter setting not found');
+  it('says that the server did not answer in time', () => {
+    expect(interpreterHealthErrorMessage(new TimeoutError())).toBe('The server did not answer in time');
+  });
+
+  it('knows a missing setting when Zeppelin says so', () => {
+    expect(
+      interpreterHealthErrorMessage(
+        new HttpErrorResponse({ status: 404, error: { status: 'NOT_FOUND', message: '', body: 'nosuch' } })
+      )
+    ).toBe('Interpreter setting not found');
+  });
+
+  it('calls a 404 of the web server by its name: the endpoint is not there', () => {
+    expect(interpreterHealthErrorMessage(new HttpErrorResponse({ status: 404, error: '<html>Not Found</html>' }))).toBe(
+      'This server does not support interpreter health checks'
+    );
+    expect(interpreterHealthErrorMessage(new HttpErrorResponse({ status: 404 }))).toBe(
+      'This server does not support interpreter health checks'
+    );
+  });
+
+  it('falls back for anything else', () => {
     expect(interpreterHealthErrorMessage(new Error('x'))).toBe('Failed to check the interpreter health');
   });
 });
