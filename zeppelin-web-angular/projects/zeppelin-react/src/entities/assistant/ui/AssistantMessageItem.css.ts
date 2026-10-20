@@ -78,7 +78,7 @@ const blink = keyframes({
  * last block (or the last item of a closing list) to stay on the line where the text ends.
  */
 globalStyle(
-  `${body}[data-streaming] > :last-child > :last-child::after, ${body}[data-streaming] > :last-child > :is(ul, ol):last-child > li:last-child::after`,
+  `${body}[data-streaming] > :last-child > :last-child::after, ${body}[data-streaming] > :last-child > :is(ul, ol):last-child > li:last-child::after, ${body}[data-streaming] [data-streaming-caret]::after`,
   {
     content: '""',
     display: 'inline-block',
@@ -91,3 +91,9 @@ globalStyle(
   }
 );
 globalStyle(`${body}[data-streaming] > :last-child > :is(ul, ol):last-child::after`, { content: 'none' });
+
+// A code marker owns the caret even inside lists/quotes or before generated footnotes.
+globalStyle(
+  `${body}[data-streaming]:has([data-streaming-caret]) > :last-child > :last-child::after, ${body}[data-streaming]:has([data-streaming-caret]) > :last-child > :is(ul, ol):last-child > li:last-child::after`,
+  { content: 'none' }
+);

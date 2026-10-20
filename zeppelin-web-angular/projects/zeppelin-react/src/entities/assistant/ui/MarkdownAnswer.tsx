@@ -18,7 +18,8 @@
 import { createContext, useContext, useId, useMemo, type ComponentPropsWithoutRef, type MouseEvent } from 'react';
 import Markdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { PluggableList } from 'unified';
+import type { Nodes, Root } from 'mdast';
+import type { PluggableList, Plugin } from 'unified';
 
 import { visuallyHidden } from '@/shared/ui/assistant-theme/AssistantScope.css';
 import * as styles from './MarkdownAnswer.css';
@@ -34,13 +35,26 @@ export interface MarkdownAnswerProps {
   onOpenParagraph?: (paragraphId: string, label: string) => void;
 }
 
-type AnswerContextValue = Pick<MarkdownAnswerProps, 'describeParagraph' | 'onOpenParagraph'> & {
+type AnswerContextValue = Pick<MarkdownAnswerProps, 'describeParagraph' | 'onOpenParagraph' | 'content'> & {
   /** Prefix of the footnote ids of this answer, so that two answers on one page do not share them. */
   footnotePrefix: string;
 };
 
-const AnswerContext = createContext<AnswerContextValue>({ footnotePrefix: '' });
-const remarkPlugins: PluggableList = [remarkGfm, remarkParagraphReferences];
+const AnswerContext = createContext<AnswerContextValue>({ footnotePrefix: '', content: '' });
+
+// Use parsed Markdown rather than raw suffixes: a trailing quote prefix such as
+// `>` may belong to the same code block without extending its source position.
+const remarkCodeCaret: Plugin<[], Root> = () => tree => {
+  let tail: Nodes | undefined = tree;
+  while (tail && 'children' in tail) {
+    tail = tail.children.filter(child => child.type !== 'definition' && child.type !== 'footnoteDefinition').at(-1);
+  }
+  if (tail?.type === 'code') {
+    tail.data ??= {};
+    tail.data.hProperties = { ...tail.data.hProperties, 'data-code-tail': true };
+  }
+};
+const remarkPlugins: PluggableList = [remarkGfm, remarkParagraphReferences, remarkCodeCaret];
 
 // remark-rehype gives the footnotes heading this fixed id and points every footnote reference at it.
 const footnoteLabelId = 'footnote-label';
@@ -137,6 +151,27 @@ const AnswerCodeBlock = ({ node, children, ...props }: ComponentPropsWithoutRef<
   );
 };
 
+const AnswerCode = ({ node, children, ...props }: ComponentPropsWithoutRef<'code'> & ExtraProps) => {
+  const { content } = useContext(AnswerContext);
+  if (!node?.properties['data-code-tail'] || (children != null && typeof children !== 'string')) {
+    return <code {...props}>{children}</code>;
+  }
+  const text = typeof children === 'string' ? children : '';
+  const source = content.slice(node.position?.start.offset, node.position?.end.offset);
+  const fenced = /^ {0,3}(`{3,}|~{3,})/.test(source);
+  // Preserve every character. Only place the marker before a synthetic final
+  // newline; a received newline stays before the marker instead.
+  const beforeFinalLineEnding = !/[\r\n]$/.test(fenced ? source : content);
+  const splitAt = beforeFinalLineEnding && text.endsWith('\n') ? text.length - 1 : text.length;
+  return (
+    <code {...props}>
+      {text.slice(0, splitAt)}
+      <span data-streaming-caret="" aria-hidden="true" />
+      {text.slice(splitAt)}
+    </code>
+  );
+};
+
 const AnswerTable = ({ node: _node, children, ...props }: ComponentPropsWithoutRef<'table'> & ExtraProps) => {
   return (
     <div className={styles.tableScroll} role="region" aria-label="Scrollable table" tabIndex={0}>
@@ -155,6 +190,7 @@ const components: Components = {
   a: AnswerLink,
   img: MarkdownAnswerImage,
   pre: AnswerCodeBlock,
+  code: AnswerCode,
   table: AnswerTable
 };
 
@@ -181,7 +217,7 @@ export const MarkdownAnswer = ({ content, describeParagraph, onOpenParagraph }: 
   );
 
   return (
-    <AnswerContext.Provider value={{ describeParagraph, onOpenParagraph, footnotePrefix }}>
+    <AnswerContext.Provider value={{ describeParagraph, onOpenParagraph, footnotePrefix, content }}>
       <MarkdownAnswerImageScope>
         <div className={styles.answer}>{markdown}</div>
       </MarkdownAnswerImageScope>
