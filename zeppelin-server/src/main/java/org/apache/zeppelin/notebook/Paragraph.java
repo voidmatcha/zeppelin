@@ -643,9 +643,9 @@ public class Paragraph extends JobWithProgressPoller<InterpreterResult> implemen
     final Set<String> keys = new HashSet<>(inputs.keySet());
 
     for (String varName : keys) {
-      final AngularObject paragraphScoped = angularRegistry.get(varName, noteId, paragraphId);
-      final AngularObject noteScoped = angularRegistry.get(varName, noteId, null);
-      final AngularObject angularObject = paragraphScoped != null ? paragraphScoped : noteScoped;
+      final AngularObject<?> paragraphScoped = angularRegistry.get(varName, noteId, paragraphId);
+      final AngularObject<?> noteScoped = angularRegistry.get(varName, noteId, null);
+      final AngularObject<?> angularObject = paragraphScoped != null ? paragraphScoped : noteScoped;
       if (angularObject != null) {
         inputs.remove(varName);
         final String pattern = "[$][{]\\s*" + varName + "\\s*(?:=[^}]+)?[}]";

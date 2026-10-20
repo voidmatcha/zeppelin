@@ -152,16 +152,22 @@ class RemoteAngularObjectTest extends AbstractInterpreterTest
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onAddAngularObject(String interpreterGroupId, AngularObject angularObject) {
     onAdd.incrementAndGet();
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onUpdateAngularObject(String interpreterGroupId, AngularObject angularObject) {
     onUpdate.incrementAndGet();
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onRemoveAngularObject(String interpreterGroupId, AngularObject angularObject) {
     onRemove.incrementAndGet();
   }

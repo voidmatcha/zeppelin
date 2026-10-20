@@ -22,7 +22,13 @@ package org.apache.zeppelin.display;
  * Listener class for angular object operations, such as add, update, remove.
  */
 public interface AngularObjectRegistryListener {
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   void onAddAngularObject(String interpreterGroupId, AngularObject angularObject);
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   void onUpdateAngularObject(String interpreterGroupId, AngularObject angularObject);
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   void onRemoveAngularObject(String interpreterGroupId, AngularObject angularObject);
 }

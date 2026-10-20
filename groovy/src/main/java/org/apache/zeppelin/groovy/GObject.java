@@ -212,14 +212,14 @@ public class GObject extends groovy.lang.GroovyObjectSupport {
     }
   }
 
-  private AngularObject getAngularObject(String name) {
+  private AngularObject<?> getAngularObject(String name) {
     AngularObjectRegistry registry = interpreterContext.getAngularObjectRegistry();
     String noteId = interpreterContext.getNoteId();
     // try get local object
-    AngularObject paragraphAo = registry.get(name, noteId, interpreterContext.getParagraphId());
-    AngularObject noteAo = registry.get(name, noteId, null);
+    AngularObject<?> paragraphAo = registry.get(name, noteId, interpreterContext.getParagraphId());
+    AngularObject<?> noteAo = registry.get(name, noteId, null);
 
-    AngularObject ao = paragraphAo != null ? paragraphAo : noteAo;
+    AngularObject<?> ao = paragraphAo != null ? paragraphAo : noteAo;
 
     if (ao == null) {
       // then global object

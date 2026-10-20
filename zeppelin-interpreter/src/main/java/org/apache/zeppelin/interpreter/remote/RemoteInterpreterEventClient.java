@@ -359,6 +359,8 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public synchronized void onAddAngularObject(String interpreterGroupId, AngularObject angularObject) {
     try {
       callRemoteFunction(client -> {
@@ -371,6 +373,8 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onUpdateAngularObject(String interpreterGroupId, AngularObject angularObject) {
     try {
       callRemoteFunction(client -> {
@@ -383,6 +387,8 @@ public class RemoteInterpreterEventClient implements ResourcePoolConnector,
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onRemoveAngularObject(String interpreterGroupId, AngularObject angularObject) {
     try {
       callRemoteFunction(client -> {

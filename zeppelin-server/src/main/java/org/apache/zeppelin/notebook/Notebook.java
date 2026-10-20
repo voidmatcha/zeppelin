@@ -650,6 +650,7 @@ public class Notebook {
     }
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
   @SuppressWarnings("rawtypes")
   public Note loadNoteFromRepo(String id, AuthenticationInfo subject) {
     Note note = null;
@@ -695,7 +696,7 @@ public class Notebook {
         String intpGroupName = intpGroupNameEntry.getKey();
         List<AngularObject> objectList = intpGroupNameEntry.getValue();
 
-        for (AngularObject object : objectList) {
+        for (AngularObject<?> object : objectList) {
           SnapshotAngularObject snapshot = angularObjectSnapshot.get(object.getName());
           if (snapshot == null || snapshot.getLastUpdate().before(lastUpdatedDate)) {
             angularObjectSnapshot.put(object.getName(),
@@ -749,9 +750,13 @@ public class Notebook {
 
   private class SnapshotAngularObject {
     String intpGroupId;
+    // Keep legacy AngularObject signatures compatible with existing callers.
+    @SuppressWarnings("rawtypes")
     AngularObject angularObject;
     Date lastUpdate;
 
+    // Keep legacy AngularObject signatures compatible with existing callers.
+    @SuppressWarnings("rawtypes")
     SnapshotAngularObject(String intpGroupId, AngularObject angularObject, Date lastUpdate) {
       super();
       this.intpGroupId = intpGroupId;
@@ -763,6 +768,8 @@ public class Notebook {
       return intpGroupId;
     }
 
+    // Keep legacy AngularObject signatures compatible with existing callers.
+    @SuppressWarnings("rawtypes")
     AngularObject getAngularObject() {
       return angularObject;
     }

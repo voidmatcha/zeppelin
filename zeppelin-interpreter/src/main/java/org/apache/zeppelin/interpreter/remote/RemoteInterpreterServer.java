@@ -1080,6 +1080,8 @@ public class RemoteInterpreterServer extends Thread
    * @throws InterpreterRPCException, TException
    */
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void angularObjectUpdate(String name, String noteId, String paragraphId, String object)
           throws InterpreterRPCException, TException{
     AngularObjectRegistry registry = interpreterGroup.getAngularObjectRegistry();
@@ -1133,6 +1135,8 @@ public class RemoteInterpreterServer extends Thread
    * Dont't need to emit event to zeppelin server
    */
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void angularObjectAdd(String name, String noteId, String paragraphId, String object)
           throws InterpreterRPCException, TException{
     AngularObjectRegistry registry = interpreterGroup.getAngularObjectRegistry();
@@ -1260,6 +1264,8 @@ public class RemoteInterpreterServer extends Thread
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void angularRegistryPush(String registryAsString) throws InterpreterRPCException, TException {
     try {
       Map<String, Map<String, AngularObject>> deserializedRegistry = gson

@@ -22,11 +22,50 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 class AngularObjectRegistryTest {
+
+  @Test
+  // Compile the existing client API and verify that registry maps remain live views.
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  void testLegacyRegistrySourceCompatibility() {
+    AngularObjectRegistry registry = new AngularObjectRegistry("group", null);
+    AngularObject<String> text = registry.add("text", "before", "note", null);
+    text.set("after");
+    AngularObject<String> found = registry.get("text", "note", null);
+    assertSame(text, found);
+    List<AngularObject> values = registry.getAll("note", null);
+    assertSame(text, values.get(0));
+
+    Map<String, Map<String, AngularObject>> live = registry.getRegistry();
+    live.get("note").put("external", new AngularObject<>("external", true, "note", null, null));
+    assertEquals(true, registry.get("external", "note", null).get());
+
+    Map<String, Map<String, AngularObject>> replacement = new HashMap<>();
+    registry.setRegistry(replacement);
+    assertSame(replacement, registry.getRegistry());
+    registry.add("count", 1, "note", null);
+    assertEquals(1, replacement.get("note").get("count").get());
+    AngularObject<Integer> removed = registry.remove("count", "note", null);
+    assertEquals(1, removed.get());
+  }
+
+  @Test
+  // A wildcard callback would reject this previously valid mutation in a listener lambda.
+  @SuppressWarnings("unchecked")
+  void testLegacyListenerCanReplaceValue() {
+    AngularObjectListener listener = value -> value.set("replacement", false);
+    AngularObject<String> value = new AngularObject<>("text", "before", "note", null, listener);
+    value.set("trigger");
+    assertEquals("replacement", value.get());
+  }
 
   @Test
   void testBasic() throws TException {
@@ -38,16 +77,22 @@ class AngularObjectRegistryTest {
         new AngularObjectRegistryListener() {
 
           @Override
+          // Keep legacy AngularObject signatures compatible with existing callers.
+          @SuppressWarnings("rawtypes")
           public void onAddAngularObject(String interpreterGroupId, AngularObject angularObject) {
             onAdd.incrementAndGet();
           }
 
           @Override
+          // Keep legacy AngularObject signatures compatible with existing callers.
+          @SuppressWarnings("rawtypes")
           public void onUpdateAngularObject(String interpreterGroupId, AngularObject angularObject) {
             onUpdate.incrementAndGet();
           }
 
           @Override
+          // Keep legacy AngularObject signatures compatible with existing callers.
+          @SuppressWarnings("rawtypes")
           public void onRemoveAngularObject(String interpreterGroupId, AngularObject angularObject) {
             onRemove.incrementAndGet();
           }
@@ -80,11 +125,11 @@ class AngularObjectRegistryTest {
   @Test
   void testGetDependOnScope() throws TException {
     AngularObjectRegistry registry = new AngularObjectRegistry("intpId", null);
-    AngularObject ao1 = registry.add("name1", "o1", "noteId1", "paragraphId1");
-    AngularObject ao2 = registry.add("name2", "o2", "noteId1", "paragraphId1");
-    AngularObject ao3 = registry.add("name2", "o3", "noteId1", "paragraphId2");
-    AngularObject ao4 = registry.add("name3", "o4", "noteId1", null);
-    AngularObject ao5 = registry.add("name4", "o5", null, null);
+    AngularObject<Object> ao1 = registry.add("name1", "o1", "noteId1", "paragraphId1");
+    AngularObject<Object> ao2 = registry.add("name2", "o2", "noteId1", "paragraphId1");
+    AngularObject<Object> ao3 = registry.add("name2", "o3", "noteId1", "paragraphId2");
+    AngularObject<Object> ao4 = registry.add("name3", "o4", "noteId1", null);
+    AngularObject<Object> ao5 = registry.add("name4", "o5", null, null);
 
 
     assertNull(registry.get("name3", "noteId1", "paragraphId1"));
@@ -99,11 +144,11 @@ class AngularObjectRegistryTest {
   @Test
   void testGetAllDependOnScope() throws TException {
     AngularObjectRegistry registry = new AngularObjectRegistry("intpId", null);
-    AngularObject ao1 = registry.add("name1", "o", "noteId1", "paragraphId1");
-    AngularObject ao2 = registry.add("name2", "o", "noteId1", "paragraphId1");
-    AngularObject ao3 = registry.add("name2", "o", "noteId1", "paragraphId2");
-    AngularObject ao4 = registry.add("name3", "o", "noteId1", null);
-    AngularObject ao5 = registry.add("name4", "o", null, null);
+    AngularObject<Object> ao1 = registry.add("name1", "o", "noteId1", "paragraphId1");
+    AngularObject<Object> ao2 = registry.add("name2", "o", "noteId1", "paragraphId1");
+    AngularObject<Object> ao3 = registry.add("name2", "o", "noteId1", "paragraphId2");
+    AngularObject<Object> ao4 = registry.add("name3", "o", "noteId1", null);
+    AngularObject<Object> ao5 = registry.add("name4", "o", null, null);
 
     assertEquals(2, registry.getAll("noteId1", "paragraphId1").size());
     assertEquals(1, registry.getAll("noteId1", "paragraphId2").size());

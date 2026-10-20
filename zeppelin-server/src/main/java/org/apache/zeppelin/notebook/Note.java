@@ -78,6 +78,8 @@ public class Note implements JsonSerializable {
 
   private Map<String, Object> noteParams = new LinkedHashMap<>();
   private Map<String, Input> noteForms = new LinkedHashMap<>();
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private Map<String, List<AngularObject>> angularObjects = new HashMap<>();
 
   /*
@@ -310,10 +312,14 @@ public class Note implements JsonSerializable {
     this.credentials = credentials;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   Map<String, List<AngularObject>> getAngularObjects() {
     return angularObjects;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public List<AngularObject> getAngularObjects(String intpGroupId) {
     if (!angularObjects.containsKey(intpGroupId)) {
       return new ArrayList<>();
@@ -324,6 +330,8 @@ public class Note implements JsonSerializable {
   /**
    * Add or update the note AngularObject.
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void addOrUpdateAngularObject(String intpGroupId, AngularObject angularObject) {
     List<AngularObject> angularObjectList;
     if (!angularObjects.containsKey(intpGroupId)) {
@@ -339,8 +347,8 @@ public class Note implements JsonSerializable {
         String paragraphId = "";
         String name = "";
         Object object = iter.next();
-        if (object instanceof AngularObject) {
-          AngularObject ao = (AngularObject)object;
+        if (object instanceof AngularObject<?>) {
+          AngularObject<?> ao = (AngularObject<?>)object;
           noteId = ao.getNoteId();
           paragraphId = ao.getParagraphId();
           name = ao.getName();
@@ -366,6 +374,8 @@ public class Note implements JsonSerializable {
   /**
    * Delete the note AngularObject.
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void deleteAngularObject(String intpGroupId, String noteId, String paragraphId, String name) {
     if (angularObjects.containsKey(intpGroupId)) {
 
@@ -376,8 +386,8 @@ public class Note implements JsonSerializable {
         String paragraphIdCandidate = "";
         String nameCandidate = "";
         Object object = iter.next();
-        if (object instanceof AngularObject) {
-          AngularObject ao = (AngularObject)object;
+        if (object instanceof AngularObject<?>) {
+          AngularObject<?> ao = (AngularObject<?>)object;
           noteIdCandidate = ao.getNoteId();
           paragraphIdCandidate = ao.getParagraphId();
           nameCandidate = ao.getName();

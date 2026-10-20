@@ -29,7 +29,7 @@ import scala.xml._
   */
 class AngularElem(override val interpreterContext: InterpreterContext,
                   override val modelName: String,
-                  override val angularObjects: Map[String, AngularObject],
+                  override val angularObjects: Map[String, AngularObject[Any]],
                   prefix: String,
                   label: String,
                   attributes1: MetaData,
@@ -40,15 +40,15 @@ class AngularElem(override val interpreterContext: InterpreterContext,
     interpreterContext, modelName, angularObjects, prefix, label, attributes1, scope,
     minimizeEmpty, child: _*) {
 
-  override protected def addAngularObject(name: String, value: AnyRef): AngularObject = {
+  override protected def addAngularObject(name: String, value: Any): AngularObject[Any] = {
     val registry = interpreterContext.getAngularObjectRegistry
-    registry.add(name, value, interpreterContext.getNoteId, null).asInstanceOf[AngularObject]
+    registry.add(name, value, interpreterContext.getNoteId, null).asInstanceOf[AngularObject[Any]]
 
   }
 
   override protected def newElem(interpreterContext: InterpreterContext,
                                  name: String,
-                                 angularObjects: Map[String, AngularObject],
+                                 angularObjects: Map[String, AngularObject[Any]],
                                  elem: scala.xml.Elem): angular.AbstractAngularElem = {
     new AngularElem(
       interpreterContext,
@@ -68,7 +68,7 @@ object AngularElem {
 
   implicit def Elem2AngularDisplayElem(elem: Elem): AbstractAngularElem = {
     new AngularElem(InterpreterContext.get(), null,
-      Map[String, AngularObject](),
+      Map[String, AngularObject[Any]](),
       elem.prefix, elem.label, elem.attributes, elem.scope, elem.minimizeEmpty, elem.child:_*);
   }
 

@@ -21,5 +21,7 @@ package org.apache.zeppelin.display;
  *
  */
 public interface AngularObjectListener {
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   void updated(AngularObject updatedObject);
 }

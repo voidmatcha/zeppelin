@@ -35,13 +35,13 @@ abstract class AbstractAngularModel(name: String) {
     * @param newValue value
     */
   @ZeppelinApi
-  def this(name: String, newValue: AnyRef) = {
+  def this(name: String, newValue: Any) = {
     this(name)
     value(newValue)
   }
 
-  protected def getAngularObject(): AngularObject
-  protected def addAngularObject(value: AnyRef): AngularObject
+  protected def getAngularObject(): AngularObject[Any]
+  protected def addAngularObject(value: Any): AngularObject[Any]
 
   /**
     * Get value of the model
@@ -49,7 +49,7 @@ abstract class AbstractAngularModel(name: String) {
     * @return
     */
   @ZeppelinApi
-  def apply(): AnyRef = {
+  def apply(): Any = {
     value()
   }
 
@@ -59,7 +59,7 @@ abstract class AbstractAngularModel(name: String) {
     * @return
     */
   @ZeppelinApi
-  def value(): AnyRef = {
+  def value(): Any = {
     val angularObject = getAngularObject()
     if (angularObject == null) {
       None
@@ -69,7 +69,7 @@ abstract class AbstractAngularModel(name: String) {
   }
 
   @ZeppelinApi
-  def apply(newValue: AnyRef): Unit = {
+  def apply(newValue: Any): Unit = {
     value(newValue)
   }
 
@@ -80,7 +80,7 @@ abstract class AbstractAngularModel(name: String) {
     * @param newValue
     */
   @ZeppelinApi
-  def value(newValue: AnyRef): Unit = {
+  def value(newValue: Any): Unit = {
     var angularObject = getAngularObject()
     if (angularObject == null) {
       // create new object
@@ -92,7 +92,7 @@ abstract class AbstractAngularModel(name: String) {
   }
 
   @ZeppelinApi
-  def remove(): AnyRef = {
+  def remove(): Any = {
     val angularObject = getAngularObject()
 
     if (angularObject == null) {

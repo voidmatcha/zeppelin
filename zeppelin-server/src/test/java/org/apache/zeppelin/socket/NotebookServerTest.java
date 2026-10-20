@@ -467,6 +467,8 @@ class NotebookServerTest extends AbstractTestRestApi {
   }
 
   @Test
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   void testAngularObjectSaveToNote()
       throws IOException, InterruptedException {
     // create a notebook
@@ -532,7 +534,7 @@ class NotebookServerTest extends AbstractTestRestApi {
       assertEquals("COMMAND_TYPE_VALUE", list.get(0).get());
       // Check if the interpreterGroup AngularObjectRegistry is updated
       Map<String, Map<String, AngularObject>> mapRegistry = interpreterGroup.getAngularObjectRegistry().getRegistry();
-      AngularObject ao = mapRegistry.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
+      AngularObject<Object> ao = mapRegistry.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
       assertEquals("COMMAND_TYPE", ao.getName());
       assertEquals("COMMAND_TYPE_VALUE", ao.get());
 
@@ -552,7 +554,7 @@ class NotebookServerTest extends AbstractTestRestApi {
       assertEquals("COMMAND_TYPE_VALUE_UPDATE", list.get(0).get());
       // Check if the interpreterGroup AngularObjectRegistry is updated
       mapRegistry = interpreterGroup.getAngularObjectRegistry().getRegistry();
-      AngularObject ao1 = mapRegistry.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
+      AngularObject<Object> ao1 = mapRegistry.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
       assertEquals("COMMAND_TYPE", ao1.getName());
       assertEquals("COMMAND_TYPE_VALUE_UPDATE", ao1.get());
 
@@ -568,7 +570,7 @@ class NotebookServerTest extends AbstractTestRestApi {
       assertEquals(0, list.size());
       // Check if the interpreterGroup AngularObjectRegistry is delete
       mapRegistry = interpreterGroup.getAngularObjectRegistry().getRegistry();
-      AngularObject ao2 = mapRegistry.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
+      AngularObject<Object> ao2 = mapRegistry.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
       assertNull(ao2);
     } finally {
       if (note1Id != null) {
@@ -611,7 +613,7 @@ class NotebookServerTest extends AbstractTestRestApi {
       Thread.sleep(1000);
 
       // set note AngularObject
-      AngularObject ao = new AngularObject("COMMAND_TYPE", "COMMAND_TYPE_VALUE", note1Id, p1Id, null);
+      AngularObject<Object> ao = new AngularObject<>("COMMAND_TYPE", "COMMAND_TYPE_VALUE", note1Id, p1Id, null);
       notebook.processNote(note1Id,
         note1 -> {
           note1.addOrUpdateAngularObject("angular-shared_process", ao);
@@ -624,6 +626,8 @@ class NotebookServerTest extends AbstractTestRestApi {
       notebookServer.onOpen(sock1);
 
       // Check the AngularObjectRegistry of the interpreterGroup before executing GET_NOTE
+      // The legacy registry API exposes a live map with raw AngularObject values.
+      @SuppressWarnings("rawtypes")
       Map<String, Map<String, AngularObject>> mapRegistry1 = interpreterGroup.getAngularObjectRegistry().getRegistry();
       assertEquals(0, mapRegistry1.size());
 
@@ -632,9 +636,11 @@ class NotebookServerTest extends AbstractTestRestApi {
       Thread.sleep(1000);
 
       // After executing GET_NOTE, check the AngularObjectRegistry of the interpreterGroup
+      // The legacy registry API exposes a live map with raw AngularObject values.
+      @SuppressWarnings("rawtypes")
       Map<String, Map<String, AngularObject>> mapRegistry2 = interpreterGroup.getAngularObjectRegistry().getRegistry();
       assertEquals(2, mapRegistry1.size());
-      AngularObject ao1 = mapRegistry2.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
+      AngularObject<Object> ao1 = mapRegistry2.get(note1Id + "_" + p1Id).get("COMMAND_TYPE");
       assertEquals("COMMAND_TYPE", ao1.getName());
       assertEquals("COMMAND_TYPE_VALUE", ao1.get());
     } finally {
@@ -751,7 +757,7 @@ class NotebookServerTest extends AbstractTestRestApi {
 
       when(paragraph.getBindedInterpreter().getInterpreterGroup()).thenReturn(mdGroup);
 
-      final AngularObject ao1 = AngularObjectBuilder.build(varName, value, "noteId",
+      final AngularObject<Object> ao1 = AngularObjectBuilder.build(varName, value, "noteId",
               "paragraphId");
 
       when(mdRegistry.addAndNotifyRemoteProcess(varName, value, "noteId", "paragraphId"))
@@ -810,7 +816,7 @@ class NotebookServerTest extends AbstractTestRestApi {
 
       when(paragraph.getBindedInterpreter().getInterpreterGroup()).thenReturn(mdGroup);
 
-      final AngularObject ao1 = AngularObjectBuilder.build(varName, value, "noteId",
+      final AngularObject<Object> ao1 = AngularObjectBuilder.build(varName, value, "noteId",
               "paragraphId");
       when(mdRegistry.removeAndNotifyRemoteProcess(varName, "noteId", "paragraphId")).thenReturn(ao1);
       NotebookSocket conn = mock(NotebookSocket.class);

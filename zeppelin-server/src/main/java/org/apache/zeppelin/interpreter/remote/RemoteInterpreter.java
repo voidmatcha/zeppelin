@@ -398,6 +398,8 @@ public class RemoteInterpreter extends Interpreter {
    * remote interpreter. This method should be
    * call ONLY once when the first Interpreter is created
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private void pushAngularObjectRegistryToRemote(Client client) throws TException {
     final AngularObjectRegistry angularObjectRegistry = this.getInterpreterGroup()
         .getAngularObjectRegistry();

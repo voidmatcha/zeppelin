@@ -32,6 +32,7 @@ with BeforeAndAfter with BeforeAndAfterEach with Eventually {
     val intpGroup = new InterpreterGroup()
     val context = InterpreterContext.builder
       .setNoteId("noteId")
+      .setParagraphId("paragraphId")
       .setAngularObjectRegistry(new AngularObjectRegistry(intpGroup.getId(), null))
       .setInterpreterOut(new InterpreterOutput())
       .build()
@@ -41,7 +42,7 @@ with BeforeAndAfter with BeforeAndAfterEach with Eventually {
   }
 
   def angularModel(name: String): AbstractAngularModel
-  def angularModel(name: String, value: AnyRef): AbstractAngularModel
+  def angularModel(name: String, value: Any): AbstractAngularModel
 
   "AngularModel" should "able to create AngularObject" in {
     val registry = InterpreterContext.get().getAngularObjectRegistry
@@ -77,6 +78,40 @@ with BeforeAndAfter with BeforeAndAfterEach with Eventually {
     registrySize should be(1)
 
     angularModel("model1").remove()
+    registrySize should be(0)
+  }
+
+  "AngularModel" should "preserve primitive Int values through its lifecycle" in {
+    val model = angularModel("integer", 1)
+    model.value() should be(1)
+    angularModel("integer")() should be(1)
+    registrySize should be(1)
+
+    model.value(2)
+    model() should be(2)
+    model(3)
+    model.value() should be(3)
+    registrySize should be(1)
+
+    model.remove() should be(3)
+    model() should be(None)
+    registrySize should be(0)
+  }
+
+  "AngularModel" should "preserve primitive Boolean values through its lifecycle" in {
+    val model = angularModel("boolean", true)
+    model.value() should equal(true)
+    angularModel("boolean")() should equal(true)
+    registrySize should be(1)
+
+    model.value(false)
+    model() should equal(false)
+    model(true)
+    model.value() should equal(true)
+    registrySize should be(1)
+
+    model.remove() should equal(true)
+    model() should be(None)
     registrySize should be(0)
   }
 

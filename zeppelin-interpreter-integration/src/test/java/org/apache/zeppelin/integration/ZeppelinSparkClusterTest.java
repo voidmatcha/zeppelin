@@ -740,6 +740,8 @@ public abstract class ZeppelinSparkClusterTest extends AbstractTestRestApi {
   }
 
   @Test
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void testAngularObjects() throws IOException, InterpreterNotFoundException {
     assumeTrue(isHadoopVersionMatch(), "Hadoop version mismatch, skip test");
 

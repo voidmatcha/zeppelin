@@ -37,18 +37,26 @@ public class HeliumAppAngularObjectRegistry {
     this.appId = appId;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject add(String name, Object o) {
     return angularObjectRegistry.add(name, o, noteId, appId);
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject remove(String name) {
     return angularObjectRegistry.remove(name, noteId, appId);
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject get(String name) {
     return angularObjectRegistry.get(name, noteId, appId);
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public List<AngularObject> getAll() {
     return angularObjectRegistry.getAll(noteId, appId);
   }

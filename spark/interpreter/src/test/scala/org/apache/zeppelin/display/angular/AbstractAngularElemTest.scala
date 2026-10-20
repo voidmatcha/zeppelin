@@ -36,6 +36,7 @@ trait AbstractAngularElemTest
     val intpGroup = new InterpreterGroup()
     val context = InterpreterContext.builder
       .setNoteId("noteId")
+      .setParagraphId("paragraphId")
       .setAngularObjectRegistry(new AngularObjectRegistry(intpGroup.getId(), null))
       .setInterpreterOut(new InterpreterOutput())
       .build()
@@ -94,6 +95,30 @@ trait AbstractAngularElemTest
     angularElem(<div></div>).model() should be(None)
   }
 
+  "AngularElem" should "bind primitive Int and Boolean model values" in {
+    val integer = angularElem(<input/>).model("integer", 42)
+    val boolean = angularElem(<input/>).model("boolean", true)
+
+    integer.model() should be(42)
+    boolean.model() should equal(true)
+    (integer \\ "@ng-model").text should be("integer")
+    (boolean \\ "@ng-model").text should be("boolean")
+    angularModel("integer")() should be(42)
+    angularModel("boolean")() should equal(true)
+    registrySize should be(2)
+
+    angularModel("integer").value(43)
+    angularModel("boolean")(false)
+    integer.model() should be(43)
+    boolean.model() should equal(false)
+
+    integer.disassociate()
+    boolean.disassociate()
+    angularModel("integer")() should be(None)
+    angularModel("boolean")() should be(None)
+    registrySize should be(0)
+  }
+
   "AngularElem" should "able to disassociate AngularObjects" in {
     val elem1 = angularElem(<div></div>).model("name1", "value1")
     val elem2 = angularElem(<div></div>).model("name2", "value2")
@@ -129,7 +154,7 @@ trait AbstractAngularElemTest
   }
 
   def registrySize = {
-    registry.getAllWithGlobal("note").size()
+    registry.getAllWithGlobal(noteId).size()
   }
 
   def noteId = {
@@ -142,7 +167,7 @@ trait AbstractAngularElemTest
 
   // simulate click
   def fireEvent(eventName: String, elem: org.apache.zeppelin.display.angular.AbstractAngularElem) = {
-    val angularObject: AngularObject = elem.angularObjects(eventName);
+    val angularObject: AngularObject[Any] = elem.angularObjects(eventName);
     angularObject.set("event");
   }
 }

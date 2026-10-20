@@ -588,12 +588,12 @@ public abstract class ZeppelinContext {
     runNote(context.getNoteId());
   }
 
-  private AngularObject getAngularObject(String name,
+  private AngularObject<?> getAngularObject(String name,
                                          String noteId,
                                          String paragraphId,
                                          InterpreterContext interpreterContext) {
     AngularObjectRegistry registry = interpreterContext.getAngularObjectRegistry();
-    AngularObject ao = registry.get(name, noteId, paragraphId);
+    AngularObject<?> ao = registry.get(name, noteId, paragraphId);
     return ao;
   }
 
@@ -606,7 +606,7 @@ public abstract class ZeppelinContext {
    */
   @ZeppelinApi
   public Object angular(String name) {
-    AngularObject ao = getAngularObject(name, interpreterContext.getNoteId(),
+    AngularObject<?> ao = getAngularObject(name, interpreterContext.getNoteId(),
             interpreterContext.getParagraphId(), interpreterContext);
     if (ao == null) {
       return null;
@@ -623,7 +623,7 @@ public abstract class ZeppelinContext {
    * @return value
    */
   public Object angular(String name, String noteId) {
-    AngularObject ao = getAngularObject(name, noteId,
+    AngularObject<?> ao = getAngularObject(name, noteId,
             interpreterContext.getParagraphId(), interpreterContext);
     if (ao == null) {
       return null;
@@ -641,7 +641,7 @@ public abstract class ZeppelinContext {
    * @return value
    */
   public Object angular(String name, String noteId, String paragraphId) {
-    AngularObject ao = getAngularObject(name, noteId, paragraphId, interpreterContext);
+    AngularObject<?> ao = getAngularObject(name, noteId, paragraphId, interpreterContext);
     if (ao == null) {
       return null;
     } else {
@@ -658,7 +658,7 @@ public abstract class ZeppelinContext {
   @Deprecated
   public Object angularGlobal(String name) {
     AngularObjectRegistry registry = interpreterContext.getAngularObjectRegistry();
-    AngularObject ao = registry.get(name, null, null);
+    AngularObject<?> ao = registry.get(name, null, null);
     if (ao == null) {
       return null;
     } else {

@@ -25,6 +25,8 @@ import org.apache.zeppelin.interpreter.ManagedInterpreterGroup;
 /**
  * Proxy for AngularObject that exists in remote interpreter process
  */
+// Keep legacy AngularObject signatures compatible with existing callers.
+@SuppressWarnings("rawtypes")
 public class RemoteAngularObject extends AngularObject {
 
   private transient ManagedInterpreterGroup interpreterGroup;

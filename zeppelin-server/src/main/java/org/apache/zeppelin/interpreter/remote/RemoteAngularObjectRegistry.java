@@ -51,6 +51,8 @@ public class RemoteAngularObjectRegistry extends AngularObjectRegistry {
    * @param noteId
    * @return
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject addAndNotifyRemoteProcess(final String name,
                                                  final Object o,
                                                  final String noteId,
@@ -78,6 +80,8 @@ public class RemoteAngularObjectRegistry extends AngularObjectRegistry {
    * @param paragraphId
    * @return
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject removeAndNotifyRemoteProcess(final String name,
                                                     final String noteId,
                                                     final String paragraphId) {
@@ -93,14 +97,18 @@ public class RemoteAngularObjectRegistry extends AngularObjectRegistry {
     return super.remove(name, noteId, paragraphId);
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void removeAllAndNotifyRemoteProcess(String noteId, String paragraphId) {
     List<AngularObject> all = getAll(noteId, paragraphId);
-    for (AngularObject ao : all) {
+    for (AngularObject<?> ao : all) {
       removeAndNotifyRemoteProcess(ao.getName(), noteId, paragraphId);
     }
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   protected AngularObject createNewAngularObject(String name, Object o, String noteId, String
           paragraphId) {
     return new RemoteAngularObject(name, o, noteId, paragraphId, interpreterGroup,

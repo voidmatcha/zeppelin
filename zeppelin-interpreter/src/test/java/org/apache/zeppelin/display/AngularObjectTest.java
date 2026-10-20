@@ -29,50 +29,75 @@ import java.util.concurrent.atomic.AtomicInteger;
 class AngularObjectTest {
 
   @Test
+  void testParameterizedValuesRemainSupported() {
+    AngularObject<String> text = new AngularObject<>("text", "before", "note", null, null);
+    text.set("after");
+    assertEquals("after", text.get());
+
+    AngularObject<Integer> number = new AngularObject<>("count", 1, "note", null, null);
+    number.set(2);
+    assertEquals(2, number.get());
+
+    AngularObject<Boolean> flag = new AngularObject<>("enabled", true, "note", null, null);
+    flag.set(false);
+    assertEquals(false, flag.get());
+  }
+
+  @Test
+  void testParameterizedJsonRoundTripPreservesBinding() {
+    AngularObject<String> original = new AngularObject<>("text", "value", "note", "paragraph", null);
+    AngularObject<?> restored = AngularObject.fromJson(original.toJson());
+    assertEquals(original, restored);
+    assertEquals("value", restored.get());
+    assertEquals("note", restored.getNoteId());
+    assertEquals("paragraph", restored.getParagraphId());
+  }
+
+  @Test
   void testEquals() {
     assertEquals(
-        new AngularObject("name", "value", "note1", null, null),
-        new AngularObject("name", "value", "note1", null, null)
+        new AngularObject<>("name", "value", "note1", null, null),
+        new AngularObject<>("name", "value", "note1", null, null)
     );
 
     assertEquals(
-        new AngularObject("name", "value", "note1", "paragraph1", null),
-        new AngularObject("name", "value", "note1", "paragraph1", null)
+        new AngularObject<>("name", "value", "note1", "paragraph1", null),
+        new AngularObject<>("name", "value", "note1", "paragraph1", null)
     );
 
     assertEquals(
-        new AngularObject("name", "value", null, null, null),
-        new AngularObject("name", "value", null, null, null)
+        new AngularObject<>("name", "value", null, null, null),
+        new AngularObject<>("name", "value", null, null, null)
     );
 
     assertEquals(
-        new AngularObject("name", "value1", null, null, null),
-        new AngularObject("name", "value2", null, null, null)
+        new AngularObject<>("name", "value1", null, null, null),
+        new AngularObject<>("name", "value2", null, null, null)
     );
 
     assertNotSame(
-        new AngularObject("name1", "value", null, null, null),
-        new AngularObject("name2", "value", null, null, null)
+        new AngularObject<>("name1", "value", null, null, null),
+        new AngularObject<>("name2", "value", null, null, null)
     );
 
     assertNotSame(
-        new AngularObject("name1", "value", "note1", null, null),
-        new AngularObject("name2", "value", "note2", null, null)
+        new AngularObject<>("name1", "value", "note1", null, null),
+        new AngularObject<>("name2", "value", "note2", null, null)
     );
 
     assertNotSame(
-        new AngularObject("name1", "value", "note", null, null),
-        new AngularObject("name2", "value", null, null, null)
+        new AngularObject<>("name1", "value", "note", null, null),
+        new AngularObject<>("name2", "value", null, null, null)
     );
 
     assertNotSame(
-        new AngularObject("name", "value", "note", "paragraph1", null),
-        new AngularObject("name", "value", "note", "paragraph2", null)
+        new AngularObject<>("name", "value", "note", "paragraph1", null),
+        new AngularObject<>("name", "value", "note", "paragraph2", null)
     );
 
     assertNotSame(
-        new AngularObject("name", "value", "note1", null, null),
-        new AngularObject("name", "value", "note1", "paragraph1", null)
+        new AngularObject<>("name", "value", "note1", null, null),
+        new AngularObject<>("name", "value", "note1", "paragraph1", null)
     );
 
 
@@ -81,10 +106,12 @@ class AngularObjectTest {
   @Test
   void testListener() throws TException {
     final AtomicInteger updated = new AtomicInteger(0);
-    AngularObject ao = new AngularObject("name", "value", "note1", null,
+    AngularObject<Object> ao = new AngularObject<>("name", "value", "note1", null,
         new AngularObjectListener() {
 
           @Override
+          // Keep legacy AngularObject signatures compatible with existing callers.
+          @SuppressWarnings("rawtypes")
           public void updated(AngularObject updatedObject) {
             updated.incrementAndGet();
           }
@@ -107,9 +134,11 @@ class AngularObjectTest {
   void testWatcher() throws InterruptedException, TException {
     final AtomicInteger updated = new AtomicInteger(0);
     final AtomicInteger onWatch = new AtomicInteger(0);
-    AngularObject ao = new AngularObject("name", "value", "note1", null,
+    AngularObject<Object> ao = new AngularObject<>("name", "value", "note1", null,
         new AngularObjectListener() {
           @Override
+          // Keep legacy AngularObject signatures compatible with existing callers.
+          @SuppressWarnings("rawtypes")
           public void updated(AngularObject updatedObject) {
             updated.incrementAndGet();
           }

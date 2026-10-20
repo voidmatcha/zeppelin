@@ -969,6 +969,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
   /**
    * Update the AngularObject object in the note to InterpreterGroup and AngularObjectRegistry.
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private void updateAngularObjectRegistry(NotebookSocket conn, Note note) {
     for (Paragraph paragraph : note.getParagraphs()) {
       InterpreterGroup interpreterGroup = null;
@@ -984,7 +986,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           interpreterGroup.getAngularObjectRegistry();
 
       List<AngularObject> angularObjects = note.getAngularObjects(interpreterGroup.getId());
-      for (AngularObject ao : angularObjects) {
+      for (AngularObject<?> ao : angularObjects) {
         if (Strings.CS.equals(ao.getNoteId(), note.getId())
             && Strings.CS.equals(ao.getParagraphId(), paragraph.getId())) {
           pushAngularObjectToRemoteRegistry(ao.getNoteId(), ao.getParagraphId(),
@@ -1468,6 +1470,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
    * @param conn        the web socket.
    * @param fromMessage the message.
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private void angularObjectUpdated(NotebookSocket conn,
                                     ServiceContext context,
                                     Message fromMessage) throws IOException {
@@ -1482,6 +1486,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
         varName, varValue, context,
         new WebSocketServiceCallback<AngularObject>(conn) {
           @Override
+          // Keep legacy AngularObject signatures compatible with existing callers.
+          @SuppressWarnings("rawtypes")
           public void onSuccess(AngularObject ao, ServiceContext context) throws IOException {
             super.onSuccess(ao, context);
             connectionManager.broadcastExcept(noteId,
@@ -1527,7 +1533,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           }
           final RemoteAngularObjectRegistry registry = (RemoteAngularObjectRegistry)
               interpreterGroup.getAngularObjectRegistry();
-          AngularObject ao = pushAngularObjectToRemoteRegistry(noteId, paragraphId, varName, varValue,
+          AngularObject<?> ao = pushAngularObjectToRemoteRegistry(noteId, paragraphId, varName, varValue,
               registry, interpreterGroup.getId(), conn);
           note.addOrUpdateAngularObject(interpreterGroup.getId(), ao);
         }
@@ -1561,7 +1567,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
           }
           final RemoteAngularObjectRegistry registry =
               (RemoteAngularObjectRegistry) interpreterGroup.getAngularObjectRegistry();
-          AngularObject ao =
+          AngularObject<?> ao =
               removeAngularFromRemoteRegistry(noteId, paragraphId, varName, registry, interpreterGroup.getId(), conn);
           note.deleteAngularObject(interpreterGroup.getId(), noteId, paragraphId, varName);
         }
@@ -1577,12 +1583,14 @@ public class NotebookServer implements AngularObjectRegistryListener,
     return paragraph.getBindedInterpreter().getInterpreterGroup();
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private AngularObject pushAngularObjectToRemoteRegistry(String noteId, String paragraphId, String varName,
                                                           Object varValue,
                                                           RemoteAngularObjectRegistry remoteRegistry,
                                                           String interpreterGroupId,
                                                           NotebookSocket conn) {
-    final AngularObject ao = remoteRegistry.addAndNotifyRemoteProcess(varName, varValue, noteId, paragraphId);
+    final AngularObject<?> ao = remoteRegistry.addAndNotifyRemoteProcess(varName, varValue, noteId, paragraphId);
 
     connectionManager.broadcastExcept(noteId, new Message(OP.ANGULAR_OBJECT_UPDATE)
         .put("angularObject", ao)
@@ -1592,11 +1600,13 @@ public class NotebookServer implements AngularObjectRegistryListener,
     return ao;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private AngularObject removeAngularFromRemoteRegistry(String noteId, String paragraphId, String varName,
                                                         RemoteAngularObjectRegistry remoteRegistry,
                                                         String interpreterGroupId,
                                                         NotebookSocket conn) {
-    final AngularObject ao = remoteRegistry.removeAndNotifyRemoteProcess(varName, noteId, paragraphId);
+    final AngularObject<?> ao = remoteRegistry.removeAndNotifyRemoteProcess(varName, noteId, paragraphId);
     connectionManager.broadcastExcept(noteId, new Message(OP.ANGULAR_OBJECT_REMOVE)
         .put("angularObject", ao)
         .put("interpreterGroupId", interpreterGroupId).put("noteId", noteId)
@@ -2257,6 +2267,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
     connectionManager.broadcast(noteId, new Message(OP.NOTE_RUNNING_STATUS).put("status", newStatus));
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private void sendAllAngularObjects(Note note, String user, NotebookSocket conn)
       throws IOException {
     List<InterpreterSetting> settings =
@@ -2272,7 +2284,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
       AngularObjectRegistry registry =
           intpSetting.getInterpreterGroup(user, note.getId()).getAngularObjectRegistry();
       List<AngularObject> objects = registry.getAllWithGlobal(note.getId());
-      for (AngularObject object : objects) {
+      for (AngularObject<?> object : objects) {
         conn.send(serializeMessage(
             new Message(OP.ANGULAR_OBJECT_UPDATE).put("angularObject", object)
                 .put("interpreterGroupId",
@@ -2286,11 +2298,15 @@ public class NotebookServer implements AngularObjectRegistryListener,
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onAddAngularObject(String interpreterGroupId, AngularObject angularObject) {
     onUpdateAngularObject(interpreterGroupId, angularObject);
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onUpdateAngularObject(String interpreterGroupId, AngularObject angularObject) {
     if (getNotebook() == null) {
       return;
@@ -2318,6 +2334,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
     }
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private void updateNoteAngularObject(String noteId, AngularObject angularObject, String interpreterGroupId) throws IOException {
     List<InterpreterSetting> intpSettings = getNotebook().
       processNote(noteId, note -> note.getBindedInterpreterSettings(new ArrayList<>(authorizationService.getOwners(note.getId()))));
@@ -2331,6 +2349,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
   }
 
   @Override
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void onRemoveAngularObject(String interpreterGroupId, AngularObject angularObject) {
     // not global scope, so we just need to load the corresponded note.
     if (angularObject.getNoteId() != null) {
@@ -2347,6 +2367,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
     }
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private void removeNoteAngularObject(String noteId, AngularObject angularObject, String interpreterGroupId) {
     List<String> settingIds =
         getNotebook().getInterpreterSettingManager().getSettingIds();

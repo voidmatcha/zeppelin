@@ -212,7 +212,7 @@ class NoteTest {
     p.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "1.6.2"));
     p.settings.getForms().put("textbox_1", new TextBox("name", "default_name"));
     p.settings.getParams().put("textbox_1", "my_name");
-    note.getAngularObjects().put("ao_1", Arrays.asList(new AngularObject("name_1", "value_1", note.getId(), p.getId(), null)));
+    note.getAngularObjects().put("ao_1", Arrays.asList(new AngularObject<>("name_1", "value_1", note.getId(), p.getId(), null)));
 
     // test Paragraph Json
     Paragraph p2 = p.fromJson(p.toJson());

@@ -21,7 +21,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 
 /**
  * AngularObjectRegistry keeps all the object that binded to Angular Display System.
@@ -32,6 +31,8 @@ import java.util.Map.Entry;
  *  - Global scope : Shared to all notebook that uses the same interpreter group
  */
 public class AngularObjectRegistry {
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   Map<String, Map<String, AngularObject>> registry = new HashMap<>();
   private static final String GLOBAL_KEY = "_GLOBAL_";
   private AngularObjectRegistryListener listener;
@@ -42,12 +43,11 @@ public class AngularObjectRegistry {
       final AngularObjectRegistryListener listener) {
     this.interpreterGroupId = interpreterGroupId;
     this.listener = listener;
-    angularObjectListener = (AngularObject updatedObject) -> {
+    angularObjectListener = updatedObject -> {
       if (listener != null) {
         listener.onUpdateAngularObject(interpreterGroupId, updatedObject);
       }
     };
-
   }
 
   public AngularObjectRegistryListener getListener() {
@@ -67,6 +67,8 @@ public class AngularObjectRegistry {
    * @param paragraphId paragraphId belongs to. null for notebook scope
    * @return AngularObject that added
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject add(String name, Object o, String noteId, String paragraphId) {
     return add(name, o, noteId, paragraphId, true);
   }
@@ -83,6 +85,8 @@ public class AngularObjectRegistry {
     }
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   private Map<String, AngularObject> getRegistryForKey(String noteId, String paragraphId) {
     synchronized (registry) {
       String key = getRegistryKey(noteId, paragraphId);
@@ -104,9 +108,11 @@ public class AngularObjectRegistry {
    * @param emit skip firing onAdd event on false
    * @return AngularObject that added
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject add(String name, Object o, String noteId, String paragraphId,
                            boolean emit) {
-    AngularObject ao = createNewAngularObject(name, o, noteId, paragraphId);
+    AngularObject<?> ao = createNewAngularObject(name, o, noteId, paragraphId);
 
     synchronized (registry) {
       Map<String, AngularObject> noteLocalRegistry = getRegistryForKey(noteId, paragraphId);
@@ -119,9 +125,11 @@ public class AngularObjectRegistry {
     return ao;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   protected AngularObject createNewAngularObject(String name, Object o, String noteId,
                                                  String paragraphId) {
-    return new AngularObject(name, o, noteId, paragraphId, angularObjectListener);
+    return new AngularObject<>(name, o, noteId, paragraphId, angularObjectListener);
   }
 
   protected AngularObjectListener getAngularObjectListener() {
@@ -136,6 +144,8 @@ public class AngularObjectRegistry {
    * @param paragraphId paragraphId belongs to. null for notebook scope
    * @return removed object. null if object is not found in registry
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject remove(String name, String noteId, String paragraphId) {
     return remove(name, noteId, paragraphId, true);
   }
@@ -149,10 +159,12 @@ public class AngularObjectRegistry {
    * @param emit skip fireing onRemove event on false
    * @return removed object. null if object is not found in registry
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject remove(String name, String noteId, String paragraphId, boolean emit) {
     synchronized (registry) {
       Map<String, AngularObject> r = getRegistryForKey(noteId, paragraphId);
-      AngularObject o = r.remove(name);
+      AngularObject<?> o = r.remove(name);
       if (listener != null && emit) {
         listener.onRemoveAngularObject(interpreterGroupId, o);
       }
@@ -170,10 +182,12 @@ public class AngularObjectRegistry {
    * @param noteId noteId
    * @param paragraphId paragraphId
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void removeAll(String noteId, String paragraphId) {
     synchronized (registry) {
       List<AngularObject> all = getAll(noteId, paragraphId);
-      for (AngularObject ao : all) {
+      for (AngularObject<?> ao : all) {
         remove(ao.getName(), noteId, paragraphId);
       }
     }
@@ -186,6 +200,8 @@ public class AngularObjectRegistry {
    * @param paragraphId paragraphId that belongs to
    * @return angularobject. null when not found
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public AngularObject get(String name, String noteId, String paragraphId) {
     synchronized (registry) {
       Map<String, AngularObject> r = getRegistryForKey(noteId, paragraphId);
@@ -199,6 +215,8 @@ public class AngularObjectRegistry {
    * @param paragraphId paragraphId that belongs to
    * @return all angularobject in the scope
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public List<AngularObject> getAll(String noteId, String paragraphId) {
     List<AngularObject> all = new LinkedList<>();
     synchronized (registry) {
@@ -218,6 +236,8 @@ public class AngularObjectRegistry {
    * @param noteId
    * @return
    */
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public List<AngularObject> getAllWithGlobal(String noteId) {
     List<AngularObject> all = new LinkedList<>();
     synchronized (registry) {
@@ -225,9 +245,9 @@ public class AngularObjectRegistry {
       if (global != null) {
         all.addAll(global.values());
       }
-      for (Entry<String, Map<String, AngularObject>> registryEntry : registry.entrySet()) {
-        if (registryEntry.getKey().startsWith(noteId)) {
-          all.addAll(registryEntry.getValue().values());
+      for (Map.Entry<String, Map<String, AngularObject>> entry : registry.entrySet()) {
+        if (entry.getKey().startsWith(noteId)) {
+          all.addAll(entry.getValue().values());
         }
       }
     }
@@ -238,14 +258,18 @@ public class AngularObjectRegistry {
     return interpreterGroupId;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public Map<String, Map<String, AngularObject>> getRegistry() {
     return registry;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void setRegistry(Map<String, Map<String, AngularObject>> registry) {
     this.registry = registry;
     for (Map<String, AngularObject> map : registry.values()) {
-      for (AngularObject ao : map.values()) {
+      for (AngularObject<?> ao : map.values()) {
         ao.setListener(angularObjectListener);
       }
     }

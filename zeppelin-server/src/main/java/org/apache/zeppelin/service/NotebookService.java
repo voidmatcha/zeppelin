@@ -1468,6 +1468,8 @@ public class NotebookService {
     return p;
   }
 
+  // Keep legacy AngularObject signatures compatible with existing callers.
+  @SuppressWarnings("rawtypes")
   public void updateAngularObject(String noteId, String paragraphId, String interpreterGroupId,
                                   String varName, Object varValue,
                                   ServiceContext context,
