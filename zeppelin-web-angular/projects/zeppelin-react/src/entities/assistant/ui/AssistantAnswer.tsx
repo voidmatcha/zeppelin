@@ -11,9 +11,11 @@
  */
 
 import { Skeleton } from 'antd';
+import { Fragment } from 'react';
 import { answerText, answerToolCalls } from '../model/messageHistory';
 import type { AssistantContentRenderer, AssistantAnswerView, AssistantToolActivity } from './answerView';
 import { AssistantAnswerError } from './AssistantAnswerError';
+import { MarkdownAnswer } from './MarkdownAnswer';
 import { AssistantMessageItem } from './AssistantMessageItem';
 import { AssistantToolLog, toolLabel } from './AssistantToolLog';
 import * as styles from './AssistantAnswer.css';
@@ -64,7 +66,21 @@ export const AssistantAnswer = ({ view, onRetry, renderContent }: AssistantAnswe
     case 'done': {
       const tools = answerToolCalls(view.message).map(call => ({ ...call, status: 'done' as const }));
       return (
-        <AssistantMessageItem role="assistant" content={answerText(view.message)} renderContent={renderContent}>
+        <AssistantMessageItem
+          role="assistant"
+          content={answerText(view.message)}
+          renderContent={() => (
+            <div className={styles.rounds}>
+              {view.message.segments
+                .filter(segment => segment.content)
+                .map(segment => (
+                  <Fragment key={segment.id}>
+                    {renderContent ? renderContent(segment.content) : <MarkdownAnswer content={segment.content} />}
+                  </Fragment>
+                ))}
+            </div>
+          )}
+        >
           <AssistantToolLog tools={tools} />
         </AssistantMessageItem>
       );

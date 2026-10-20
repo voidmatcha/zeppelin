@@ -134,6 +134,29 @@ describe('AssistantAnswer', () => {
     expect(screen.getAllByRole('listitem').map(item => item.textContent)).toEqual(['list_paragraphs', 'read_results']);
   });
 
+  it('keeps Markdown reference definitions local to each answer round', () => {
+    render(
+      <AssistantAnswer
+        view={{
+          status: 'done',
+          message: {
+            id: 'answer',
+            role: 'assistant',
+            segments: [
+              { id: 'round1', content: 'First [source][1].\n\n[1]: https://first.example' },
+              { id: 'round2', content: 'Second [source][1].\n\n[1]: https://second.example' }
+            ]
+          }
+        }}
+      />
+    );
+
+    expect(screen.getAllByRole('link', { name: 'source' }).map(link => link.getAttribute('href'))).toEqual([
+      'https://first.example',
+      'https://second.example'
+    ]);
+  });
+
   it('keeps the partial answer and replaces the progress line with the error', () => {
     const view: AssistantAnswerView = {
       status: 'error',

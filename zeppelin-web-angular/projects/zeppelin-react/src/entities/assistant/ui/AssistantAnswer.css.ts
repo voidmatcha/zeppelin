@@ -89,3 +89,11 @@ export const toolName = style({
   fontFamily: vars.fontMono,
   overflowWrap: 'anywhere'
 });
+
+// Each model round is an independent Markdown document, including its reference definitions.
+export const rounds = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: vars.space3,
+  minWidth: 0
+});
