@@ -35,12 +35,12 @@ import java.util.concurrent.ExecutorService;
  *
  * @param <T>
  */
-public class AngularObject implements JsonSerializable {
+public class AngularObject<T> implements JsonSerializable {
   private static final Logger LOGGER = LoggerFactory.getLogger(AngularObject.class);
   private static final Gson GSON = new Gson();
 
   private String name;
-  private Object object;
+  private T object;
 
   private transient AngularObjectListener listener;
   private transient List<AngularObjectWatcher> watchers = new LinkedList<>();
@@ -66,7 +66,7 @@ public class AngularObject implements JsonSerializable {
    * @param paragraphId paragraphId belongs to. can be null
    * @param listener event listener
    */
-  public AngularObject(String name, Object o, String noteId, String paragraphId,
+  public AngularObject(String name, T o, String noteId, String paragraphId,
       AngularObjectListener listener) {
     this.name = name;
     this.noteId = noteId;
@@ -127,7 +127,7 @@ public class AngularObject implements JsonSerializable {
   public boolean equals(Object o) {
     if (this == o) return true;
     if (o == null || getClass() != o.getClass()) return false;
-    AngularObject that = (AngularObject) o;
+    AngularObject<?> that = (AngularObject<?>) o;
     return Objects.equals(name, that.name) &&
             Objects.equals(noteId, that.noteId) &&
             Objects.equals(paragraphId, that.paragraphId);
@@ -160,7 +160,7 @@ public class AngularObject implements JsonSerializable {
    * Set value
    * @param o reference to new user provided object
    */
-  public void set(Object o) {
+  public void set(T o) {
     set(o, true);
   }
 
@@ -170,9 +170,9 @@ public class AngularObject implements JsonSerializable {
    * @param emit false on skip firing event for listener. note that it does not skip invoke
    *             watcher.watch() in any case
    */
-  public void set(Object o, boolean emit) {
-    final Object before = object;
-    final Object after = o;
+  public void set(T o, boolean emit) {
+    final T before = object;
+    final T after = o;
     object = o;
     if (emit) {
       emit();
@@ -259,7 +259,7 @@ public class AngularObject implements JsonSerializable {
     return GSON.toJson(this);
   }
 
-  public static AngularObject fromJson(String json) {
+  public static AngularObject<?> fromJson(String json) {
     return GSON.fromJson(json, AngularObject.class);
   }
 }

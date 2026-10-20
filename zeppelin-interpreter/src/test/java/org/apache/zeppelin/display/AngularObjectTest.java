@@ -29,6 +29,31 @@ import java.util.concurrent.atomic.AtomicInteger;
 class AngularObjectTest {
 
   @Test
+  void testParameterizedValuesRemainSupported() {
+    AngularObject<String> text = new AngularObject<>("text", "before", "note", null, null);
+    text.set("after");
+    assertEquals("after", text.get());
+
+    AngularObject<Integer> number = new AngularObject<>("count", 1, "note", null, null);
+    number.set(2);
+    assertEquals(2, number.get());
+
+    AngularObject<Boolean> flag = new AngularObject<>("enabled", true, "note", null, null);
+    flag.set(false);
+    assertEquals(false, flag.get());
+  }
+
+  @Test
+  void testParameterizedJsonRoundTripPreservesBinding() {
+    AngularObject<String> original = new AngularObject<>("text", "value", "note", "paragraph", null);
+    AngularObject<?> restored = AngularObject.fromJson(original.toJson());
+    assertEquals(original, restored);
+    assertEquals("value", restored.get());
+    assertEquals("note", restored.getNoteId());
+    assertEquals("paragraph", restored.getParagraphId());
+  }
+
+  @Test
   void testEquals() {
     assertEquals(
         new AngularObject("name", "value", "note1", null, null),
