@@ -19,6 +19,7 @@ export class AssistantPanelModel {
   private conversations: AssistantConversation[] = [];
   private listLoading = true;
   private listError?: string;
+  private deletionError?: string;
 
   private selectedKey = 'draft:0';
   private draftKey: string | undefined = 'draft:0';
@@ -58,6 +59,7 @@ export class AssistantPanelModel {
     this.conversations = [];
     this.listLoading = true;
     this.listError = undefined;
+    this.deletionError = undefined;
     this.selectedKey = 'draft:0';
     this.draftKey = 'draft:0';
     this.draftSequence = 0;
@@ -77,7 +79,7 @@ export class AssistantPanelModel {
       const visible = conversations.filter(conversation => !this.deleted.has(conversation.id));
       const ids = new Set(visible.map(conversation => conversation.id));
       this.conversations = [...this.conversations.filter(conversation => !ids.has(conversation.id)), ...visible].sort(
-        (a, b) => b.updatedAt.localeCompare(a.updatedAt)
+        (a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0)
       );
       this.listLoading = false;
       this.listError = undefined;
@@ -184,14 +186,14 @@ export class AssistantPanelModel {
     if (session.snapshot.deleting) return false;
 
     const generation = this.generation;
-    this.listError = undefined;
+    this.deletionError = undefined;
     const result = await session.delete();
 
     if (!this.active || this.generation !== generation || this.sessions.get(session.key) !== session) return false;
     if (result.status === 'ignored') return false;
 
     if (result.status === 'failed') {
-      this.listError = result.message;
+      this.deletionError = result.message;
       this.publish();
       return false;
     }
@@ -214,7 +216,7 @@ export class AssistantPanelModel {
     return {
       conversations: this.conversations,
       listLoading: this.listLoading,
-      listError: this.listError,
+      listError: this.deletionError ?? this.listError,
       selectedKey: this.selectedKey,
       entry: this.sessions.get(this.selectedKey)!.snapshot,
       creatingConversation: !!this.draftKey && this.sessions.get(this.draftKey)!.snapshot.phase === 'creating',

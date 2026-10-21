@@ -1517,6 +1517,59 @@ describe('useAssistantPanel', () => {
     expect(panel.result.current.conversations[0].updatedAt).toBe(new Date(FIXTURE_NOW + 1_000).toISOString());
   });
 
+  it('orders refreshed activity by instant across ISO timestamp formats', async () => {
+    const harness = sourceHarness();
+    const panel = await mountPanel(harness.source);
+    const older = { ...conversation('a'), updatedAt: '2026-10-19T12:00:00Z' };
+    const newer = { ...conversation('b'), updatedAt: '2026-10-19T12:00:00.001Z' };
+    harness.api.listConversations.mockResolvedValueOnce([older, newer]);
+    await act(async () => panel.result.current.select('a'));
+    const sending = await sendQuestion(panel, 'Refresh activity');
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      await sending.completion;
+    });
+
+    expect(panel.result.current.conversations.map(item => item.id)).toEqual(['b', 'a', 'read-only']);
+  });
+
+  it('preserves a deletion failure when an activity refresh succeeds later', async () => {
+    const harness = sourceHarness();
+    const panel = await mountPanel(harness.source);
+    const refresh = deferred<AssistantConversation[]>();
+    harness.api.listConversations.mockImplementationOnce(() => refresh.promise);
+    await act(async () => panel.result.current.select('a'));
+    const sending = await sendQuestion(panel, 'Refresh activity');
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      await sending.completion;
+    });
+    harness.api.deleteConversation.mockRejectedValueOnce(new Error('Conversation busy'));
+    await act(async () => {
+      await panel.result.current.deleteConversation('b');
+    });
+    expect(panel.result.current.listError).toBe('Conversation busy');
+    await act(async () => refresh.resolve([conversation('a'), conversation('b')]));
+
+    expect(panel.result.current.listError).toBe('Conversation busy');
+    expect(panel.result.current.entry.failure).toBeUndefined();
+  });
+
+  it('clears a failed list read after a successful activity refresh', async () => {
+    const harness = sourceHarness();
+    harness.api.listConversations.mockRejectedValueOnce(new Error('List unavailable'));
+    const panel = await mountPanel(harness.source);
+    expect(panel.result.current.listError).toBe('List unavailable');
+    const sending = await sendQuestion(panel, 'Start a conversation');
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      await sending.completion;
+    });
+
+    expect(panel.result.current.listError).toBeUndefined();
+    expect(panel.result.current.conversations.map(item => item.id)).toContain('a');
+  });
+
   it('ignores an older activity refresh that resolves after a newer send', async () => {
     const harness = sourceHarness();
     const older = deferred<AssistantConversation[]>();

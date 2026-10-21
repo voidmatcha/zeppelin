@@ -94,16 +94,15 @@ export const AssistantWorkspace = ({
           </button>,
           navigation.element
         )}
-      {panel &&
+      {visible &&
+        panel &&
         createPortal(
           <aside
             className={`${scope} ${styles.panel}`}
             aria-label="AI Assistant workspace"
-            hidden={!visible}
-            inert={!visible}
-            style={{ ...themeStyles, display: visible ? undefined : 'none' }}
+            style={themeStyles}
             onKeyDown={event => {
-              if (visible && event.key === 'Escape') close();
+              if (event.key === 'Escape') close();
             }}
           >
             <header className={styles.header}>
