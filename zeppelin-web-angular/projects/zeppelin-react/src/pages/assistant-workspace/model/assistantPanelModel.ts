@@ -30,6 +30,7 @@ export class AssistantPanelModel {
   private readonly listeners = new Set<() => void>();
   private active = false;
   private generation = 0;
+  private listVersion = 0;
   private snapshot: AssistantPanel;
 
   constructor(private readonly source: AssistantDataSource) {
@@ -68,16 +69,20 @@ export class AssistantPanelModel {
   }
 
   private async loadList(generation: number): Promise<void> {
+    const version = ++this.listVersion;
     try {
       const conversations = await this.source.api.listConversations();
-      if (!this.active || this.generation !== generation) return;
+      if (!this.active || this.generation !== generation || this.listVersion !== version) return;
 
       const visible = conversations.filter(conversation => !this.deleted.has(conversation.id));
       const ids = new Set(visible.map(conversation => conversation.id));
-      this.conversations = [...this.conversations.filter(conversation => !ids.has(conversation.id)), ...visible];
+      this.conversations = [...this.conversations.filter(conversation => !ids.has(conversation.id)), ...visible].sort(
+        (a, b) => b.updatedAt.localeCompare(a.updatedAt)
+      );
       this.listLoading = false;
+      this.listError = undefined;
     } catch (error) {
-      if (!this.active || this.generation !== generation) return;
+      if (!this.active || this.generation !== generation || this.listVersion !== version) return;
 
       this.listLoading = false;
       this.listError = error instanceof Error ? error.message : 'Could not load conversations.';
@@ -87,10 +92,21 @@ export class AssistantPanelModel {
   }
 
   private createSession(key: string, conversation?: AssistantConversation): AssistantConversationSession {
-    const session = new AssistantConversationSession(key, conversation, this.source, this.publish, this.confirmed);
+    const session = new AssistantConversationSession(
+      key,
+      conversation,
+      this.source,
+      this.publish,
+      this.confirmed,
+      this.refreshConversations
+    );
     this.sessions.set(key, session);
     return session;
   }
+
+  private readonly refreshConversations = (): void => {
+    if (this.active) void this.loadList(this.generation);
+  };
 
   private readonly confirmed = (session: AssistantConversationSession, conversation: AssistantConversation): void => {
     if (!this.active || this.sessions.get(session.key) !== session) return;

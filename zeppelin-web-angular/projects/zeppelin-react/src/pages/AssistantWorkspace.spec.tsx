@@ -46,7 +46,7 @@ describe('AssistantWorkspace remote', () => {
       handle = mount(root, props);
     });
     expect(navigation.querySelector('button')).not.toBeNull();
-    expect(panel.textContent).toBe('');
+    expect(panel.querySelector('aside')?.hidden).toBe(true);
 
     await act(async () => navigation.querySelector('button')?.click());
     expect(panel.querySelector('aside')).not.toBeNull();
@@ -77,12 +77,12 @@ describe('AssistantWorkspace remote', () => {
     expect(onPanelWidthChange).toHaveBeenCalledExactlyOnceWith(446);
 
     await act(async () => requestClose());
-    expect(panel.textContent).toBe('');
+    expect(panel.querySelector('aside')?.hidden).toBe(true);
     expect(onPanelVisibilityChange).toHaveBeenLastCalledWith(false);
 
     await act(async () => navigation.querySelector('button')?.click());
     await act(async () => handle.update({ ...props, noteId: 'note-b' }));
-    expect(panel.textContent).toBe('');
+    expect(panel.querySelector('aside')?.hidden).toBe(true);
 
     await act(async () => {
       handle.unmount();
@@ -97,6 +97,7 @@ describe('AssistantWorkspace', () => {
   afterEach(async () => {
     await cleanup?.();
     cleanup = undefined;
+    vi.useRealTimers();
   });
 
   const setup = async () => {
@@ -105,19 +106,20 @@ describe('AssistantWorkspace', () => {
     document.body.append(navigation, panel);
     const onPanelVisibilityChange = vi.fn();
     const onPanelWidthChange = vi.fn();
+    const props: AssistantShellProps = {
+      noteId: 'note-a',
+      slots: [
+        { element: navigation, kind: 'navigation' },
+        { element: panel, kind: 'panel' }
+      ],
+      panelWidth: 370,
+      onPanelVisibilityChange,
+      onPanelWidthChange,
+      subscribePanelClose: () => () => {}
+    };
     let handle: ReturnType<typeof mount>;
     await act(async () => {
-      handle = mount(document.createElement('div'), {
-        noteId: 'note-a',
-        slots: [
-          { element: navigation, kind: 'navigation' },
-          { element: panel, kind: 'panel' }
-        ],
-        panelWidth: 370,
-        onPanelVisibilityChange,
-        onPanelWidthChange,
-        subscribePanelClose: () => () => {}
-      });
+      handle = mount(document.createElement('div'), props);
     });
     const unmount = async () => {
       await act(async () => handle.unmount());
@@ -127,7 +129,8 @@ describe('AssistantWorkspace', () => {
     cleanup = unmount;
     const toggle = () => screen.getByRole('button', { name: 'Toggle AI Assistant' });
     const open = async () => act(async () => fireEvent.click(toggle()));
-    return { toggle, open, unmount, onPanelVisibilityChange, onPanelWidthChange };
+    const changeNote = async (noteId: string) => act(async () => handle.update({ ...props, noteId }));
+    return { toggle, open, changeNote, unmount, onPanelVisibilityChange, onPanelWidthChange };
   };
 
   it('marks the toggle as pressed while the panel is open', async () => {
@@ -156,6 +159,72 @@ describe('AssistantWorkspace', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close AI Assistant' })));
     expect(screen.queryByRole('complementary')).toBeNull();
     expect(document.activeElement).toBe(toggle());
+  });
+
+  it('retains the selected conversation and its draft while the sidebar is hidden', async () => {
+    vi.useFakeTimers();
+    const { open, toggle } = await setup();
+    await open();
+    await act(async () => vi.advanceTimersByTimeAsync(120));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Open conversations' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Notebook summary' })));
+    await act(async () => vi.advanceTimersByTimeAsync(120));
+    await act(async () =>
+      fireEvent.change(screen.getByRole('textbox', { name: 'Question' }), { target: { value: 'Keep this draft' } })
+    );
+
+    const workspace = screen.getByRole('complementary');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close AI Assistant' })));
+
+    expect(workspace.hidden).toBe(true);
+    expect(workspace.hasAttribute('inert')).toBe(true);
+    expect(workspace.style.display).toBe('none');
+    expect(screen.queryByRole('textbox', { name: 'Question' })).toBeNull();
+    expect(document.activeElement).toBe(toggle());
+
+    await open();
+
+    expect(screen.getByText('Notebook summary')).toBeTruthy();
+    expect((screen.getByRole('textbox', { name: 'Question' }) as HTMLTextAreaElement).value).toBe('Keep this draft');
+  });
+
+  it('finishes an active fixture answer while hidden and restores it on reopening', async () => {
+    vi.useFakeTimers();
+    const { open } = await setup();
+    await open();
+    await act(async () =>
+      fireEvent.change(screen.getByRole('textbox', { name: 'Question' }), {
+        target: { value: 'Finish this answer while hidden' }
+      })
+    );
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Send' })));
+    await act(async () => vi.advanceTimersByTimeAsync(360));
+    expect(screen.getByText('Writing answer…')).toBeTruthy();
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close AI Assistant' })));
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    await open();
+
+    expect(screen.getByText('Finish this answer while hidden')).toBeTruthy();
+    expect(screen.getByRole('table').textContent).toContain('Europe18%');
+    expect(screen.queryByText('Writing answer…')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('discards the previous note draft when the source changes while hidden', async () => {
+    const { open, changeNote } = await setup();
+    await open();
+    await act(async () =>
+      fireEvent.change(screen.getByRole('textbox', { name: 'Question' }), { target: { value: 'Only for note A' } })
+    );
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Close AI Assistant' })));
+
+    await changeNote('note-b');
+    await open();
+
+    expect(screen.getByText('No conversation selected')).toBeTruthy();
+    expect((screen.getByRole('textbox', { name: 'Question' }) as HTMLTextAreaElement).value).toBe('');
+    expect(screen.queryByText('Only for note A')).toBeNull();
   });
 
   it('keeps keyboard resizing within the sidebar limits', async () => {

@@ -20,7 +20,9 @@ const UNKNOWN_OUTCOME =
   'The outcome of an earlier question is unknown. Reload can show saved messages, but cannot establish whether that run has finished. Sending again is an explicit new submission.';
 
 export type AssistantDeletionResult =
-  { status: 'deleted' } | { status: 'ignored' } | { status: 'failed'; message: string };
+  | { status: 'deleted' }
+  | { status: 'ignored' }
+  | { status: 'failed'; message: string };
 
 export class AssistantConversationSession {
   private conversation?: AssistantConversation;
@@ -42,7 +44,8 @@ export class AssistantConversationSession {
     conversation: AssistantConversation | undefined,
     private readonly source: AssistantDataSource,
     private readonly changed: () => void,
-    private readonly confirmed: (session: AssistantConversationSession, conversation: AssistantConversation) => void
+    private readonly confirmed: (session: AssistantConversationSession, conversation: AssistantConversation) => void,
+    private readonly activity: () => void
   ) {
     this.conversation = conversation;
     this.history = new AssistantHistory(key, !!conversation, this.publish);
@@ -86,12 +89,12 @@ export class AssistantConversationSession {
     if (!history.loaded && !history.loading && !this.deleting && this.phase === 'idle') void this.reload();
   }
 
-  async reload(): Promise<void> {
+  async reload(preserveFailure = false): Promise<void> {
     if (this.disposed || !this.conversation || this.deleting || (this.phase !== 'idle' && this.phase !== 'unknown')) {
       return;
     }
 
-    this.failure = undefined;
+    if (!preserveFailure) this.failure = undefined;
     const result = await this.history.loadLatest(this.source.api, this.conversation.id);
     if (this.disposed || result.status === 'ignored' || !this.history.isCurrent(result)) return;
 
@@ -101,7 +104,7 @@ export class AssistantConversationSession {
         kind: 'connection',
         recovery: 'reload'
       };
-    } else if (this.phase !== 'unknown') {
+    } else if (this.phase !== 'unknown' && !preserveFailure) {
       this.submittedQuestion = undefined;
     }
 
@@ -228,7 +231,12 @@ export class AssistantConversationSession {
     this.phase = run.snapshot.outcome === 'unknown' ? 'unknown' : 'idle';
     this.publish();
 
+    if (run.snapshot.accepted) this.activity();
     if (run.snapshot.outcome === 'completed') await this.reload();
+    else if (!run.snapshot.accepted && !this.history.snapshot.loaded && run.snapshot.outcome === 'failed') {
+      // A rejected send invalidated the first history read; restore it without losing the retryable question.
+      await this.reload(true);
+    }
   }
 
   async delete(): Promise<AssistantDeletionResult> {

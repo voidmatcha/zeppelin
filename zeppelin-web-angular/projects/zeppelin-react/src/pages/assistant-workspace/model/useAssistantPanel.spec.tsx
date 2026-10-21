@@ -1443,4 +1443,103 @@ describe('useAssistantPanel', () => {
       model.dispose();
     }
   );
+
+  it('restores initial history after a rejected send without losing its error or draft', async () => {
+    const harness = sourceHarness();
+    const initial = deferred<AssistantMessagePage>();
+    const saved: AssistantMessagePage = {
+      messages: [{ id: 'saved-question', role: 'user', content: 'Existing question' }],
+      cursor: 'earlier'
+    };
+    harness.api.getMessages.mockImplementationOnce(() => initial.promise).mockResolvedValueOnce(saved);
+    const panel = await mountPanel(harness.source);
+    act(() => panel.result.current.select('a'));
+    const sending = await sendQuestion(panel, 'Retry this question');
+
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.failed', message: 'Message rejected' });
+      await sending.completion;
+      initial.resolve({ messages: [], cursor: null });
+    });
+
+    expect(panel.result.current.entry).toMatchObject({
+      loaded: true,
+      loading: false,
+      messages: saved.messages,
+      cursor: 'earlier',
+      draft: 'Retry this question',
+      failure: { message: 'Message rejected', recovery: 'send' }
+    });
+  });
+
+  it('offers history recovery when restoring initial history after rejection fails', async () => {
+    const harness = sourceHarness();
+    const initial = deferred<AssistantMessagePage>();
+    harness.api.getMessages
+      .mockImplementationOnce(() => initial.promise)
+      .mockRejectedValueOnce(new Error('History unavailable'));
+    const panel = await mountPanel(harness.source);
+    act(() => panel.result.current.select('a'));
+    const sending = await sendQuestion(panel, 'Keep this question');
+
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.failed', message: 'Message rejected' });
+      await sending.completion;
+      initial.resolve({ messages: [], cursor: null });
+    });
+
+    expect(panel.result.current.entry).toMatchObject({
+      draft: 'Keep this question',
+      failure: { message: 'History unavailable', recovery: 'reload' }
+    });
+    harness.api.getMessages.mockResolvedValueOnce({
+      messages: [{ id: 'saved', role: 'user', content: 'Recovered history' }],
+      cursor: null
+    });
+    await act(async () => panel.result.current.reload());
+    expect(panel.result.current.entry.messages).toEqual([{ id: 'saved', role: 'user', content: 'Recovered history' }]);
+    expect(panel.result.current.entry.draft).toBe('Keep this question');
+  });
+
+  it('refreshes activity metadata and ordering after a send in an existing conversation', async () => {
+    const source = createAssistantFixture({
+      conversations: ASSISTANT_HISTORY_CONVERSATIONS,
+      now: FIXTURE_NOW,
+      delayMs: 0
+    });
+    const panel = await mountPanel(source);
+    await act(async () => panel.result.current.select('c2'));
+    await act(async () => panel.result.current.send('Follow-up question'));
+
+    const saved = await source.api.listConversations();
+    expect(panel.result.current.conversations).toEqual(saved);
+    expect(panel.result.current.conversations[0].id).toBe('c2');
+    expect(panel.result.current.conversations[0].updatedAt).toBe(new Date(FIXTURE_NOW + 1_000).toISOString());
+  });
+
+  it('ignores an older activity refresh that resolves after a newer send', async () => {
+    const harness = sourceHarness();
+    const older = deferred<AssistantConversation[]>();
+    const newer = deferred<AssistantConversation[]>();
+    const panel = await mountPanel(harness.source);
+    harness.api.listConversations
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+    await act(async () => panel.result.current.select('a'));
+    const first = await sendQuestion(panel, 'First');
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      await first.completion;
+    });
+    const second = await sendQuestion(panel, 'Second');
+    await act(async () => {
+      harness.feeds[1].push({ type: 'run.started' }, { type: 'run.completed' });
+      await second.completion;
+    });
+    const fresh = { ...conversation('a'), updatedAt: '2026-10-20T00:00:00Z' };
+    await act(async () => newer.resolve([fresh]));
+    await act(async () => older.resolve([conversation('a')]));
+
+    expect(panel.result.current.conversations.find(item => item.id === 'a')).toEqual(fresh);
+  });
 });
