@@ -166,3 +166,42 @@ print(s"""
 that will look like:
 
 <img src="{{BASE_PATH}}/assets/themes/zeppelin/img/screenshots/display_complex_network.png" />
+
+## Geospatial map (Angular UI)
+
+Select **Map** for a table result to display WKT or GeoJSON geometry values.
+In **Setting**, choose a geometry column and an optional popup column. Popup
+values are displayed as text. Geometry coordinates must use WGS84 longitude,
+latitude (EPSG:4326); projected coordinates are not reprojected. Points, lines,
+polygons, their multi variants and geometry collections are supported. GeoJSON
+values may be geometries or Features; FeatureCollections are not supported.
+Invalid and empty rows are skipped and counted above the map.
+
+For example, run this paragraph with the Python interpreter, then select Map:
+
+```python
+%python
+print("%table\ngeometry\tname\nPOINT (126.978 37.5665)\tSeoul")
+```
+
+The map displays geometry without contacting a tile server by default. Enable
+**OpenStreetMap background** to request background tiles from OpenStreetMap;
+this sends the visible map area and your network address to that service. Use
+**Fit data** to reset the viewport. Optional PNG image columns accept raw base64
+or `data:image/png;base64,` values. Each image is placed on its row's geometry
+bounding box; point and zero-area bounds cannot host an image. Invalid PNG
+headers and unsuitable bounds are counted as invalid images.
+
+Saved `apache-sedona`, `sedona-zeppelin` and `geospark-zeppelin` map modes open
+with the built-in map. Their `geometry`, `info` and `mapimage` column selections
+are read from the saved configuration. Opening a note preserves that
+configuration; changing a map setting saves the native `map` mode. A saved
+geometry column that no longer exists must be selected again explicitly.
+The regression fixture uses three unchanged rows and the saved graph settings
+from [Apache Sedona's GeoParquet example](https://github.com/apache/sedona/blob/2efe6bb316ab4bdc6035a2af46163c9d91f8a74f/docker/zeppelin/examples/read-write-geoparquet_2KPERG982.zpln).
+
+This renderer is available in the Angular UI. It does not replace arbitrary
+Helium visualizations, Spells, or JVM Applications, and does not add a map to
+the Classic UI. It renders each feature individually; reduce large query
+results before displaying them. It does not reproduce Sedona's raster
+processing, styling options, or tooltip behavior.

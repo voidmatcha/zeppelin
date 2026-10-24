@@ -1,0 +1,78 @@
+<!--
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+@if (config.optionOpen) {
+  <div class="map-settings">
+    <label [for]="controlId + '-geometry'">
+      Geometry column
+      <nz-select
+        [nzId]="controlId + '-geometry'"
+        [ngModel]="settings.geometryColumn"
+        (ngModelChange)="changeSettings({ geometryColumn: $event })"
+      >
+        @for (column of columns; track column) {
+          <nz-option [nzValue]="column" [nzLabel]="column" />
+        }
+      </nz-select>
+    </label>
+    <label [for]="controlId + '-info'">
+      Popup column
+      <nz-select
+        [nzId]="controlId + '-info'"
+        nzAllowClear
+        nzPlaceHolder="Row number"
+        [ngModel]="settings.infoColumn"
+        (ngModelChange)="changeSettings({ infoColumn: $event ?? undefined })"
+      >
+        @for (column of columns; track column) {
+          <nz-option [nzValue]="column" [nzLabel]="column" />
+        }
+      </nz-select>
+    </label>
+    <label [for]="controlId + '-image'">
+      PNG image column
+      <nz-select
+        [nzId]="controlId + '-image'"
+        nzAllowClear
+        nzPlaceHolder="None"
+        [ngModel]="settings.imageColumn"
+        (ngModelChange)="changeSettings({ imageColumn: $event ?? undefined })"
+      >
+        @for (column of columns; track column) {
+          <nz-option [nzValue]="column" [nzLabel]="column" />
+        }
+      </nz-select>
+    </label>
+  </div>
+}
+<div class="map-toolbar">
+  <span aria-live="polite">
+    {{ featureCount }} features · {{ invalidRows }} invalid rows · {{ emptyRows }} empty rows ·
+    {{ invalidImages }} invalid images
+  </span>
+  <button nz-button nzSize="small" [disabled]="!featureCount" (click)="fitData()">Fit data</button>
+</div>
+@if (message) {
+  <p class="map-message" role="status">{{ message }}</p>
+}
+<div
+  #mapContainer
+  class="map-canvas"
+  role="region"
+  aria-label="Geospatial result map"
+  [style.height.px]="config.height || 300"
+></div>
+<div class="map-background">
+  <label nz-checkbox [ngModel]="showBackground" (ngModelChange)="changeSettings({ showBackground: $event })">
+    OpenStreetMap background
+  </label>
+  <span>Enabling the background loads tiles from OpenStreetMap.</span>
+</div>

@@ -354,11 +354,19 @@ export interface ParagraphStatus {
 }
 
 interface GraphConfigSetting {
+  map?: VisualizationMap;
   table?: VisualizationTable;
   lineChart?: VisualizationLineChart;
   stackedAreaChart?: VisualizationStackedAreaChart;
   multiBarChart?: VisualizationMultiBarChart;
   scatterChart?: VisualizationScatterChart;
+}
+
+export interface VisualizationMap {
+  geometryColumn: string;
+  infoColumn?: string;
+  imageColumn?: string;
+  showBackground?: boolean;
 }
 
 interface VisualizationTable {

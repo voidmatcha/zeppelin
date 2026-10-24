@@ -27,10 +27,13 @@ vi.mock('@zeppelin/visualizations', () => ({
   LineChartVisualization: class {},
   PieChartVisualization: class {},
   ScatterChartVisualization: class {},
+  MapVisualization: class {},
   TableVisualization: class {}
 }));
 
 import { DynamicTemplate, NgZService, RuntimeCompilerService } from '@zeppelin/services';
+import sedonaFixture from '../../../../visualizations/map/sedona-geoparquet.fixture.json';
+import { resolveMapSettings, toMapFeatures } from '../../../../visualizations/map/geospatial-data';
 import { NotebookParagraphResultComponent } from './result.component';
 
 const component = (compiler: Partial<RuntimeCompilerService> = {}) =>
@@ -172,7 +175,7 @@ describe('built-in visualizations without external bundles', () => {
     return result;
   };
 
-  it.each(['table', 'multiBarChart', 'pieChart', 'lineChart', 'stackedAreaChart', 'scatterChart'])(
+  it.each(['table', 'multiBarChart', 'pieChart', 'lineChart', 'stackedAreaChart', 'scatterChart', 'map'])(
     'renders saved %s settings with the built-in visualization',
     mode => {
       const result = tableResult(mode);
@@ -184,6 +187,33 @@ describe('built-in visualizations without external bundles', () => {
       expect(instance.getConfig().height).toBe(420);
       expect(result.tableData.columns).toEqual(['column']);
       expect(result.tableData.rows).toEqual([{ column: 'value' }]);
+      expect(result.frontEndError).toBe('');
+    }
+  );
+
+  it.each(['apache-sedona', 'sedona-zeppelin', 'geospark-zeppelin'])(
+    'routes legacy %s to the native map without rewriting the saved note',
+    mode => {
+      const result = tableResult(mode);
+      const saved = structuredClone(sedonaFixture.graph);
+      saved.setting[mode] = saved.setting['apache-sedona'];
+      saved.mode = mode;
+      result.config!.graph = saved as GraphConfig;
+      result.result.data = sedonaFixture.table;
+      const original = structuredClone(result.config);
+      const emitted = vi.spyOn(result.configChange, 'emit');
+      result.renderDefaultDisplay();
+      expect(result.getCurrentVisualization().id).toBe('map');
+      expect(result.getCurrentVisualization().instance!.getConfig()).toBe(saved);
+      const settings = resolveMapSettings(saved as GraphConfig, result.tableData.columns);
+      expect(settings).toEqual({ geometryColumn: 'geometry', infoColumn: 'addresses', imageColumn: undefined });
+      const parsed = toMapFeatures(result.tableData, settings);
+      expect(parsed.features).toHaveLength(3);
+      expect(parsed.features[0].geometry).toEqual({ type: 'Point', coordinates: [-178.25, -84.8167] });
+      expect(parsed.features[0].properties.info).toBe('WrappedArray([null,null,null,null,AQ])');
+      expect(parsed.invalidRows).toBe(0);
+      expect(result.config).toEqual(original);
+      expect(emitted).not.toHaveBeenCalled();
       expect(result.frontEndError).toBe('');
     }
   );

@@ -51,10 +51,12 @@ import {
   AreaChartVisualization,
   BarChartVisualization,
   LineChartVisualization,
+  MapVisualization,
   PieChartVisualization,
   ScatterChartVisualization,
   TableVisualization
 } from '@zeppelin/visualizations';
+import { isMapVisualizationMode } from '@zeppelin/visualizations/map/geospatial-data';
 
 interface VisualizationItem {
   id: string;
@@ -138,6 +140,14 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
       name: 'Scatter Chart',
       icon: 'dot-chart',
       Class: ScatterChartVisualization,
+      changeSubscription: null,
+      instance: undefined
+    },
+    {
+      id: 'map',
+      name: 'Map',
+      icon: 'global',
+      Class: MapVisualization,
       changeSubscription: null,
       instance: undefined
     }
@@ -352,11 +362,18 @@ export class NotebookParagraphResultComponent implements OnInit, AfterViewInit, 
   }
 
   getCurrentVisualization(): VisualizationItem {
+    if (isMapVisualizationMode(this.config?.graph.mode ?? '')) {
+      return this.visualizations.find(v => v.id === 'map')!;
+    }
     return this.visualizations.find(v => v.id === this.config?.graph.mode) ?? this.visualizations[0];
   }
 
   private getDisplayGraphConfig(): GraphConfig {
     const graph = this.config!.graph;
+    // Legacy map settings are read by the native map, without rewriting the saved note on load.
+    if (isMapVisualizationMode(graph.mode)) {
+      return graph;
+    }
     const mode = this.getCurrentVisualization().id;
     return mode === graph.mode ? graph : { ...graph, mode };
   }

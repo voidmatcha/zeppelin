@@ -1,0 +1,55 @@
+{
+  "source": "https://github.com/apache/sedona/blob/2efe6bb316ab4bdc6035a2af46163c9d91f8a74f/docker/zeppelin/examples/read-write-geoparquet_2KPERG982.zpln",
+  "paragraphId": "paragraph_1742365039191_1241938074",
+  "graph": {
+    "mode": "apache-sedona",
+    "height": 300,
+    "optionOpen": true,
+    "setting": {
+      "table": {
+        "tableGridState": {},
+        "tableColumnTypeState": {
+          "names": {
+            "id": "string",
+            "geometry": "string",
+            "bbox": "string",
+            "names": "string",
+            "version": "string",
+            "updateTime": "string",
+            "sources": "string",
+            "categories": "string",
+            "confidence": "string",
+            "websites": "string",
+            "socials": "string",
+            "emails": "string",
+            "phones": "string",
+            "brand": "string",
+            "addresses": "string"
+          },
+          "updated": false
+        },
+        "tableOptionSpecHash": "[{\"name\":\"useFilter\",\"valueType\":\"boolean\",\"defaultValue\":false,\"widget\":\"checkbox\",\"description\":\"Enable filter for columns\"},{\"name\":\"showPagination\",\"valueType\":\"boolean\",\"defaultValue\":false,\"widget\":\"checkbox\",\"description\":\"Enable pagination for better navigation\"},{\"name\":\"showAggregationFooter\",\"valueType\":\"boolean\",\"defaultValue\":false,\"widget\":\"checkbox\",\"description\":\"Enable a footer for displaying aggregated values\"}]",
+        "tableOptionValue": {
+          "useFilter": false,
+          "showPagination": false,
+          "showAggregationFooter": false
+        },
+        "updated": false,
+        "initialized": false
+      },
+      "apache-sedona": {
+        "geometry": {
+          "name": "geometry",
+          "index": 1,
+          "aggr": "sum"
+        },
+        "info": {
+          "name": "addresses",
+          "index": 14,
+          "aggr": "sum"
+        }
+      }
+    }
+  },
+  "table": "id\tgeometry\tbbox\tnames\tversion\tupdateTime\tsources\tcategories\tconfidence\twebsites\tsocials\temails\tphones\tbrand\taddresses\n08ff39b2456206f3030175c51160976a\tPOINT (-178.25 -84.8167)\t[-178.25,-178.25,-84.8167,-84.8167]\t[WrappedArray([Anderson Heights,local]),null,null,null]\t0\t2024-01-07T00:00:00.000\tWrappedArray([,meta,162525140438236,null])\t[mountain,WrappedArray(topic_concert_venue)]\t0.7320837927232635\tnull\tWrappedArray(https://www.facebook.com/162525140438236)\tnull\tnull\tnull\tWrappedArray([null,null,null,null,AQ])\n08ff39ba49146c540344bebecc1c3430\tPOINT (-178 -84.45)\t[-178.0,-178.0,-84.45,-84.45]\t[WrappedArray([Kosco Glacier,local]),null,null,null]\t0\t2024-01-07T00:00:00.000\tWrappedArray([,meta,145958425462755,null])\t[landmark_and_historical_building,WrappedArray(structure_and_geography, fountain)]\t0.7320837927232635\tnull\tWrappedArray(https://www.facebook.com/145958425462755)\tnull\tnull\tnull\tWrappedArray([null,null,null,null,AQ])\n08ff2a6585754db0030bae8bf1b068f3\tPOINT (-177.5 -84.95)\t[-177.5,-177.5,-84.95,-84.95]\t[WrappedArray([Mincey Glacier,local]),null,null,null]\t0\t2024-01-07T00:00:00.000\tWrappedArray([,meta,104349459640565,null])\t[structure_and_geography,null]\t0.7320837927232635\tnull\tWrappedArray(https://www.facebook.com/104349459640565)\tnull\tnull\tnull\tWrappedArray([null,null,null,null,AQ])"
+}

@@ -25,6 +25,7 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzMenuModule } from 'ng-zorro-antd/menu';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
+import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 
@@ -34,12 +35,14 @@ import { VisualizationPivotSettingComponent } from './common/pivot-setting/pivot
 import { VisualizationScatterSettingComponent } from './common/scatter-setting/scatter-setting.component';
 import { VisualizationXAxisSettingComponent } from './common/x-axis-setting/x-axis-setting.component';
 import { LineChartVisualizationComponent } from './line-chart/line-chart-visualization.component';
+import { MapVisualizationComponent } from './map/map-visualization.component';
 import { PieChartVisualizationComponent } from './pie-chart/pie-chart-visualization.component';
 import { ScatterChartVisualizationComponent } from './scatter-chart/scatter-chart-visualization.component';
 import { TableVisualizationComponent } from './table/table-visualization.component';
 
 const VisualizationComponents = [
   TableVisualizationComponent,
+  MapVisualizationComponent,
   AreaChartVisualizationComponent,
   BarChartVisualizationComponent,
   LineChartVisualizationComponent,
@@ -69,6 +72,7 @@ const VisualizationComponents = [
     NzMenuModule,
     NzDropDownModule,
     NzRadioModule,
+    NzSelectModule,
     NzCheckboxModule,
     NzButtonModule
   ]
