@@ -217,6 +217,9 @@ export class TableVisualizationComponent implements OnInit {
     });
     this.rows = filter(this.tableData.rows, row => terms.every(term => term(row)));
     this.rows = orderBy(this.rows, sortKeys, sortTypes);
+    // nz-table drops an out-of-range pageIndex instead of clamping it, and the footer
+    // pagination that would otherwise correct it is removed when rows become empty.
+    this.pageIndex = Math.min(this.pageIndex, Math.max(1, Math.ceil(this.rows.length / this.pageSize)));
     this.cdr.markForCheck();
   }
 

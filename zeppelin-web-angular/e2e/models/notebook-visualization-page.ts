@@ -67,7 +67,7 @@ export class NotebookVisualizationPage extends BasePage {
     this.pagination = this.resultDisplay.locator('.ant-pagination');
     this.selectedPage = this.pagination.locator('.ant-pagination-item-active');
     this.nextPage = this.pagination.getByRole('listitem', { name: 'Next Page', exact: true });
-    this.tableExportButton = this.resultDisplay.getByRole('button', { name: /^Export\b/, exact: true });
+    this.tableExportButton = this.resultDisplay.getByRole('button', { name: 'Export', exact: true });
     this.sizeChanger = this.pagination.locator('.ant-select-selector');
     // JUSTIFIED: ng-zorro's icon-only filter trigger has no accessible label.
     this.cityFilterTrigger = this.tableHeaders.filter({ hasText: 'city' }).locator('.filter-icon');
