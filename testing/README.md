@@ -19,7 +19,7 @@ limitations under the License.
 
 Use this guide to change Python dependencies, generate Linux CI locks, and test the changes before submitting a PR.
 
-Dependency definitions describe the packages and version constraints. A lock records the exact Conda and pip packages to install. Regular CI installs the committed locks. Editing a definition alone does not change the packages that regular CI tests.
+Dependency definitions describe the packages and version constraints. A lock records the exact Conda and pip packages to install. Regular CI installs the committed locks. Editing a definition alone does not change the packages that regular CI tests, so the `quick` workflow fails when a lock no longer matches its definitions.
 
 ## Find the dependency definition
 
@@ -87,6 +87,12 @@ conda run --no-capture-output -n conda-lock-tools python testing/update_python_l
 
 The script refreshes every existing lock, including its pip dependencies. Locks outside the profile you edited can also change.
 
+Check that every lock matches its definitions. This compares content hashes and does not resolve dependencies:
+
+```bash
+conda run --no-capture-output -n conda-lock-tools python testing/update_python_locks.py --check
+```
+
 Install each changed lock to make sure that its packages are available. This example installs `py39`:
 
 ```bash
@@ -103,6 +109,8 @@ Continue with [Submit the update](#submit-the-update). You do not need to instal
 ## Submit the update
 
 Include the edited definitions and all changed locks in the same PR. Do not include installed Conda environments.
+
+The `quick` workflow runs `python testing/update_python_locks.py --check` on every push and PR. It names each lock whose definitions changed after the lock was generated. To fix the failure, refresh the locks with either procedure above and commit them. The check needs only `pip install conda-lock==4.0.3`, so you can also run it outside Conda.
 
 Commit and push these files to your branch. For locally generated locks, wait for the backend and Selenium jobs in the `core` and `frontend` workflows to pass. These jobs test the committed locks without resolving dependencies again.
 

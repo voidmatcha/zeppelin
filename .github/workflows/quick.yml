@@ -50,3 +50,16 @@ jobs:
           java-version: 11
       - name: Run Maven Validate
         run: ./mvnw validate -Pinclude-hadoop ${MAVEN_ARGS}
+  python-lock-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check Python dependency locks match testing/envs
+        run: |
+          # Keep the version in sync with .github/actions/setup-conda-lock.
+          python3 -m venv "${RUNNER_TEMP}/conda-lock-tools"
+          "${RUNNER_TEMP}/conda-lock-tools/bin/python" -m pip install --quiet conda-lock==4.0.3
+          "${RUNNER_TEMP}/conda-lock-tools/bin/python" testing/update_python_locks.py --check
