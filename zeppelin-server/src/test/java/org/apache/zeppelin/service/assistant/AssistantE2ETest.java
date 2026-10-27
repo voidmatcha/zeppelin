@@ -17,16 +17,14 @@
 
 package org.apache.zeppelin.service.assistant;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import org.apache.commons.lang3.StringUtils;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
+
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.Set;
@@ -43,22 +41,25 @@ import org.apache.zeppelin.notebook.Notebook.NoteProcessor;
 import org.apache.zeppelin.scheduler.Job.Status;
 import org.apache.zeppelin.service.NotebookService;
 import org.apache.zeppelin.user.AuthenticationInfo;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 /**
- * Calls a real model. Skipped unless the API key is passed as a system property:
- * ./mvnw test -pl zeppelin-server -Dtest=AssistantE2ETest -Dassistant.e2e.apiKey=...
+ * Calls a real model. Skipped unless the API key is set in the environment, under the same
+ * variable the server reads:
+ * ZEPPELIN_ASSISTANT_OPENAI_API_KEY=... ./mvnw package -pl zeppelin-server --am
+ * -Dtest=AssistantE2ETest -Dsurefire.failIfNoSpecifiedTests=false -DskipTests=false
  */
-@EnabledIf("hasApiKey")
+@EnabledIfEnvironmentVariable(named = AssistantE2ETest.API_KEY_ENV, matches = ".+")
 class AssistantE2ETest {
-  private static final String API_KEY = System.getProperty("assistant.e2e.apiKey");
+  static final String API_KEY_ENV = "ZEPPELIN_ASSISTANT_OPENAI_API_KEY";
+  // Only in the paragraph result, so the model must call get_paragraph to answer.
+  private static final String TOKEN = "zx-8841-qp";
   private static final String BASE_URL = "https://api.openai.com/v1";
   private static final String MODEL = "gpt-6-luna";
 
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
-
-  static boolean hasApiKey() {
-    return StringUtils.isNotBlank(API_KEY);
-  }
 
   @AfterEach
   void tearDown() {
@@ -75,9 +76,10 @@ class AssistantE2ETest {
     note.addNewParagraph(authInfo).setText("%md # Intro");
 
     var paragraph = note.addNewParagraph(authInfo);
-    paragraph.setText("%python\nprint(6 * 7)");
+    paragraph.setText("%python\nprint(token())");
     paragraph.setStatus(Status.FINISHED);
-    paragraph.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, "42"));
+    paragraph.setResult(new InterpreterResult(InterpreterResult.Code.SUCCESS, TOKEN));
+    assertFalse(paragraph.getText().contains(TOKEN));
 
     var notebook = mock(Notebook.class);
     when(notebook.processNote(eq("noteId"), any()))
@@ -98,11 +100,12 @@ class AssistantE2ETest {
       return null;
     }).when(repository).update(any(), any());
 
-    var userQuery = "What did the second paragraph output?";
+    var userQuery = "What exact text did the second paragraph output? Quote it verbatim.";
     var toolNames = new ArrayList<String>();
     var answer = new StringBuilder();
+    var failures = new ArrayList<String>();
 
-    try (var model = new OpenAiChatModel(BASE_URL, API_KEY, MODEL)) {
+    try (var model = new OpenAiChatModel(BASE_URL, System.getenv(API_KEY_ENV), MODEL)) {
       var sut = new AssistantImpl(
           notebook,
           model,
@@ -120,7 +123,8 @@ class AssistantE2ETest {
             } else if (payload instanceof AssistantEventPayload.MessageDone) {
               answer.append(((AssistantEventPayload.MessageDone) payload).content);
             } else if (payload instanceof AssistantEventPayload.RunFailed) {
-              answer.append("RUN_FAILED");
+              var failed = (AssistantEventPayload.RunFailed) payload;
+              failures.add("RUN_FAILED runId=" + failed.runId + " status=" + failed.error.status);
             }
           }
       ).get(2, TimeUnit.MINUTES);
@@ -129,9 +133,10 @@ class AssistantE2ETest {
       System.out.println("Assistant tools: " + toolNames);
       System.out.println("Assistant response:\n" + answer);
 
+      assertTrue(failures.isEmpty(), failures.toString());
       assertTrue(toolNames.contains("list_paragraphs"), toolNames.toString());
       assertTrue(toolNames.contains("get_paragraph"), toolNames.toString());
-      assertTrue(answer.toString().contains("42"), answer.toString());
+      assertTrue(answer.toString().contains(TOKEN), answer.toString());
     }
   }
 }
