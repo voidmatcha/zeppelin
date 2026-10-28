@@ -297,8 +297,8 @@ class SaveTestParagraph extends ParagraphBase {
   changeColWidth(): void {}
   updateParagraphResult(): void {}
 
-  trackSave(msgId: string): void {
-    this.trackParagraphSave(msgId);
+  trackSave(msgId: string, submittedText?: string): void {
+    this.trackParagraphSave(msgId, submittedText);
   }
 }
 
@@ -417,6 +417,63 @@ describe('ParagraphBase recovery responses', () => {
 });
 
 describe('ParagraphBase save responses', () => {
+  it('replaces rejected text before another checksum-guarded commit can send it', () => {
+    const paragraph = createSaveTestParagraph('diverged text', 'diverged text');
+    paragraph.originalText = 'diverged text';
+    paragraph.trackSave('rejected-save', 'diverged text');
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'server text' } as ParagraphItem, 'rejected-save');
+
+    expect(paragraph.paragraph?.text).toBe('server text');
+    expect(paragraph.originalText).toBe('server text');
+    expect(paragraph.dirtyText).toBeUndefined();
+    paragraph.trackSave('next-save', paragraph.paragraph!.text);
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'server text' } as ParagraphItem, 'next-save');
+    expect(paragraph.paragraph?.text).toBe('server text');
+  });
+
+  it('keeps an edit patched after a rejected commit was sent', () => {
+    const paragraph = createSaveTestParagraph('diverged text', 'diverged text');
+    paragraph.originalText = 'diverged text';
+    paragraph.trackSave('rejected-save', 'diverged text');
+    paragraph.paragraph!.text = 'later patched edit';
+    paragraph.originalText = 'later patched edit';
+    paragraph.dirtyText = 'later patched edit';
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'server text' } as ParagraphItem, 'rejected-save');
+
+    expect(paragraph.paragraph?.text).toBe('later patched edit');
+    expect(paragraph.originalText).toBe('later patched edit');
+    expect(paragraph.dirtyText).toBe('later patched edit');
+  });
+
+  it('keeps a newer pending save when an earlier commit is rejected', () => {
+    const paragraph = createSaveTestParagraph('diverged text', 'diverged text');
+    paragraph.originalText = 'diverged text';
+    paragraph.trackSave('rejected-save', 'diverged text');
+    paragraph.paragraph!.text = 'newer save';
+    paragraph.dirtyText = 'newer save';
+    paragraph.trackSave('newer-save', 'newer save');
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'server text' } as ParagraphItem, 'rejected-save');
+
+    expect(paragraph.paragraph?.text).toBe('newer save');
+    expect(paragraph.originalText).toBe('diverged text');
+    expect(paragraph.dirtyText).toBe('newer save');
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'newer save' } as ParagraphItem, 'newer-save');
+    expect(paragraph.originalText).toBe('newer save');
+  });
+
+  it('accepts a successful checksum-guarded commit without treating it as recovery', () => {
+    const paragraph = createSaveTestParagraph('saved text');
+    paragraph.trackSave('successful-save', 'saved text');
+
+    paragraph.updateAllScopeTexts(paragraph.paragraph!, { text: 'saved text' } as ParagraphItem, 'successful-save');
+
+    expect(paragraph.paragraph?.text).toBe('saved text');
+    expect(paragraph.originalText).toBe('saved text');
+  });
+
   it.each(['latest edit', ''])('preserves an unsaved edit %j when a broadcast carries the saved text', dirtyText => {
     const paragraph = createSaveTestParagraph(dirtyText, dirtyText);
 

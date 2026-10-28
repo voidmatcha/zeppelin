@@ -60,8 +60,12 @@ export abstract class ParagraphBase extends MessageListenersManager {
   colWidthOption = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   editorSetting: ParagraphEditorSetting = {};
   private readonly outputState = new ParagraphOutputState();
-  private readonly pendingParagraphSaves = new Map<string, { sequence: number; originalText?: string }>();
+  private readonly pendingParagraphSaves = new Map<
+    string,
+    { sequence: number; editSequence: number; originalText?: string; submittedText?: string }
+  >();
   private paragraphSaveSequence = 0;
+  protected paragraphEditSequence = 0;
   // Recovery requests are tracked apart from saves: a save acknowledges text this client sent,
   // while a recovery answer carries text it has not seen and must not discard edits made since.
   private readonly pendingParagraphFetches = new Map<string, { dirtyText?: string }>();
@@ -324,21 +328,30 @@ export abstract class ParagraphBase extends MessageListenersManager {
     );
   }
 
-  protected trackParagraphSave(msgId: string): void {
-    this.pendingParagraphSaves.set(msgId, { sequence: ++this.paragraphSaveSequence, originalText: this.originalText });
+  protected trackParagraphSave(msgId: string, submittedText?: string): void {
+    this.pendingParagraphSaves.set(msgId, {
+      sequence: ++this.paragraphSaveSequence,
+      editSequence: this.paragraphEditSequence,
+      originalText: this.originalText,
+      submittedText
+    });
   }
 
   private consumeParagraphSave(
     msgId: string | undefined,
     savedText: string
-  ): { acknowledged: boolean; hasNewerSave: boolean } {
+  ): { acknowledged: boolean; hasNewerSave: boolean; rejected: boolean } {
     const pendingSave = msgId === undefined ? undefined : this.pendingParagraphSaves.get(msgId);
     if (pendingSave === undefined) {
-      return { acknowledged: false, hasNewerSave: false };
+      return { acknowledged: false, hasNewerSave: false, rejected: false };
     }
-    const hasNewerSave = Array.from(this.pendingParagraphSaves.values()).some(
-      ({ sequence }) => sequence > pendingSave.sequence
-    );
+    // A checksum-guarded commit stores exactly the submitted text on success. A different
+    // response is the server copy returned after rejecting the commit.
+    const rejected = pendingSave.submittedText !== undefined && pendingSave.submittedText !== savedText;
+    const hasNewerSave =
+      Array.from(this.pendingParagraphSaves.values()).some(({ sequence }) => sequence > pendingSave.sequence) ||
+      (rejected &&
+        (this.originalText !== pendingSave.originalText || this.paragraphEditSequence !== pendingSave.editSequence));
     // The server answers COMMIT_PARAGRAPH in send order on one socket,
     // so an older save is never acknowledged after a newer one.
     for (const [pendingMsgId, { sequence }] of this.pendingParagraphSaves) {
@@ -347,18 +360,31 @@ export abstract class ParagraphBase extends MessageListenersManager {
       }
     }
     // Skip when a newer save or a patch has already moved the saved baseline past this acknowledgement.
-    if (!hasNewerSave && this.originalText === pendingSave.originalText) {
+    if (!rejected && !hasNewerSave && this.originalText === pendingSave.originalText) {
       this.originalText = savedText;
     }
-    return { acknowledged: true, hasNewerSave };
+    return { acknowledged: true, hasNewerSave, rejected };
   }
 
   updateAllScopeTexts(oldPara: ParagraphItem, newPara: ParagraphItem, msgId?: string) {
     if (!this.paragraph) {
       throw new Error('paragraph is not defined');
     }
-    const { acknowledged, hasNewerSave } = this.consumeParagraphSave(msgId, newPara.text);
+    const { acknowledged, hasNewerSave, rejected } = this.consumeParagraphSave(msgId, newPara.text);
     const recovery = this.consumeParagraphFetch(msgId);
+
+    if (rejected) {
+      // Do not pair the rejected text with the server's checksum: the next commit would then
+      // pass the guard and overwrite the server. Later edits supersede this reply even if
+      // collaborative mode ended and they have not sent a patch or save yet.
+      if (!hasNewerSave) {
+        this.paragraph.text = newPara.text;
+        this.originalText = newPara.text;
+        this.dirtyText = undefined;
+      }
+      this.cdr.markForCheck();
+      return;
+    }
 
     if (oldPara.text !== newPara.text) {
       const hasLocalEdit = this.dirtyText !== undefined && this.dirtyText !== newPara.text;

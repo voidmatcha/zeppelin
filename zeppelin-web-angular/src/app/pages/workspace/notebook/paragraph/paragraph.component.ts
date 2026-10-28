@@ -191,6 +191,7 @@ export class NotebookParagraphComponent
   }
 
   textChanged(text: string) {
+    this.paragraphEditSequence++;
     this.dirtyText = text;
     this.paragraph.text = text;
     if (this.dirtyText !== this.originalText) {
@@ -530,16 +531,8 @@ export class NotebookParagraphComponent
     // in collaborative mode let the server reject this commit when our text is based on a
     // paragraph state the server no longer holds
     const baseChecksum = this.collaborativeMode ? textChecksum(this.originalText || '') : undefined;
-    const msgId = this.messageService.commitParagraph(
-      id,
-      title,
-      text,
-      config,
-      params,
-      this.note.id,
-      baseChecksum
-    );
-    this.trackParagraphSave(msgId);
+    const msgId = this.messageService.commitParagraph(id, title, text, config, params, this.note.id, baseChecksum);
+    this.trackParagraphSave(msgId, this.collaborativeMode ? text : undefined);
     this.cdr.markForCheck();
   }
 
