@@ -953,7 +953,8 @@ public class NotebookServer implements AngularObjectRegistryListener,
           @Override
           public void onSuccess(Note note, ServiceContext context) throws IOException {
             connectionManager.addNoteConnection(note.getId(), conn);
-            conn.send(serializeMessage(new Message(OP.NOTE).put("note", note)));
+            conn.send(serializeMessage(
+                new Message(OP.NOTE).withMsgId(fromMessage.msgId).put("note", note)));
             updateAngularObjectRegistry(conn, note);
             sendAllAngularObjects(note, context.getAutheInfo().getUser(), conn);
           }
