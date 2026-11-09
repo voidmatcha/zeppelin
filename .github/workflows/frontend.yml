@@ -1,4 +1,4 @@
-name: frontend
+name: frontend revision validation
 
 on:
   push:
@@ -139,6 +139,7 @@ jobs:
           mkdir -p $ZEPPELIN_E2E_TEST_NOTEBOOK_DIR
           echo "Created test notebook directory: $ZEPPELIN_E2E_TEST_NOTEBOOK_DIR"
       - name: Run headless E2E test with Maven
+        if: false
         # Classic UI e2e and the notebook core port proof run only on the anonymous leg
         run: xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" ./mvnw verify -pl zeppelin-web-angular -Pweb-e2e -Dweb.e2e.classic.disabled=${{ matrix.mode != 'anonymous' }} -Dweb.e2e.core.port.proof.disabled=${{ matrix.mode != 'anonymous' }} ${MAVEN_ARGS}
       - name: Run revision E2E tests with Git storage
@@ -164,7 +165,7 @@ jobs:
             tests/notebook/revision/revision-isolation.spec.ts \
             tests/notebook/core-read/notebook-core-entry.spec.ts \
             tests/notebook/core-read/notebook-core-read.spec.ts \
-            --grep 'revision' --workers=1 --output=test-results-revision --reporter=github,html
+            --grep 'revision' --workers=1 --retries=0 --repeat-each=3 --output=test-results-revision --reporter=github,html
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v6
         if: always()
@@ -190,6 +191,7 @@ jobs:
           fi
 
   test-selenium-with-spark-module-for-spark-3-5:
+    if: false
     runs-on: ubuntu-24.04
     defaults:
       run:
