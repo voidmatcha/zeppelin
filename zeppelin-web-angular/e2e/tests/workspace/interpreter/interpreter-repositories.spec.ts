@@ -209,6 +209,8 @@ test.describe('Interpreter repositories', () => {
   });
 
   test('requires both repository ID and URL before enabling Add', async ({ interpreterWrites }) => {
+    const repositoryId = unusedRepositoryId(repositories, 'required-fields-repository');
+
     await test.step('When the add repository modal is opened', async () => {
       await modal.openCreateModal();
     });
@@ -226,12 +228,15 @@ test.describe('Interpreter repositories', () => {
     });
 
     await test.step('When only the ID is supplied', async () => {
-      await modal.idInput.fill(unusedRepositoryId(repositories, 'required-fields-repository'));
+      await modal.idInput.fill(repositoryId);
+      await expect(modal.idInput).toHaveValue(repositoryId);
     });
 
     await test.step('Then Add remains disabled until a URL is also supplied', async () => {
       await expect(modal.addButton).toBeDisabled();
       await modal.urlInput.fill('required.example.test/maven/');
+      await expect(modal.urlInput).toHaveValue('required.example.test/maven/');
+      await expect(modal.idInput).toHaveValue(repositoryId);
       await expect(modal.addButton).toBeEnabled();
     });
 

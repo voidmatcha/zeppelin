@@ -134,6 +134,7 @@ export class InterpreterComponent implements OnInit, OnDestroy {
     const modalRef = this.nzModalService.create({
       nzTitle: 'Add New Repository',
       nzContent: InterpreterCreateRepositoryModalComponent,
+      nzAutofocus: null,
       nzFooter: null,
       nzWidth: '600px'
     });
