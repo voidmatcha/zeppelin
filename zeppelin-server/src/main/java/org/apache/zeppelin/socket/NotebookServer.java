@@ -1299,7 +1299,7 @@ public class NotebookServer implements AngularObjectRegistryListener,
     String content = (String) fromMessage.get("content");
     AssistantEventListener sink = (type, payload) -> {
       try {
-        conn.send(serializeMessage(new Message(OP.ASSISTANT_EVENT)
+        conn.send(serializeMessage(new Message(OP.ASSISTANT_EVENT).withMsgId(fromMessage.msgId)
             .put("conversationId", conversationId)
             .put("type", type.wireName)
             .put("payload", payload)));

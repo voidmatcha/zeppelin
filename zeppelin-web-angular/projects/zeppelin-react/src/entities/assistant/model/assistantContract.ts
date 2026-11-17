@@ -49,9 +49,9 @@ export interface AssistantMessagePage {
   cursor: string | null;
 }
 export type AssistantRunEvent =
-  | { type: 'run.started'; runId?: string }
-  | { type: 'run.completed'; runId?: string }
-  | { type: 'run.failed'; runId?: string; message: string }
+  | { type: 'run.started'; runId: string }
+  | { type: 'run.completed'; runId: string }
+  | { type: 'run.failed'; runId: string; message: string }
   | { type: 'message.delta'; messageId: string; delta: string }
   | { type: 'message.done'; messageId: string; content: string }
   | { type: 'tool_call.started'; toolCallId: string; name: string }

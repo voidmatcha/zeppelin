@@ -11,11 +11,11 @@
  */
 
 import { HttpClient, HttpErrorResponse, type HttpEvent, type HttpHandler } from '@angular/common/http';
-import { SimpleChange, type ChangeDetectorRef } from '@angular/core';
+import { NgZone, SimpleChange, type ChangeDetectorRef } from '@angular/core';
 import type { NzMessageService } from 'ng-zorro-antd/message';
 import { BehaviorSubject, firstValueFrom, Subject, throwError } from 'rxjs';
 import { expect, it, vi } from 'vitest';
-import { OP, type AssistantSocketEvent } from '@zeppelin/sdk';
+import { OP, AssistantNotSentError, type AssistantEvent, type WebSocketMessage } from '@zeppelin/sdk';
 import { TicketService, type BaseUrlService, type MessageService } from '@zeppelin/services';
 import type { Router } from '@angular/router';
 import { AppHttpInterceptor } from '../../../../app-http.interceptor';
@@ -25,12 +25,12 @@ import { AssistantSlots } from './assistant-slots';
 const createHost = (initialized = true) => {
   const slots = new AssistantSlots();
   const message = { error: vi.fn() };
-  const events = new Subject<AssistantSocketEvent>();
+  const events = new Subject<WebSocketMessage<{ [OP.ASSISTANT_EVENT]: AssistantEvent }>>();
   const closed = new Subject<CloseEvent>();
   const socket = {
     connectedStatus: true,
-    send: vi.fn(),
-    receive: vi.fn(() => events),
+    send: vi.fn(() => 'request-1'),
+    receiveEnvelope: vi.fn(() => events),
     closed: () => closed
   };
   const ticket = {
@@ -45,7 +45,8 @@ const createHost = (initialized = true) => {
     message as unknown as NzMessageService,
     { getRestApiBase: () => '/zeppelin/api' } as BaseUrlService,
     socket as unknown as MessageService,
-    ticket as unknown as TicketService
+    ticket as unknown as TicketService,
+    new NgZone({})
   );
   host.enabled = true;
   host.noteId = 'note-a';
@@ -116,11 +117,26 @@ it('passes notebook connection and navigation ports without exposing credentials
   expect(ticket.handleAuthFailure).toHaveBeenCalledWith(401, '/login/redirect');
   host.paragraphs = [{ id: 'paragraph-a', title: 'Current paragraph' }];
   host.ngOnChanges({ paragraphs: new SimpleChange([], host.paragraphs, false) });
-  expect(host.assistantProps!.paragraphs).toBe(host.paragraphs);
+  expect(host.assistantProps!.paragraphs).toEqual(host.paragraphs);
   const open = vi.fn();
   host.openParagraph.subscribe(open);
   host.assistantProps!.onOpenParagraph('paragraph-a');
   expect(open).toHaveBeenCalledWith('paragraph-a');
+  host.ngOnDestroy();
+});
+
+it('reenters Angular for the nested authentication callback from the React remote', () => {
+  const { host, ticket } = createHost();
+  const connection = host.assistantProps!.connection;
+  const zoneStates: boolean[] = [];
+  ticket.handleAuthFailure.mockImplementation(() => {
+    zoneStates.push(NgZone.isInAngularZone());
+  });
+
+  new NgZone({}).runOutsideAngular(() => connection.onAuthError(405, null));
+
+  expect(ticket.handleAuthFailure).toHaveBeenCalledExactlyOnceWith(405, null);
+  expect(zoneStates).toEqual([true]);
   host.ngOnDestroy();
 });
 
@@ -132,16 +148,16 @@ it('adapts SDK assistant operations, refuses disconnected sends and releases lis
   const unsubscribe = port.subscribe(eventListener);
   const unsubscribeClose = port.subscribeClose(closeListener);
   const message = { noteId: 'note-a', conversationId: 'conversation-a', content: 'hello' };
-  port.send(message);
+  expect(port.send(message)).toBe('request-1');
   expect(socket.send).toHaveBeenCalledWith(OP.ASSISTANT_SEND_MESSAGE, message);
-  expect(socket.receive).toHaveBeenCalledWith(OP.ASSISTANT_EVENT);
-  const event: AssistantSocketEvent = { conversationId: 'conversation-a', type: 'run.started', payload: {} };
-  events.next(event);
-  expect(eventListener).toHaveBeenCalledWith(event);
+  expect(socket.receiveEnvelope).toHaveBeenCalledWith(OP.ASSISTANT_EVENT);
+  const event: AssistantEvent = { conversationId: 'conversation-a', type: 'run.started', payload: {} };
+  events.next({ op: OP.ASSISTANT_EVENT, msgId: 'request-1', data: event });
+  expect(eventListener).toHaveBeenCalledWith({ ...event, requestId: 'request-1' });
   closed.next(new CloseEvent('close'));
   expect(closeListener).toHaveBeenCalledOnce();
   socket.connectedStatus = false;
-  expect(() => port.send(message)).toThrow('not connected');
+  expect(() => port.send(message)).toThrow(AssistantNotSentError);
   expect(socket.send).toHaveBeenCalledOnce();
   unsubscribe();
   unsubscribeClose();
@@ -163,7 +179,7 @@ it('keeps connection identity across layout updates and ordinary ticket refreshe
 });
 
 it('retires auth callbacks and socket events immediately on note transitions', async () => {
-  const { host, ticket, events, closed } = createHost();
+  const { host, ticket, events, closed, socket } = createHost();
   const connection = host.assistantProps!.connection;
   const listener = vi.fn();
   const closeListener = vi.fn();
@@ -171,14 +187,21 @@ it('retires auth callbacks and socket events immediately on note transitions', a
   connection.socket.subscribeClose(closeListener);
   host.retire();
   connection.onAuthError(405, null);
-  events.next({ conversationId: 'old', type: 'run.completed', payload: {} });
+  events.next({
+    op: OP.ASSISTANT_EVENT,
+    msgId: 'old-request',
+    data: { conversationId: 'old', type: 'run.completed', payload: {} }
+  });
   closed.next(new CloseEvent('close'));
   await Promise.resolve();
   expect(ticket.handleAuthFailure).not.toHaveBeenCalled();
   expect(listener).not.toHaveBeenCalled();
   expect(closeListener).not.toHaveBeenCalled();
   expect(host.assistantProps).toBeNull();
-  expect(() => connection.socket.send({ noteId: 'note-a', conversationId: 'old', content: 'stale' })).toThrow();
+  expect(() => connection.socket.send({ noteId: 'note-a', conversationId: 'old', content: 'stale' })).toThrow(
+    AssistantNotSentError
+  );
+  expect(socket.send).not.toHaveBeenCalled();
   host.noteId = 'note-b';
   host.ngOnChanges({ noteId: new SimpleChange('note-a', 'note-b', false) });
   expect(host.assistantProps!.connection).not.toBe(connection);
@@ -276,7 +299,8 @@ it('shares one real logout with an overlapping Angular 405 and completes shared 
     { error: vi.fn() } as unknown as NzMessageService,
     baseUrl,
     {} as MessageService,
-    ticket
+    ticket,
+    new NgZone({})
   );
   host.enabled = true;
   host.noteId = 'note-a';
@@ -299,5 +323,81 @@ it('shares one real logout with an overlapping Angular 405 and completes shared 
   expect(ticket.ticket.principal).toBe('');
   expect(ticket.logout$.value).toBe(false);
   expect(navigate).toHaveBeenCalledExactlyOnceWith(['/login']);
+  host.ngOnDestroy();
+});
+
+it.each([
+  {
+    change: 'inserts a paragraph in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) =>
+      paragraphs.splice(1, 0, { id: 'paragraph-new', title: 'New' }),
+    expected: [
+      { id: 'paragraph-a', title: 'First' },
+      { id: 'paragraph-new', title: 'New' },
+      { id: 'paragraph-b', title: 'Second' }
+    ]
+  },
+  {
+    change: 'removes a paragraph in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) => paragraphs.splice(0, 1),
+    expected: [{ id: 'paragraph-b', title: 'Second' }]
+  },
+  {
+    change: 'reorders paragraphs in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) => paragraphs.reverse(),
+    expected: [
+      { id: 'paragraph-b', title: 'Second' },
+      { id: 'paragraph-a', title: 'First' }
+    ]
+  },
+  {
+    change: 'changes a paragraph title in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) => {
+      paragraphs[0].title = 'Renamed';
+    },
+    expected: [
+      { id: 'paragraph-a', title: 'Renamed' },
+      { id: 'paragraph-b', title: 'Second' }
+    ]
+  }
+])('refreshes answer references when the notebook $change', ({ mutate, expected }) => {
+  const { host } = createHost();
+  host.paragraphs = [
+    { id: 'paragraph-a', title: 'First' },
+    { id: 'paragraph-b', title: 'Second' }
+  ];
+  host.ngDoCheck();
+  const previous = host.assistantProps!;
+
+  mutate(host.paragraphs);
+  host.ngDoCheck();
+
+  expect(host.assistantProps!.paragraphs).toEqual(expected);
+  expect(host.assistantProps!.paragraphs).not.toBe(previous.paragraphs);
+  expect(previous.paragraphs).toEqual([
+    { id: 'paragraph-a', title: 'First' },
+    { id: 'paragraph-b', title: 'Second' }
+  ]);
+  expect(host.assistantProps!.connection).toBe(previous.connection);
+  host.ngOnDestroy();
+});
+
+it('preserves remote props and paragraph snapshots when reference values have not changed', () => {
+  const { host } = createHost();
+  host.paragraphs = [{ id: 'paragraph-a', title: 'First' }];
+  host.ngDoCheck();
+  const previous = host.assistantProps!;
+
+  host.ngDoCheck();
+  expect(host.assistantProps).toBe(previous);
+
+  host.paragraphs = [{ id: 'paragraph-a', title: 'First' }];
+  host.ngDoCheck();
+  expect(host.assistantProps).toBe(previous);
+
+  host.panelWidth = 400;
+  host.ngOnChanges({ panelWidth: new SimpleChange(370, 400, false) });
+  expect(host.assistantProps!.paragraphs).toBe(previous.paragraphs);
+  expect(host.assistantProps!.connection).toBe(previous.connection);
   host.ngOnDestroy();
 });

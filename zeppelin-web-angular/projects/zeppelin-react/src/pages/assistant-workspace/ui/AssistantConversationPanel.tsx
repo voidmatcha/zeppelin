@@ -84,6 +84,8 @@ export const AssistantConversationPanel = ({ source, now, renderAnswer }: Assist
   const recoveryActions = { send: retrySend, reload: retryReload };
   const retry = entry.failure?.recovery ? recoveryActions[entry.failure.recovery] : undefined;
   const answerRetry = entry.answerRecovery ? recoveryActions[entry.answerRecovery] : undefined;
+  const showUncertaintyReload =
+    !!entry.conversation && entry.failure?.recovery !== 'reload' && entry.answerRecovery !== 'reload';
 
   return (
     <section
@@ -117,6 +119,16 @@ export const AssistantConversationPanel = ({ source, now, renderAnswer }: Assist
             {entry.uncertainty && (
               <p role="alert" className={styles.warning}>
                 {entry.uncertainty}
+                {showUncertaintyReload && (
+                  <button
+                    type="button"
+                    className={styles.action}
+                    disabled={busy || entry.deleting || entry.loading}
+                    onClick={retryReload}
+                  >
+                    Reload conversation
+                  </button>
+                )}
               </p>
             )}
             {entry.failure && (

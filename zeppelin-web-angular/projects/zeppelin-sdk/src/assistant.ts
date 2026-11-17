@@ -10,18 +10,32 @@
  * limitations under the License.
  */
 
-import type {
-  AssistantEvent as AssistantSocketEvent,
-  AssistantSendMessage
-} from './interfaces/message-assistant.interface';
+import type { AssistantEvent, AssistantSendMessage } from './interfaces/message-assistant.interface';
 
-/** ASSISTANT_EVENT as the server sends it; the remote maps it to its run events. */
-export type { AssistantSocketEvent };
+/** ASSISTANT_EVENT with the request identifier from its WebSocket envelope. */
+export type AssistantSocketEvent = AssistantEvent & {
+  /** The echoed envelope msgId; undefined is a protocol error, never a wildcard. */
+  requestId: string | undefined;
+};
 
 /** The host's notebook WebSocket, narrowed to the assistant ops. */
 export interface AssistantSocket {
-  send(message: AssistantSendMessage): void;
+  /** Returns the outgoing envelope msgId used to correlate every response. */
+  send(message: AssistantSendMessage): string;
   subscribe(listener: (event: AssistantSocketEvent) => void): () => void;
   /** The connection closed. The server sends a run's events only to the connection that started it. */
   subscribeClose(listener: () => void): () => void;
+}
+
+/** The host rejected a send before dispatching it to the notebook WebSocket. */
+export class AssistantNotSentError extends Error {
+  constructor() {
+    super('The assistant is not connected. Reconnect and send your question again.');
+    this.name = 'AssistantNotSentError';
+  }
+
+  static is(error: unknown): error is Error {
+    // The host and React remote bundle the SDK separately, so constructor identity is not shared.
+    return error instanceof Error && error.name === 'AssistantNotSentError';
+  }
 }

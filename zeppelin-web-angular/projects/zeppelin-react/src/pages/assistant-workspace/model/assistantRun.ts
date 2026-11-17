@@ -10,6 +10,7 @@
  * limitations under the License.
  */
 
+import { AssistantNotSentError } from '@zeppelin/sdk';
 import {
   AssistantConnectionError,
   type AssistantAnswerMessage,
@@ -120,6 +121,11 @@ export class AssistantRun {
 
   interrupt(error: unknown): AssistantRunSnapshot {
     if (this.current.outcome) return this.current;
+
+    if (!this.current.accepted && AssistantNotSentError.is(error)) {
+      this.current = { accepted: false, outcome: 'failed', rejection: error.message };
+      return this.current;
+    }
 
     this.current = {
       accepted: this.current.accepted,

@@ -48,6 +48,7 @@ interface SendMessage {
 }
 
 interface SocketEnvelope {
+  msgId?: string;
   op?: string;
   data?: Record<string, unknown>;
 }
@@ -110,7 +111,12 @@ export class AssistantConversationWireMock {
   readonly restRequests: Array<{ method: string; path: string; body?: unknown }> = [];
   private noteId?: string;
   private readonly conversations = new Map<string, { metadata: ConversationMetadata; messages: RawMessage[] }>();
-  private readonly runs: Array<{ socket: WebSocketRoute; request: SendMessage; completed: boolean }> = [];
+  private readonly runs: Array<{
+    socket: WebSocketRoute;
+    request: SendMessage;
+    requestId: string;
+    completed: boolean;
+  }> = [];
   private createdCount = 0;
 
   static async install(page: Page): Promise<AssistantConversationWireMock> {
@@ -125,7 +131,7 @@ export class AssistantConversationWireMock {
       socket.onMessage(frame => {
         const envelope = parse(frame);
         if (envelope?.op === 'ASSISTANT_SEND_MESSAGE') {
-          mock.startRun(socket, envelope.data);
+          mock.startRun(socket, envelope.data, envelope.msgId);
         } else {
           server.send(frame);
         }
@@ -159,8 +165,8 @@ export class AssistantConversationWireMock {
     ].join('\n\n');
     const answer = message(`run-${index}-answer`, 'assistant', content);
     this.conversations.get(run.request.conversationId)!.messages.push(answer);
-    this.emit(run.socket, run.request.conversationId, 'message.done', { messageId: answer.id, content });
-    this.emit(run.socket, run.request.conversationId, 'run.completed', { runId: `run-${index}` });
+    this.emit(run.socket, run.request.conversationId, 'message.done', { messageId: answer.id, content }, run.requestId);
+    this.emit(run.socket, run.request.conversationId, 'run.completed', { runId: `run-${index}` }, run.requestId);
   }
 
   private restBase(): string {
@@ -240,18 +246,36 @@ export class AssistantConversationWireMock {
     const request = { noteId: data.noteId, conversationId: data.conversationId, content: data.content };
     const index = this.runs.length;
     this.sent.push(request);
-    this.runs.push({ socket, request, completed: false });
+    this.runs.push({ socket, request, requestId, completed: false });
     this.conversations
       .get(request.conversationId)!
       .messages.push(message(`run-${index}-user`, 'user', request.content));
-    this.emit(socket, request.conversationId, 'run.started', { runId: `run-${index}`, createdAt: CREATED_AT });
-    this.emit(socket, request.conversationId, 'message.delta', {
-      messageId: `run-${index}-answer`,
-      delta: STREAM_PREFIX
-    });
+    this.emit(
+      socket,
+      request.conversationId,
+      'run.started',
+      { runId: `run-${index}`, createdAt: CREATED_AT },
+      requestId
+    );
+    this.emit(
+      socket,
+      request.conversationId,
+      'message.delta',
+      {
+        messageId: `run-${index}-answer`,
+        delta: STREAM_PREFIX
+      },
+      requestId
+    );
   }
 
-  private emit(socket: WebSocketRoute, conversationId: string, type: string, payload: unknown): void {
-    socket.send(JSON.stringify({ op: 'ASSISTANT_EVENT', data: { conversationId, type, payload } }));
+  private emit(
+    socket: WebSocketRoute,
+    conversationId: string,
+    type: string,
+    payload: unknown,
+    requestId: string
+  ): void {
+    socket.send(JSON.stringify({ op: 'ASSISTANT_EVENT', msgId: requestId, data: { conversationId, type, payload } }));
   }
 }

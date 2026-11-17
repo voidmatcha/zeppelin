@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { expectTypeOf, describe, expect, it } from 'vitest';
 
 import {
   AssistantConnectionError,
@@ -39,11 +39,11 @@ describe('AssistantRun', () => {
       expect(ignored).toBe(initial);
     }
 
-    const started = run.receive({ type: 'run.started' });
+    const started = run.receive({ type: 'run.started', runId: 'run-1' });
 
     expect(started).toEqual({ accepted: true, view: { status: 'loading' } });
 
-    const completed = run.receive({ type: 'run.completed' });
+    const completed = run.receive({ type: 'run.completed', runId: 'run-1' });
 
     expect(completed.message).toEqual({ id: 'local-answer', role: 'assistant', segments: [] });
     expect(initial).toEqual({ accepted: false });
@@ -52,7 +52,7 @@ describe('AssistantRun', () => {
   it('appends deltas and replaces only the matching round while keeping all rounds in order', () => {
     const run = new AssistantRun('local-answer');
 
-    const loading = run.receive({ type: 'run.started' });
+    const loading = run.receive({ type: 'run.started', runId: 'run-1' });
     const partial = run.receive({ type: 'message.delta', messageId: 'first', delta: 'Draft' });
     const appended = run.receive({ type: 'message.delta', messageId: 'first', delta: ' text' });
 
@@ -74,11 +74,11 @@ describe('AssistantRun', () => {
     expect(revised.outcome).toBeUndefined();
     expect(revised.message).toBeUndefined();
 
-    const duplicateStart = run.receive({ type: 'run.started' });
+    const duplicateStart = run.receive({ type: 'run.started', runId: 'run-1' });
 
     expect(duplicateStart).toBe(revised);
 
-    const completed = run.receive({ type: 'run.completed' });
+    const completed = run.receive({ type: 'run.completed', runId: 'run-1' });
 
     expect(completed).toMatchObject({ accepted: true, outcome: 'completed', view: { status: 'done' } });
     expect(completed.message).toMatchObject({
@@ -97,7 +97,7 @@ describe('AssistantRun', () => {
   it('associates tools before text with the first round and retains a represented tool-only round', () => {
     const run = new AssistantRun('local-answer');
 
-    run.receive({ type: 'run.started' });
+    run.receive({ type: 'run.started', runId: 'run-1' });
     run.receive({ type: 'tool_call.started', toolCallId: 'before-text', name: 'inspect' });
     run.receive({ type: 'tool_call.done', toolCallId: 'before-text' });
     run.receive({ type: 'message.done', messageId: 'tool-only', content: '' });
@@ -106,7 +106,7 @@ describe('AssistantRun', () => {
     run.receive({ type: 'tool_call.done', toolCallId: 'second-tool' });
     run.receive({ type: 'message.done', messageId: 'answer', content: 'The result' });
     run.receive({ type: 'tool_call.started', toolCallId: 'last-tool', name: 'summarize' });
-    const completed = run.receive({ type: 'run.completed' });
+    const completed = run.receive({ type: 'run.completed', runId: 'run-1' });
 
     expect(completed.message).toEqual({
       id: 'answer',
@@ -133,7 +133,7 @@ describe('AssistantRun', () => {
 
   it('copies live tool activity so later events never change a published view', () => {
     const run = new AssistantRun('local-answer');
-    run.receive({ type: 'run.started' });
+    run.receive({ type: 'run.started', runId: 'run-1' });
 
     const unnamed = run.receive({ type: 'tool_call.done', toolCallId: 'tool' });
     const running = run.receive({ type: 'tool_call.started', toolCallId: 'tool', name: 'read' });
@@ -161,7 +161,7 @@ describe('AssistantRun', () => {
   it('accepts completion without a start event and uses the constructor id for an empty answer', () => {
     const run = new AssistantRun('fallback-answer');
 
-    const completed = run.receive({ type: 'run.completed' });
+    const completed = run.receive({ type: 'run.completed', runId: 'run-1' });
 
     expect(completed).toEqual({
       accepted: true,
@@ -173,10 +173,10 @@ describe('AssistantRun', () => {
 
   it('does not invent a segment for tools when no round was represented', () => {
     const run = new AssistantRun('fallback-answer');
-    run.receive({ type: 'run.started' });
+    run.receive({ type: 'run.started', runId: 'run-1' });
 
     run.receive({ type: 'tool_call.started', toolCallId: 'tool', name: 'read' });
-    const completed = run.receive({ type: 'run.completed' });
+    const completed = run.receive({ type: 'run.completed', runId: 'run-1' });
 
     expect(completed.message).toEqual({ id: 'fallback-answer', role: 'assistant', segments: [] });
   });
@@ -184,7 +184,7 @@ describe('AssistantRun', () => {
   it('reports an unaccepted failure as a rejection without an answer', () => {
     const run = new AssistantRun('local-answer');
 
-    const rejected = run.receive({ type: 'run.failed', message: 'Permission denied' });
+    const rejected = run.receive({ type: 'run.failed', runId: 'run-1', message: 'Permission denied' });
 
     expect(rejected).toEqual({
       accepted: false,
@@ -195,11 +195,11 @@ describe('AssistantRun', () => {
 
   it('retains accepted partial content and tools on a reported failure', () => {
     const run = new AssistantRun('local-answer');
-    run.receive({ type: 'run.started' });
+    run.receive({ type: 'run.started', runId: 'run-1' });
     run.receive({ type: 'message.delta', messageId: 'partial', delta: 'Partial answer' });
     run.receive({ type: 'tool_call.started', toolCallId: 'tool', name: 'read' });
 
-    const failed = run.receive({ type: 'run.failed', message: 'The run failed' });
+    const failed = run.receive({ type: 'run.failed', runId: 'run-1', message: 'The run failed' });
 
     expect(failed).toEqual({
       accepted: true,
@@ -223,10 +223,11 @@ describe('AssistantRun', () => {
   it.each([
     { error: new AssistantConnectionError(), kind: 'connection' },
     { error: new AssistantStreamError(), kind: 'stream' },
-    { error: new Error('Interrupted by the source'), kind: 'stream' }
+    { error: new Error('Interrupted by the source'), kind: 'stream' },
+    { error: Object.assign(new Error('Unexpected late send error'), { name: 'AssistantNotSentError' }), kind: 'stream' }
   ])('keeps accepted partial output on a $kind interruption', ({ error, kind }) => {
     const run = new AssistantRun('local-answer');
-    run.receive({ type: 'run.started' });
+    run.receive({ type: 'run.started', runId: 'run-1' });
     run.receive({ type: 'message.done', messageId: 'partial', content: 'Saved portion' });
     run.receive({ type: 'tool_call.started', toolCallId: 'tool', name: 'inspect' });
 
@@ -247,6 +248,17 @@ describe('AssistantRun', () => {
         role: 'assistant',
         segments: [{ id: 'partial', content: 'Saved portion', toolCalls: [{ id: 'tool', name: 'inspect' }] }]
       }
+    });
+  });
+
+  it('recognizes a known-unsent error from a separately bundled host', () => {
+    const run = new AssistantRun('local-answer');
+    const error = Object.assign(new Error('Reconnect and send again'), { name: 'AssistantNotSentError' });
+
+    expect(run.interrupt(error)).toEqual({
+      accepted: false,
+      outcome: 'failed',
+      rejection: error.message
     });
   });
 
@@ -285,23 +297,27 @@ describe('AssistantRun', () => {
 
   it.each(['completed', 'failed', 'unknown'] as const)('ignores all events and interruptions after %s', outcome => {
     const run = new AssistantRun('local-answer');
-    run.receive({ type: 'run.started' });
+    run.receive({ type: 'run.started', runId: 'run-1' });
     run.receive({ type: 'message.done', messageId: 'answer', content: 'Original' });
     run.receive({ type: 'tool_call.started', toolCallId: 'tool', name: 'read' });
     const terminal =
       outcome === 'unknown'
         ? run.interrupt(new AssistantStreamError())
-        : run.receive(outcome === 'completed' ? { type: 'run.completed' } : { type: 'run.failed', message: 'Failed' });
+        : run.receive(
+            outcome === 'completed'
+              ? { type: 'run.completed', runId: 'run-1' }
+              : { type: 'run.failed', runId: 'run-1', message: 'Failed' }
+          );
     const expected = JSON.stringify(terminal);
     const lateEvents: AssistantRunEvent[] = [
-      { type: 'run.started' },
+      { type: 'run.started', runId: 'run-1' },
       { type: 'message.delta', messageId: 'answer', delta: ' changed' },
       { type: 'message.done', messageId: 'answer', content: 'Replaced' },
       { type: 'message.done', messageId: 'later', content: 'Another round' },
       { type: 'tool_call.started', toolCallId: 'tool', name: 'renamed' },
       { type: 'tool_call.done', toolCallId: 'tool' },
-      { type: 'run.completed' },
-      { type: 'run.failed', message: 'Late failure' }
+      { type: 'run.completed', runId: 'run-1' },
+      { type: 'run.failed', runId: 'run-1', message: 'Late failure' }
     ];
 
     for (const event of lateEvents) {
@@ -316,4 +332,10 @@ describe('AssistantRun', () => {
     expect(run.snapshot).toBe(terminal);
     expect(JSON.stringify(terminal)).toBe(expected);
   });
+});
+
+it('requires server run identifiers in every lifecycle event', () => {
+  expectTypeOf<Extract<AssistantRunEvent, { type: 'run.started' }>['runId']>().toEqualTypeOf<string>();
+  expectTypeOf<Extract<AssistantRunEvent, { type: 'run.completed' }>['runId']>().toEqualTypeOf<string>();
+  expectTypeOf<Extract<AssistantRunEvent, { type: 'run.failed' }>['runId']>().toEqualTypeOf<string>();
 });

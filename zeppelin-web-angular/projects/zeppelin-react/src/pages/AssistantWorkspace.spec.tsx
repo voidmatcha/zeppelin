@@ -25,7 +25,7 @@ const socketHarness = () => {
   const events = new Set<(event: AssistantSocketEvent) => void>();
   const closes = new Set<() => void>();
   return {
-    send: vi.fn(),
+    send: vi.fn(() => 'request-1'),
     subscribe: (listener: (event: AssistantSocketEvent) => void) => {
       events.add(listener);
       return () => events.delete(listener);
@@ -34,7 +34,8 @@ const socketHarness = () => {
       closes.add(listener);
       return () => closes.delete(listener);
     },
-    emit: (event: AssistantSocketEvent) => events.forEach(listener => listener(event)),
+    emit: (event: Omit<AssistantSocketEvent, 'requestId'>) =>
+      events.forEach(listener => listener({ ...event, requestId: 'request-1' })),
     close: () => closes.forEach(listener => listener()),
     consumers: () => [events.size, closes.size]
   };
@@ -389,7 +390,7 @@ describe('AssistantWorkspace', () => {
       socket.emit({
         conversationId: 'saved',
         type: 'run.failed',
-        payload: { error: { status: 429 } }
+        payload: { runId: 'run-1', error: { status: 429 } }
       })
     );
     expect(question().value).toBe('Keep this question');
@@ -421,7 +422,7 @@ describe('AssistantWorkspace', () => {
       await open();
       await submit('Old question');
       await act(async () => {
-        socket.emit({ conversationId: 'saved', type: 'run.started', payload: {} });
+        socket.emit({ conversationId: 'saved', type: 'run.started', payload: { runId: 'run-1' } });
         socket.emit({
           conversationId: 'saved',
           type: 'message.delta',
@@ -602,7 +603,7 @@ describe('AssistantWorkspace', () => {
 
     await submit('Explicit new submission');
     await act(async () =>
-      socket.emit({ conversationId: 'saved', type: 'run.failed', payload: { error: { status: 409 } } })
+      socket.emit({ conversationId: 'saved', type: 'run.failed', payload: { runId: 'run-1', error: { status: 409 } } })
     );
     expect(screen.getByText('This conversation is still answering. Try again when it finishes.')).toBeTruthy();
     expect(screen.getByText(/The outcome of an earlier question is unknown/)).toBeTruthy();

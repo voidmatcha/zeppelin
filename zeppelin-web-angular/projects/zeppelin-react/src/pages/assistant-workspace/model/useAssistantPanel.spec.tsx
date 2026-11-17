@@ -11,6 +11,7 @@
  */
 
 import { StrictMode } from 'react';
+import { AssistantNotSentError } from '@zeppelin/sdk';
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -187,8 +188,8 @@ describe('useAssistantPanel', () => {
     expect(panel.result.current.selectedKey).toBe(nextDraftKey);
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'B stopped' });
-      harness.feeds[1].push({ type: 'run.failed', message: 'A stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'B stopped' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'A stopped' });
       await Promise.all([draftSend.completion, existingSend.completion]);
     });
 
@@ -280,7 +281,7 @@ describe('useAssistantPanel', () => {
 
     const sending = await sendQuestion(panel, 'Confirm this draft');
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Question rejected' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Question rejected' });
       await sending.completion;
     });
 
@@ -330,7 +331,7 @@ describe('useAssistantPanel', () => {
 
     const first = await sendQuestion(panel, 'Try this question');
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Already running' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Already running' });
       await first.completion;
     });
 
@@ -349,7 +350,10 @@ describe('useAssistantPanel', () => {
     expect(harness.run.mock.calls.map(([id]) => id)).toEqual(['created', 'created']);
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.started' }, { type: 'run.failed', message: 'Run stopped' });
+      harness.feeds[1].push(
+        { type: 'run.started', runId: 'run-1' },
+        { type: 'run.failed', runId: 'run-1', message: 'Run stopped' }
+      );
       await retry.completion;
     });
 
@@ -380,7 +384,7 @@ describe('useAssistantPanel', () => {
 
     expect(harness.run).toHaveBeenCalledTimes(1);
 
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
 
     expect(panel.result.current.entry.phase).toBe('running');
 
@@ -389,7 +393,7 @@ describe('useAssistantPanel', () => {
     expect(harness.run).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
 
@@ -402,7 +406,7 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
 
     const sending = await sendQuestion(panel, 'A question');
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
     await act(async () => panel.result.current.select('b'));
     act(() => panel.result.current.setDraft('B draft'));
     const selectedB = panel.result.current.entry;
@@ -421,7 +425,7 @@ describe('useAssistantPanel', () => {
     expect(harness.api.getMessages).toHaveBeenCalledTimes(loads);
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
   });
@@ -433,22 +437,25 @@ describe('useAssistantPanel', () => {
 
     const a = await sendQuestion(panel, 'Question A');
     act(() => panel.result.current.setDraft('Next question A'));
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
 
     expect(panel.result.current.entry.draft).toBe('Next question A');
 
     await act(async () => panel.result.current.select('b'));
     const b = await sendQuestion(panel, 'Question B');
     await act(async () =>
-      harness.feeds[1].push({ type: 'run.started' }, { type: 'message.delta', messageId: 'b1', delta: 'B reply' })
+      harness.feeds[1].push(
+        { type: 'run.started', runId: 'run-1' },
+        { type: 'message.delta', messageId: 'b1', delta: 'B reply' }
+      )
     );
 
     expect(panel.result.current.entry.answer).toMatchObject({ content: 'B reply' });
     expect(harness.run.mock.calls.map(([id]) => id)).toEqual(['a', 'b']);
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'A stopped' });
-      harness.feeds[1].push({ type: 'run.failed', message: 'B stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'A stopped' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'B stopped' });
       await Promise.all([a.completion, b.completion]);
     });
 
@@ -459,6 +466,34 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
 
     expect(panel.result.current.entry.draft).toBe('Next question A');
+  });
+
+  it('keeps a definitely unsent question retryable without claiming an unknown server outcome', async () => {
+    const harness = sourceHarness();
+    harness.run.mockImplementationOnce(() => {
+      throw new AssistantNotSentError();
+    });
+    const panel = await mountPanel(harness.source);
+    await act(async () => panel.result.current.select('a'));
+
+    await act(async () => panel.result.current.send('Keep this question'));
+
+    expect(panel.result.current.entry).toMatchObject({
+      phase: 'idle',
+      draft: 'Keep this question',
+      failure: { kind: 'failed', recovery: 'send' }
+    });
+    expect(panel.result.current.entry.uncertainty).toBeUndefined();
+    expect(harness.run).toHaveBeenCalledTimes(1);
+
+    const retry = await sendQuestion(panel);
+    await act(async () => {
+      harness.feeds[0].push({ type: 'run.started', runId: 'run-retry' }, { type: 'run.completed', runId: 'run-retry' });
+      await retry.completion;
+    });
+    expect(panel.result.current.entry.failure).toBeUndefined();
+    expect(panel.result.current.entry.uncertainty).toBeUndefined();
+    expect(harness.run).toHaveBeenCalledTimes(2);
   });
 
   it('never automatically resends an unknown question and permits an explicit send with the confirmed id', async () => {
@@ -511,7 +546,10 @@ describe('useAssistantPanel', () => {
     ]);
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.started' }, { type: 'run.failed', message: 'Next run stopped' });
+      harness.feeds[1].push(
+        { type: 'run.started', runId: 'run-1' },
+        { type: 'run.failed', runId: 'run-1', message: 'Next run stopped' }
+      );
       await next.completion;
     });
 
@@ -526,7 +564,7 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Accepted question');
     await act(async () => {
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'p1', delta: 'Partial' },
         null
       );
@@ -555,7 +593,7 @@ describe('useAssistantPanel', () => {
     ]);
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.failed', message: 'Follow-up rejected' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'Follow-up rejected' });
       await next.completion;
     });
   });
@@ -567,11 +605,11 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Accepted but failed');
     await act(async () => {
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'p1', delta: 'Preserved partial' },
         { type: 'tool_call.started', toolCallId: 't1', name: 'read_note' },
         { type: 'tool_call.done', toolCallId: 't1' },
-        { type: 'run.failed', message: 'Execution failed' }
+        { type: 'run.failed', runId: 'run-1', message: 'Execution failed' }
       );
       await sending.completion;
     });
@@ -603,12 +641,12 @@ describe('useAssistantPanel', () => {
     expect(panel.result.current.entry.messages).toHaveLength(2);
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.started' });
+      harness.feeds[1].push({ type: 'run.started', runId: 'run-1' });
     });
     act(() => panel.result.current.setDraft('Keep my next draft'));
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.failed', message: 'Retry failed' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'Retry failed' });
       await retry.completion;
     });
 
@@ -627,7 +665,7 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Multiple rounds');
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'm1', delta: 'Draft text' },
         { type: 'message.done', messageId: 'm1', content: 'First canonical round' },
         { type: 'tool_call.started', toolCallId: 'tool', name: 'read_note' },
@@ -642,7 +680,7 @@ describe('useAssistantPanel', () => {
       answer: { status: 'streaming', content: 'First canonical round\n\nSecond canonical round' }
     });
 
-    await act(async () => harness.feeds[0].push({ type: 'run.completed' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.completed', runId: 'run-1' }));
 
     expect(panel.result.current.entry).toMatchObject({
       phase: 'idle',
@@ -693,9 +731,9 @@ describe('useAssistantPanel', () => {
     const first = await sendQuestion(panel, 'First question');
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.done', messageId: 'first-answer', content: 'First answer' },
-        { type: 'run.completed' }
+        { type: 'run.completed', runId: 'run-1' }
       )
     );
 
@@ -708,7 +746,7 @@ describe('useAssistantPanel', () => {
 
     await act(async () =>
       harness.feeds[1].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'second-answer', delta: 'Second answer' }
       )
     );
@@ -746,7 +784,7 @@ describe('useAssistantPanel', () => {
     await act(async () => {
       harness.feeds[1].push(
         { type: 'message.delta', messageId: 'second-answer', delta: ' continues' },
-        { type: 'run.failed', message: 'Second run stopped' }
+        { type: 'run.failed', runId: 'run-1', message: 'Second run stopped' }
       );
       await second.completion;
     });
@@ -763,9 +801,9 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Complete locally');
     await act(async () => {
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.done', messageId: 'm1', content: 'Complete answer' },
-        { type: 'run.completed' }
+        { type: 'run.completed', runId: 'run-1' }
       );
       await sending.completion;
     });
@@ -792,7 +830,7 @@ describe('useAssistantPanel', () => {
     ]);
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.failed', message: 'Next run rejected' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'Next run rejected' });
       await next.completion;
     });
   });
@@ -965,7 +1003,7 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
 
     const sending = await sendQuestion(panel, 'Next question');
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
 
     expect(harness.api.getMessages.mock.calls).toEqual([['a']]);
     expect(harness.api.createConversation).not.toHaveBeenCalled();
@@ -977,7 +1015,7 @@ describe('useAssistantPanel', () => {
     ]);
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
   });
@@ -1018,7 +1056,7 @@ describe('useAssistantPanel', () => {
     });
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
   });
@@ -1049,7 +1087,7 @@ describe('useAssistantPanel', () => {
 
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'current-answer', delta: 'New answer' }
       )
     );
@@ -1071,7 +1109,7 @@ describe('useAssistantPanel', () => {
     ]);
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
   });
@@ -1139,7 +1177,7 @@ describe('useAssistantPanel', () => {
     expect(harness.run).toHaveBeenCalledWith('a', 'Keep this draft', expect.any(AbortSignal));
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
   });
@@ -1183,7 +1221,7 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Keep running');
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'answer', delta: 'Before deletion' }
       )
     );
@@ -1229,7 +1267,7 @@ describe('useAssistantPanel', () => {
     });
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Run stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Run stopped' });
       await sending.completion;
     });
   });
@@ -1242,7 +1280,7 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
 
     const sending = await sendQuestion(panel, 'Delete active conversation');
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
     const signal = harness.run.mock.calls[0][2];
 
     let removing!: Promise<AssistantDeletionResult>;
@@ -1270,7 +1308,7 @@ describe('useAssistantPanel', () => {
     await act(async () => {
       harness.feeds[0].push(
         { type: 'message.delta', messageId: 'deleted-answer', delta: 'Stale answer' },
-        { type: 'run.completed' }
+        { type: 'run.completed', runId: 'run-1' }
       );
       await sending.completion;
     });
@@ -1285,7 +1323,7 @@ describe('useAssistantPanel', () => {
     expect(panel.result.current.entry.answer).toBeUndefined();
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.failed', message: 'B rejected' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'B rejected' });
       await next.completion;
     });
   });
@@ -1294,7 +1332,7 @@ describe('useAssistantPanel', () => {
     const harness = sourceHarness();
     const panel = await mountPanel(harness.source);
     const sending = await sendQuestion(panel, 'Old panel question');
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
     const signal = harness.run.mock.calls[0][2];
 
     panel.unmount();
@@ -1303,7 +1341,7 @@ describe('useAssistantPanel', () => {
 
     const next = await mountPanel(harness.source);
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.completed', runId: 'run-1' });
       await sending.completion;
     });
 
@@ -1421,9 +1459,9 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Accepted but failed');
     await act(async () => {
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'partial', delta: 'Retained partial' },
-        { type: 'run.failed', message: 'Execution failed' }
+        { type: 'run.failed', runId: 'run-1', message: 'Execution failed' }
       );
       await sending.completion;
     });
@@ -1456,7 +1494,7 @@ describe('useAssistantPanel', () => {
     ]);
 
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.failed', message: 'Next question rejected' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'Next question rejected' });
       await next.completion;
     });
   });
@@ -1531,7 +1569,7 @@ describe('useAssistantPanel', () => {
       expect(model.getSnapshot().entry.failure).toBeUndefined();
 
       unsubscribe();
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stop new run' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stop new run' });
       await nextSend;
       model.dispose();
     }
@@ -1585,7 +1623,7 @@ describe('useAssistantPanel', () => {
     expect(harness.api.createConversation).not.toHaveBeenCalled();
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Stopped' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Stopped' });
       await sending.completion;
     });
   });
@@ -1615,7 +1653,7 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
     const sending = await sendQuestion(panel, 'Refresh activity');
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
       await sending.completion;
     });
 
@@ -1631,7 +1669,7 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
     const sending = await sendQuestion(panel, 'Refresh activity');
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
       await sending.completion;
     });
     harness.api.deleteConversation.mockRejectedValueOnce(new Error('Conversation busy'));
@@ -1661,7 +1699,7 @@ describe('useAssistantPanel', () => {
     expect(panel.result.current.listError).toBe('List unavailable');
     const sending = await sendQuestion(panel, 'Start a conversation');
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
       await sending.completion;
     });
 
@@ -1680,12 +1718,12 @@ describe('useAssistantPanel', () => {
     await act(async () => panel.result.current.select('a'));
     const first = await sendQuestion(panel, 'First');
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
       await first.completion;
     });
     const second = await sendQuestion(panel, 'Second');
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.started' }, { type: 'run.completed' });
+      harness.feeds[1].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
       await second.completion;
     });
     const fresh = { ...conversation('a'), updatedAt: '2026-10-20T00:00:00Z' };
@@ -1720,7 +1758,7 @@ describe('useAssistantPanel', () => {
 
       const sending = await sendQuestion(panel, 'Refresh from B');
       await act(async () => {
-        harness.feeds[0].push({ type: 'run.started' }, { type: 'run.completed' });
+        harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
         await sending.completion;
       });
       await act(async () => panel.result.current.select('a'));
@@ -1747,7 +1785,8 @@ describe('useAssistantPanel', () => {
       expect(panel.result.current.entry.phase).toBe(initiallyWritable ? 'idle' : 'pending');
 
       await act(async () => {
-        if (!initiallyWritable) harness.feeds[1].push({ type: 'run.failed', message: 'Stop follow-up' });
+        if (!initiallyWritable)
+          harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'Stop follow-up' });
         await followUp.completion;
       });
     }
@@ -1760,7 +1799,7 @@ describe('useAssistantPanel', () => {
     const first = await sendQuestion(panel, 'Question for A');
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'answer-a', delta: 'A is running' }
       )
     );
@@ -1772,7 +1811,7 @@ describe('useAssistantPanel', () => {
 
     const second = await sendQuestion(panel, 'Question for B');
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.started' }, { type: 'run.completed' });
+      harness.feeds[1].push({ type: 'run.started', runId: 'run-1' }, { type: 'run.completed', runId: 'run-1' });
       await second.completion;
     });
     await act(async () => panel.result.current.select('a'));
@@ -1789,7 +1828,7 @@ describe('useAssistantPanel', () => {
     await act(async () => {
       harness.feeds[0].push(
         { type: 'message.delta', messageId: 'answer-a', delta: ' and finishes' },
-        { type: 'run.failed', message: 'Stop A' }
+        { type: 'run.failed', runId: 'run-1', message: 'Stop A' }
       );
       await first.completion;
     });
@@ -1819,7 +1858,7 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, content);
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.done', messageId: 'round', content: 'Partial' },
         { type: 'tool_call.started', toolCallId: 'tool', name: 'read_note' },
         { type: 'tool_call.done', toolCallId: 'tool' },
@@ -1830,7 +1869,7 @@ describe('useAssistantPanel', () => {
     const questionKey = panel.result.current.entry.messages.at(-1)!.id;
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.failed', message: 'Execution failed' });
+      harness.feeds[0].push({ type: 'run.failed', runId: 'run-1', message: 'Execution failed' });
       await sending.completion;
     });
 
@@ -1870,7 +1909,7 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Complete this question');
     await act(async () =>
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.done', messageId: 'round', content: 'Completed answer' }
       )
     );
@@ -1880,7 +1919,7 @@ describe('useAssistantPanel', () => {
     });
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.completed', runId: 'run-1' });
       await sending.completion;
     });
 
@@ -1949,9 +1988,9 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Failed question');
     await act(async () => {
       harness.feeds[0].push(
-        { type: 'run.started' },
+        { type: 'run.started', runId: 'run-1' },
         { type: 'message.delta', messageId: 'round', delta: 'Partial' },
-        { type: 'run.failed', message: 'Execution failed' }
+        { type: 'run.failed', runId: 'run-1', message: 'Execution failed' }
       );
       await sending.completion;
     });
@@ -1990,7 +2029,7 @@ describe('useAssistantPanel', () => {
 
     const retry = await sendQuestion(panel, 'Another question');
     await act(async () => {
-      harness.feeds[1].push({ type: 'run.failed', message: 'Not accepted' });
+      harness.feeds[1].push({ type: 'run.failed', runId: 'run-1', message: 'Not accepted' });
       await retry.completion;
     });
 
@@ -2014,7 +2053,10 @@ describe('useAssistantPanel', () => {
     const sending = await sendQuestion(panel, 'Failed question');
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.started' }, { type: 'run.failed', message: 'Execution failed' });
+      harness.feeds[0].push(
+        { type: 'run.started', runId: 'run-1' },
+        { type: 'run.failed', runId: 'run-1', message: 'Execution failed' }
+      );
       await sending.completion;
       await panel.result.current.reload();
     });
@@ -2054,14 +2096,14 @@ describe('useAssistantPanel', () => {
     const panel = await mountPanel(harness.source);
     await act(async () => panel.result.current.select('a'));
     const sending = await sendQuestion(panel, 'Complete while deleting');
-    await act(async () => harness.feeds[0].push({ type: 'run.started' }));
+    await act(async () => harness.feeds[0].push({ type: 'run.started', runId: 'run-1' }));
     let removing!: Promise<AssistantDeletionResult>;
     act(() => {
       removing = panel.result.current.deleteConversation('a');
     });
 
     await act(async () => {
-      harness.feeds[0].push({ type: 'run.completed' });
+      harness.feeds[0].push({ type: 'run.completed', runId: 'run-1' });
       await sending.completion;
       deletion.resolve();
       await removing;
@@ -2075,8 +2117,8 @@ describe('useAssistantPanel', () => {
   it('does not submit after disposal between conversation confirmation and the send continuation', async () => {
     const harness = sourceHarness();
     const run = vi.fn(async function* (): AsyncIterable<AssistantRunEvent> {
-      yield { type: 'run.started' };
-      yield { type: 'run.completed' };
+      yield { type: 'run.started', runId: 'run-1' };
+      yield { type: 'run.completed', runId: 'run-1' };
     });
     const model = new AssistantPanelModel({ ...harness.source, run });
     model.start();

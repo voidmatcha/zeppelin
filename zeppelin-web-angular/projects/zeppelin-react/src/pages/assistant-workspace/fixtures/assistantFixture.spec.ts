@@ -269,7 +269,7 @@ describe('assistant panel fixture', () => {
     const started = iterator.next();
     await vi.advanceTimersByTimeAsync(20);
 
-    expect((await started).value).toMatchObject({ type: 'run.started' });
+    expect((await started).value).toMatchObject({ type: 'run.started', runId: expect.any(String) });
 
     const next = iterator.next();
     controller.abort();
@@ -297,7 +297,7 @@ describe('assistant panel fixture', () => {
 
     const started = await iterator.next();
 
-    expect(started.value).toMatchObject({ type: 'run.started' });
+    expect(started.value).toMatchObject({ type: 'run.started', runId: expect.any(String) });
     await expect(source.api.deleteConversation('c1')).rejects.toMatchObject({ status: 409 });
 
     await iterator.return?.();
@@ -329,7 +329,7 @@ describe('assistant panel fixture', () => {
 
     const started = await first.next();
 
-    expect(started.value).toMatchObject({ type: 'run.started' });
+    expect(started.value).toMatchObject({ type: 'run.started', runId: expect.any(String) });
 
     const completed = await collect(source, 'c2', 'Independent question');
 

@@ -91,11 +91,11 @@ export const mapSocketEvent = ({ type, payload }: AssistantSocketEvent): Assista
   const data = isRecord(payload) ? payload : {};
   switch (type) {
     case 'run.started':
-      return { type, runId: optionalString(data, 'runId') };
+      return { type, runId: requiredString(data, 'runId') };
     case 'run.completed':
-      return { type, runId: optionalString(data, 'runId') };
+      return { type, runId: requiredString(data, 'runId') };
     case 'run.failed':
-      return { type, runId: optionalString(data, 'runId'), message: errorMessage(data) };
+      return { type, runId: requiredString(data, 'runId'), message: errorMessage(data) };
     case 'message.delta':
       return { type, messageId: requiredString(data, 'messageId'), delta: requiredString(data, 'delta') };
     case 'message.done':
@@ -208,18 +208,8 @@ const collectionRequest = async <T>(...args: Parameters<typeof requestJson>): Pr
 };
 
 /**
- * The one request a run follows. The server allows one run per conversation and rejects a duplicate with 409,
- * so the client keeps no state beyond the run it is reading; events of any other conversation are dropped.
- */
-interface RunSlot {
-  conversationId: string;
-  phase: 'pending' | 'running';
-  runId?: string;
-}
-
-/**
  * Sends one message over the host's notebook WebSocket and yields that conversation's events until a terminal one.
- * Until this message's run.started arrives, only a rejection (run.failed) belongs to it.
+ * ASSISTANT_EVENT frames must echo this send's envelope msgId, including pre-start run.failed events.
  * Aborting stops local event consumption; it does not cancel a run already accepted by the server.
  */
 export async function* socketRun(
@@ -229,27 +219,21 @@ export async function* socketRun(
   idleTimeoutMs = RUN_IDLE_TIMEOUT_MS
 ): AsyncIterable<AssistantRunEvent> {
   signal.throwIfAborted();
-  const slot: RunSlot = { conversationId: message.conversationId, phase: 'pending' };
-  const queue: Array<AssistantRunEvent | Error> = [];
+  let runId: string | undefined;
+  const queue: Array<AssistantSocketEvent | Error> = [];
   let wake: (() => void) | undefined;
-  const push = (item: AssistantRunEvent | Error) => {
+  const push = (item: AssistantSocketEvent | Error) => {
     queue.push(item);
     wake?.();
   };
   const unsubscribe = socket.subscribe(event => {
-    if (event.conversationId !== message.conversationId) return;
-    try {
-      const mapped = mapSocketEvent(event);
-      if (mapped) push(mapped);
-    } catch (error) {
-      push(error instanceof Error ? error : new Error(String(error)));
-    }
+    if (event.conversationId === message.conversationId) push(event);
   });
   const unsubscribeClose = socket.subscribeClose(() => push(new AssistantConnectionError()));
   const onAbort = () => wake?.();
   signal.addEventListener('abort', onAbort, { once: true });
   try {
-    socket.send(message);
+    const requestId = socket.send(message);
     while (true) {
       signal.throwIfAborted();
       if (queue.length === 0) {
@@ -265,17 +249,21 @@ export async function* socketRun(
       const item = queue.shift();
       if (item === undefined) continue;
       if (item instanceof Error) throw item;
-      const runId = 'runId' in item ? item.runId : undefined;
-      // Once running, only its own terminal event ends it; deltas have no run id, but runs are one at a time.
-      if (slot.phase === 'running' && isTerminal(item) && runId && slot.runId && runId !== slot.runId) continue;
-      if (slot.phase === 'pending') {
-        if (item.type === 'run.started') {
-          slot.phase = 'running';
-          slot.runId = item.runId;
-        } else if (item.type !== 'run.failed') continue;
+      if (typeof item.requestId !== 'string' || !item.requestId) {
+        throw new AssistantProtocolError('Assistant event is missing its request msgId');
       }
-      yield item;
-      if (isTerminal(item)) return;
+      // Filter before decoding: a malformed or delayed event from another request cannot end this one.
+      if (item.requestId !== requestId) continue;
+      const event = mapSocketEvent(item);
+      if (!event) continue;
+      if (runId === undefined) {
+        if (event.type === 'run.started') runId = event.runId;
+        else if (event.type !== 'run.failed') continue;
+      } else if ('runId' in event && event.runId !== runId) {
+        throw new AssistantProtocolError('Assistant event runId changed within one request');
+      }
+      yield event;
+      if (isTerminal(event)) return;
     }
   } finally {
     signal.removeEventListener('abort', onAbort);

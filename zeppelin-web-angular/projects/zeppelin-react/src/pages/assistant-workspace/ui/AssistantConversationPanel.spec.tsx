@@ -67,13 +67,13 @@ const streamingFixture = () => {
   const secondDelta = deferred();
   const finish = deferred();
   const run = vi.fn(async function* (): AsyncIterable<AssistantRunEvent> {
-    yield { type: 'run.started' };
+    yield { type: 'run.started', runId: 'run-1' };
     await firstDelta.promise;
     yield { type: 'message.delta', messageId: 'controlled-answer', delta: 'Only revenue A' };
     await secondDelta.promise;
     yield { type: 'message.delta', messageId: 'controlled-answer', delta: ' continues' };
     await finish.promise;
-    yield { type: 'run.failed', message: 'Controlled run stopped.' };
+    yield { type: 'run.failed', runId: 'run-1', message: 'Controlled run stopped.' };
   });
 
   return { source: { ...source, run }, run, firstDelta, secondDelta, finish };
@@ -284,8 +284,8 @@ describe('AssistantConversationPanel', () => {
     };
     source.run = async function* () {
       await acceptance.promise;
-      yield { type: 'run.started' };
-      yield { type: 'run.failed', message: 'Controlled completion.' };
+      yield { type: 'run.started', runId: 'run-1' };
+      yield { type: 'run.failed', runId: 'run-1', message: 'Controlled completion.' };
     };
     await mountPanel(source);
 
@@ -552,6 +552,58 @@ describe('AssistantConversationPanel', () => {
     expect(run).toHaveBeenCalledTimes(2);
     expect(run.mock.calls[1][0]).toBe('c4');
     expect(run.mock.calls[1][1]).toBe('My next explicit question');
+  });
+
+  it('keeps recovery available after a question-only reload so a later saved answer can be read without resending', async () => {
+    const source = fixture('unknown');
+    const run = vi.spyOn(source, 'run');
+    const question = { id: 'saved-question', role: 'user' as const, content: 'Was this accepted?' };
+    const laterRead = deferred();
+    const getMessages = vi
+      .spyOn(source.api, 'getMessages')
+      .mockResolvedValueOnce({ messages: [question], cursor: null })
+      .mockImplementationOnce(async () => {
+        await laterRead.promise;
+        return {
+          messages: [
+            question,
+            {
+              id: 'saved-answer',
+              role: 'assistant',
+              segments: [{ id: 'saved-answer', content: 'The answer finished on the server.' }]
+            }
+          ],
+          cursor: null
+        };
+      });
+    await mountPanel(source);
+    await submit(question.content);
+    fireEvent.change(input(), { target: { value: 'Keep my edited draft' } });
+
+    expect(screen.getAllByRole('button', { name: 'Reload conversation' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload conversation' }));
+    await flush();
+
+    expect(getMessages).toHaveBeenCalledExactlyOnceWith('c4');
+    expect(within(messages()).getByText(question.content)).toBeTruthy();
+    expect(within(messages()).queryByText('The answer finished on the server.')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Reload conversation' })).toHaveLength(1);
+    expect(input().value).toBe('Keep my edited draft');
+    expect(run).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reload conversation' }));
+    await flush();
+    expect(screen.getByRole('button', { name: 'Reload conversation' }).matches(':disabled')).toBe(true);
+    await act(async () => laterRead.resolve());
+
+    expect(getMessages.mock.calls).toEqual([['c4'], ['c4']]);
+    expect(within(messages()).getByText('The answer finished on the server.')).toBeTruthy();
+    expect(
+      screen.getByText(/Reload can show saved messages, but cannot establish whether that run has finished/)
+    ).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Reload conversation' })).toHaveLength(1);
+    expect(input().value).toBe('Keep my edited draft');
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('allows an explicit normal Send immediately after an unknown outcome without a history prerequisite', async () => {
@@ -996,15 +1048,15 @@ describe('AssistantConversationPanel', () => {
       const failure = outcome === 'failed' ? 'The first run failed.' : new AssistantConnectionError().message;
       source.run = async function* (): AsyncIterable<AssistantRunEvent> {
         if (!first) {
-          yield { type: 'run.failed', message: 'The next question was rejected.' };
+          yield { type: 'run.failed', runId: 'run-1', message: 'The next question was rejected.' };
           return;
         }
         first = false;
-        yield { type: 'run.started' };
+        yield { type: 'run.started', runId: 'run-1' };
         yield { type: 'message.delta', messageId: 'partial-answer', delta: 'Partial answer' };
         yield { type: 'tool_call.started', toolCallId: 'unfinished-tool', name: 'read_notebook' };
         if (outcome === 'connection') throw new AssistantConnectionError();
-        yield { type: 'run.failed', message: failure };
+        yield { type: 'run.failed', runId: 'run-1', message: failure };
       };
       await mountPanel(source);
       await select('Revenue analysis');

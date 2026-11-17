@@ -37,9 +37,11 @@ const fakeSocket = () => {
   return {
     sent,
     listenerCount: () => listeners.size,
-    emit: (event: AssistantSocketEvent) => listeners.forEach(listener => listener(event)),
+    emit: (event: Omit<AssistantSocketEvent, 'requestId'> & { requestId?: string }) =>
+      listeners.forEach(listener => listener({ requestId: `request-${sent.length}`, ...event })),
     send: vi.fn((message: AssistantSendMessage) => {
       sent.push(message);
+      return `request-${sent.length}`;
     }),
     subscribe: vi.fn((listener: (event: AssistantSocketEvent) => void) => {
       listeners.add(listener);
@@ -377,16 +379,78 @@ describe('assistant transport', () => {
       }
     ]);
 
-    socket.emit({ conversationId: 'c1', type: 'message.delta', payload: { messageId: 'old', delta: 'tail' } });
-    socket.emit({ conversationId: 'c1', type: 'run.completed', payload: { runId: 'run_old' } });
+    socket.emit({
+      requestId: 'request-1',
+      conversationId: 'c1',
+      type: 'message.delta',
+      payload: { messageId: 'old', delta: 'tail' }
+    });
+    socket.emit({ requestId: 'request-1', conversationId: 'c1', type: 'run.completed', payload: { runId: 'run_old' } });
     expect((await first.next()).value).toEqual({ type: 'message.delta', messageId: 'old', delta: 'tail' });
     expect((await first.next()).value).toEqual({ type: 'run.completed', runId: 'run_old' });
     expect((await first.next()).done).toBe(true);
   });
 
+  it('ignores delayed events from an abandoned request before accepting the next run', async () => {
+    const socket = fakeSocket();
+    const abandoned = new AbortController();
+    const first = collect(socketRun(socket, message('first'), abandoned.signal));
+    abandoned.abort();
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+
+    const second = collect(socketRun(socket, message('second'), new AbortController().signal));
+    for (const type of ['run.started', 'run.failed', 'run.completed', 'message.delta'] as const) {
+      // Foreign malformed payloads must be filtered before decoding, too.
+      socket.emit({ requestId: 'request-1', conversationId: 'c1', type, payload: {} });
+    }
+    socket.emit({ conversationId: 'c1', type: 'run.started', payload: { runId: 'second' } });
+    socket.emit({ conversationId: 'c1', type: 'message.delta', payload: { messageId: 'answer', delta: 'saved' } });
+    socket.emit({ conversationId: 'c1', type: 'run.completed', payload: { runId: 'second' } });
+
+    await expect(second).resolves.toEqual([
+      { type: 'run.started', runId: 'second' },
+      { type: 'message.delta', messageId: 'answer', delta: 'saved' },
+      { type: 'run.completed', runId: 'second' }
+    ]);
+    expect(socket.listenerCount()).toBe(0);
+  });
+
+  it('correlates events emitted synchronously while send returns its request id', async () => {
+    const socket = fakeSocket();
+    socket.send.mockImplementationOnce(value => {
+      socket.sent.push(value);
+      socket.emit({ conversationId: 'c1', type: 'run.started', payload: { runId: 'r' } });
+      socket.emit({ conversationId: 'c1', type: 'run.completed', payload: { runId: 'r' } });
+      return 'request-1';
+    });
+    await expect(collect(socketRun(socket, message(), new AbortController().signal))).resolves.toEqual([
+      { type: 'run.started', runId: 'r' },
+      { type: 'run.completed', runId: 'r' }
+    ]);
+  });
+
+  it.each(['run.started', 'run.failed', 'run.completed'] as const)('requires runId on %s', type => {
+    expect(() => mapSocketEvent({ requestId: 'request-1', conversationId: 'c1', type, payload: {} })).toThrow(
+      'The assistant sent a reply this panel could not read'
+    );
+  });
+
+  it('fails explicitly when the server does not echo the request id', async () => {
+    const socket = fakeSocket();
+    const pending = collect(socketRun(socket, message(), new AbortController().signal));
+    socket.emit({ requestId: undefined, conversationId: 'c1', type: 'run.started', payload: { runId: 'r' } });
+    await expect(pending).rejects.toMatchObject({ detail: 'Assistant event is missing its request msgId' });
+    expect(socket.listenerCount()).toBe(0);
+  });
+
   it('words run.failed by its HTTP status and falls back for the rest', () => {
     const failed = (error: unknown) =>
-      mapSocketEvent({ conversationId: 'c', type: 'run.failed', payload: { runId: 'r', error } });
+      mapSocketEvent({
+        requestId: 'request-1',
+        conversationId: 'c',
+        type: 'run.failed',
+        payload: { runId: 'r', error }
+      });
     expect(failed({ status: 409 })).toEqual({
       type: 'run.failed',
       runId: 'r',
@@ -500,6 +564,7 @@ describe('assistant transport', () => {
   it('ignores event types the server does not define', () => {
     expect(
       mapSocketEvent({
+        requestId: 'request-1',
         conversationId: 'c',
         type: 'proposal.created',
         payload: { kind: 'insert', text: 'x' }
@@ -507,6 +572,7 @@ describe('assistant transport', () => {
     ).toBeUndefined();
     expect(
       mapSocketEvent({
+        requestId: 'request-1',
         conversationId: 'c',
         type: 'ui.reveal',
         payload: { paragraphId: 'p1' }

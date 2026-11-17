@@ -13,8 +13,10 @@
 import {
   ChangeDetectorRef,
   Component,
+  DoCheck,
   EventEmitter,
   Input,
+  NgZone,
   OnChanges,
   OnDestroy,
   OnInit,
@@ -24,7 +26,13 @@ import {
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { Subject, takeUntil } from 'rxjs';
 
-import { OP, type AssistantConnection, type AssistantParagraphRef, type AssistantShellProps } from '@zeppelin/sdk';
+import {
+  OP,
+  AssistantNotSentError,
+  type AssistantConnection,
+  type AssistantParagraphRef,
+  type AssistantShellProps
+} from '@zeppelin/sdk';
 import { BaseUrlService, MessageService, TicketService } from '@zeppelin/services';
 import { AssistantSlots } from './assistant-slots';
 
@@ -37,7 +45,7 @@ import { AssistantSlots } from './assistant-slots';
   `,
   standalone: false
 })
-export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
+export class AssistantHostComponent implements OnInit, OnChanges, DoCheck, OnDestroy {
   @Input() enabled = false;
   @Input() noteId!: string;
   @Input() panelWidth!: number;
@@ -55,6 +63,7 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
   private loggingOut: boolean;
   private retired = false;
   private awaitingLogin = false;
+  private paragraphRefs: AssistantParagraphRef[] = [];
 
   constructor(
     private readonly slots: AssistantSlots,
@@ -62,7 +71,8 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
     private readonly nzMessageService: NzMessageService,
     private readonly baseUrlService: BaseUrlService,
     private readonly messageService: MessageService,
-    private readonly ticketService: TicketService
+    private readonly ticketService: TicketService,
+    private readonly ngZone: NgZone
   ) {
     this.loggingOut = ticketService.logout$.value;
     this.awaitingLogin = this.loggingOut || !ticketService.ticket.init;
@@ -108,6 +118,10 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
     this.refreshProps();
   }
 
+  ngDoCheck(): void {
+    if (this.syncParagraphRefs()) this.refreshProps();
+  }
+
   ngOnDestroy(): void {
     this.destroyed = true;
     this.retire();
@@ -145,21 +159,22 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
       apiBase: this.baseUrlService.getRestApiBase(),
       sessionKey: this.sessionKey,
       onAuthError: (status, location) => {
-        if (current()) this.ticketService.handleAuthFailure(status, location);
+        // The mount directive wraps top-level callbacks, not this nested connection callback.
+        if (current()) this.ngZone.run(() => this.ticketService.handleAuthFailure(status, location));
       },
       socket: {
         send: message => {
           if (!current() || !this.messageService.connectedStatus) {
-            throw new Error('Assistant WebSocket is not connected.');
+            throw new AssistantNotSentError();
           }
-          this.messageService.send(OP.ASSISTANT_SEND_MESSAGE, message);
+          return this.messageService.send(OP.ASSISTANT_SEND_MESSAGE, message);
         },
         subscribe: listener => {
           const subscription = this.messageService
-            .receive(OP.ASSISTANT_EVENT)
+            .receiveEnvelope(OP.ASSISTANT_EVENT)
             .pipe(takeUntil(this.destroy$))
             .subscribe(event => {
-              if (current()) listener(event);
+              if (current() && event.data) listener({ ...event.data, requestId: event.msgId });
             });
           return () => subscription.unsubscribe();
         },
@@ -202,14 +217,30 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
     this.cdr.markForCheck();
   };
 
+  private syncParagraphRefs(): boolean {
+    if (
+      this.paragraphs.length === this.paragraphRefs.length &&
+      this.paragraphs.every(
+        (paragraph, index) =>
+          paragraph.id === this.paragraphRefs[index].id && paragraph.title === this.paragraphRefs[index].title
+      )
+    ) {
+      return false;
+    }
+    // The notebook mutates paragraphs in place; React needs a new snapshot when labels or order change.
+    this.paragraphRefs = this.paragraphs.map(({ id, title }) => ({ id, title }));
+    return true;
+  }
+
   private refreshProps(): void {
     if (!this.enabled || !this.noteId || this.destroyed || this.loggingOut || this.retired) return;
     if (this.awaitingLogin) return;
+    this.syncParagraphRefs();
     this.connection ??= this.createConnection();
     this.assistantProps = {
       noteId: this.noteId,
       connection: this.connection,
-      paragraphs: this.paragraphs,
+      paragraphs: this.paragraphRefs,
       onOpenParagraph: this.onOpenParagraph,
       slots: this.slots.slots.value,
       panelWidth: this.panelWidth,
