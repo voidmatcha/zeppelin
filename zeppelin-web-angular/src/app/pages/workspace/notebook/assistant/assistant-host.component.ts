@@ -13,6 +13,7 @@
 import {
   ChangeDetectorRef,
   Component,
+  DoCheck,
   EventEmitter,
   Input,
   OnChanges,
@@ -37,7 +38,7 @@ import { AssistantSlots } from './assistant-slots';
   `,
   standalone: false
 })
-export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
+export class AssistantHostComponent implements OnInit, OnChanges, DoCheck, OnDestroy {
   @Input() enabled = false;
   @Input() noteId!: string;
   @Input() panelWidth!: number;
@@ -55,6 +56,7 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
   private loggingOut: boolean;
   private retired = false;
   private awaitingLogin = false;
+  private paragraphRefs: AssistantParagraphRef[] = [];
 
   constructor(
     private readonly slots: AssistantSlots,
@@ -106,6 +108,10 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
     if (changes.noteId || changes.enabled) this.retired = false;
     if (changes.enabled) this.failed = false;
     this.refreshProps();
+  }
+
+  ngDoCheck(): void {
+    if (this.syncParagraphRefs()) this.refreshProps();
   }
 
   ngOnDestroy(): void {
@@ -202,14 +208,30 @@ export class AssistantHostComponent implements OnInit, OnChanges, OnDestroy {
     this.cdr.markForCheck();
   };
 
+  private syncParagraphRefs(): boolean {
+    if (
+      this.paragraphs.length === this.paragraphRefs.length &&
+      this.paragraphs.every(
+        (paragraph, index) =>
+          paragraph.id === this.paragraphRefs[index].id && paragraph.title === this.paragraphRefs[index].title
+      )
+    ) {
+      return false;
+    }
+    // The notebook mutates paragraphs in place; React needs a new snapshot when labels or order change.
+    this.paragraphRefs = this.paragraphs.map(({ id, title }) => ({ id, title }));
+    return true;
+  }
+
   private refreshProps(): void {
     if (!this.enabled || !this.noteId || this.destroyed || this.loggingOut || this.retired) return;
     if (this.awaitingLogin) return;
+    this.syncParagraphRefs();
     this.connection ??= this.createConnection();
     this.assistantProps = {
       noteId: this.noteId,
       connection: this.connection,
-      paragraphs: this.paragraphs,
+      paragraphs: this.paragraphRefs,
       onOpenParagraph: this.onOpenParagraph,
       slots: this.slots.slots.value,
       panelWidth: this.panelWidth,

@@ -116,7 +116,7 @@ it('passes notebook connection and navigation ports without exposing credentials
   expect(ticket.handleAuthFailure).toHaveBeenCalledWith(401, '/login/redirect');
   host.paragraphs = [{ id: 'paragraph-a', title: 'Current paragraph' }];
   host.ngOnChanges({ paragraphs: new SimpleChange([], host.paragraphs, false) });
-  expect(host.assistantProps!.paragraphs).toBe(host.paragraphs);
+  expect(host.assistantProps!.paragraphs).toEqual(host.paragraphs);
   const open = vi.fn();
   host.openParagraph.subscribe(open);
   host.assistantProps!.onOpenParagraph('paragraph-a');
@@ -299,5 +299,81 @@ it('shares one real logout with an overlapping Angular 405 and completes shared 
   expect(ticket.ticket.principal).toBe('');
   expect(ticket.logout$.value).toBe(false);
   expect(navigate).toHaveBeenCalledExactlyOnceWith(['/login']);
+  host.ngOnDestroy();
+});
+
+it.each([
+  {
+    change: 'inserts a paragraph in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) =>
+      paragraphs.splice(1, 0, { id: 'paragraph-new', title: 'New' }),
+    expected: [
+      { id: 'paragraph-a', title: 'First' },
+      { id: 'paragraph-new', title: 'New' },
+      { id: 'paragraph-b', title: 'Second' }
+    ]
+  },
+  {
+    change: 'removes a paragraph in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) => paragraphs.splice(0, 1),
+    expected: [{ id: 'paragraph-b', title: 'Second' }]
+  },
+  {
+    change: 'reorders paragraphs in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) => paragraphs.reverse(),
+    expected: [
+      { id: 'paragraph-b', title: 'Second' },
+      { id: 'paragraph-a', title: 'First' }
+    ]
+  },
+  {
+    change: 'changes a paragraph title in place',
+    mutate: (paragraphs: AssistantHostComponent['paragraphs']) => {
+      paragraphs[0].title = 'Renamed';
+    },
+    expected: [
+      { id: 'paragraph-a', title: 'Renamed' },
+      { id: 'paragraph-b', title: 'Second' }
+    ]
+  }
+])('refreshes answer references when the notebook $change', ({ mutate, expected }) => {
+  const { host } = createHost();
+  host.paragraphs = [
+    { id: 'paragraph-a', title: 'First' },
+    { id: 'paragraph-b', title: 'Second' }
+  ];
+  host.ngDoCheck();
+  const previous = host.assistantProps!;
+
+  mutate(host.paragraphs);
+  host.ngDoCheck();
+
+  expect(host.assistantProps!.paragraphs).toEqual(expected);
+  expect(host.assistantProps!.paragraphs).not.toBe(previous.paragraphs);
+  expect(previous.paragraphs).toEqual([
+    { id: 'paragraph-a', title: 'First' },
+    { id: 'paragraph-b', title: 'Second' }
+  ]);
+  expect(host.assistantProps!.connection).toBe(previous.connection);
+  host.ngOnDestroy();
+});
+
+it('preserves remote props and paragraph snapshots when reference values have not changed', () => {
+  const { host } = createHost();
+  host.paragraphs = [{ id: 'paragraph-a', title: 'First' }];
+  host.ngDoCheck();
+  const previous = host.assistantProps!;
+
+  host.ngDoCheck();
+  expect(host.assistantProps).toBe(previous);
+
+  host.paragraphs = [{ id: 'paragraph-a', title: 'First' }];
+  host.ngDoCheck();
+  expect(host.assistantProps).toBe(previous);
+
+  host.panelWidth = 400;
+  host.ngOnChanges({ panelWidth: new SimpleChange(370, 400, false) });
+  expect(host.assistantProps!.paragraphs).toBe(previous.paragraphs);
+  expect(host.assistantProps!.connection).toBe(previous.connection);
   host.ngOnDestroy();
 });
