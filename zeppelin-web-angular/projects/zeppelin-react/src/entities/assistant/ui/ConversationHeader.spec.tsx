@@ -17,7 +17,7 @@ import { ConversationHeader } from './ConversationHeader';
 
 const conversation = (title: string | undefined, canSendMessage = true): AssistantConversation => ({
   id: 'a',
-  title,
+  title: title ?? '',
   ownerId: 'analyst',
   canSendMessage,
   updatedAt: '2026-10-15T11:00:00.000Z'

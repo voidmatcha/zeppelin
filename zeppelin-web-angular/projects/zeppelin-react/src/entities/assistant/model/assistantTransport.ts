@@ -67,7 +67,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const optionalString = (data: Record<string, unknown>, field: string): string | undefined => {
   const value = data[field];
   if (value !== undefined && typeof value !== 'string') {
-    throw new AssistantProtocolError(`Assistant event field "${field}" must be a string`);
+    throw new AssistantProtocolError(`Assistant field "${field}" must be a string`);
   }
   return value;
 };
@@ -75,7 +75,7 @@ const optionalString = (data: Record<string, unknown>, field: string): string | 
 const requiredString = (data: Record<string, unknown>, field: string): string => {
   const value = optionalString(data, field);
   if (value === undefined) {
-    throw new AssistantProtocolError(`Assistant event field "${field}" is required`);
+    throw new AssistantProtocolError(`Assistant field "${field}" is required`);
   }
   return value;
 };
@@ -109,19 +109,17 @@ export const mapSocketEvent = ({ type, payload }: AssistantSocketEvent): Assista
   }
 };
 
-const isTerminal = (event: AssistantRunEvent): boolean => event.type === 'run.completed' || event.type === 'run.failed';
+const isTerminal = (
+  event: AssistantRunEvent
+): event is Extract<AssistantRunEvent, { type: 'run.completed' | 'run.failed' }> =>
+  event.type === 'run.completed' || event.type === 'run.failed';
 
 interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool' | 'system';
   content?: string | null;
-  toolCalls?: Array<{ id?: unknown; name?: unknown }> | null;
+  toolCalls?: AssistantToolCallRef[] | null;
 }
-
-const toolCallRefs = (message: ConversationMessage): AssistantToolCallRef[] =>
-  (message.toolCalls ?? []).flatMap(call =>
-    typeof call?.id === 'string' && typeof call.name === 'string' ? [{ id: call.id, name: call.name }] : []
-  );
 
 /**
  * One bubble per turn: tool and system messages are hidden, tool rounds merge under the last message's id, and
@@ -133,7 +131,7 @@ export const toVisibleMessages = (messages: ConversationMessage[]): AssistantMes
     if (message.role === 'user') {
       visible.push({ id: message.id, role: 'user', content: message.content ?? '' });
     } else if (message.role === 'assistant') {
-      const toolCalls = toolCallRefs(message);
+      const toolCalls = message.toolCalls ?? [];
       // Keep a tool-only turn even when its answer is on a later page or has not arrived yet.
       if (!message.content && !toolCalls.length) continue;
       const last = visible[visible.length - 1];
@@ -211,11 +209,7 @@ const collectionRequest = async (...args: Parameters<typeof requestJson>): Promi
  * The one request a run follows. The server allows one run per conversation and rejects a duplicate with 409,
  * so the client keeps no state beyond the run it is reading; events of any other conversation are dropped.
  */
-interface RunSlot {
-  conversationId: string;
-  phase: 'pending' | 'running';
-  runId?: string;
-}
+type RunSlot = { phase: 'pending' } | { phase: 'running'; runId: string };
 
 /**
  * Sends one message over the host's notebook WebSocket and yields that conversation's events until a terminal one.
@@ -229,7 +223,7 @@ export async function* socketRun(
   idleTimeoutMs = RUN_IDLE_TIMEOUT_MS
 ): AsyncIterable<AssistantRunEvent> {
   signal.throwIfAborted();
-  const slot: RunSlot = { conversationId: message.conversationId, phase: 'pending' };
+  let slot: RunSlot = { phase: 'pending' };
   const queue: Array<AssistantRunEvent | Error> = [];
   let wake: (() => void) | undefined;
   const push = (item: AssistantRunEvent | Error) => {
@@ -265,13 +259,11 @@ export async function* socketRun(
       const item = queue.shift();
       if (item === undefined) continue;
       if (item instanceof Error) throw item;
-      const runId = 'runId' in item ? item.runId : undefined;
       // Once running, only its own terminal event ends it; deltas have no run id, but runs are one at a time.
-      if (slot.phase === 'running' && isTerminal(item) && runId && slot.runId && runId !== slot.runId) continue;
+      if (slot.phase === 'running' && isTerminal(item) && item.runId !== slot.runId) continue;
       if (slot.phase === 'pending') {
         if (item.type === 'run.started') {
-          slot.phase = 'running';
-          slot.runId = item.runId;
+          slot = { phase: 'running', runId: item.runId };
         } else if (item.type !== 'run.failed') continue;
       }
       yield item;
@@ -301,10 +293,10 @@ const parseConversation = (value: unknown): AssistantConversation => {
   }
   return {
     id: requiredString(data, 'id'),
-    title: requiredString(data, 'title'),
+    title: data.title == null ? '' : requiredString(data, 'title'),
     ownerId: requiredString(data, 'ownerId'),
     canSendMessage: data.canSendMessage,
-    updatedAt: requiredString(data, 'updatedAt')
+    updatedAt: requiredString(data, data.updatedAt == null ? 'createdAt' : 'updatedAt')
   };
 };
 

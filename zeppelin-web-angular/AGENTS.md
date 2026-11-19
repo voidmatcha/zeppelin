@@ -41,6 +41,7 @@ The repository root `AGENTS.md` asks every change to include unit tests. This fi
 | `npm run typecheck:react` | Typecheck the React remote without emitting files |
 | `npm run test:notebook-core` | Run the dedicated notebook-core Node suite |
 | `npm run typecheck:notebook-core` | Check core source and specs, rebuild the package, and check the React type-only contract against built declarations and the same core source |
+| `npm run check:assistant-contract` | Typecheck and replay generated Java Assistant REST/WebSocket fixtures (generate them first; see `projects/zeppelin-react/test/contract/README.md`) |
 | `npm run typecheck:sdk-contracts` | Check the `zeppelin-sdk` specs, including their [type assertions](#type-assertions) |
 
 `test:shell`, `test:react`, `typecheck:react`, `test:notebook-core`, `typecheck:notebook-core`, and `typecheck:sdk-contracts` are bound to the Maven `test` phase (`pom.xml`), so a spec added here starts running in CI the day it merges. `frontend.yml` builds this module with `-DskipTests`, which frontend-maven-plugin honours by skipping `test`-phase executions, so all of them run inside `mvnw verify -Pweb-e2e` in the `run-playwright-e2e-tests` job, on both legs. `test:shell`, `test:react`, and `typecheck:react` also run as named steps on the anonymous leg, so their failures are reported under their own step names. A failure in the other three still surfaces under an e2e job name.
@@ -60,7 +61,9 @@ The two layers do not substitute for each other, and neither replaces the cross-
 
 The notebook-core host/remote contract is currently a type-only scaffold; it does not implement a notebook runtime.
 
-A third kind is planned but does not exist yet: contract specs that replay captured WebSocket traffic against the notebook runtime, arriving with [ZEPPELIN-6627](https://issues.apache.org/jira/browse/ZEPPELIN-6627). Those will run on Vitest as well and live under `test/contract/`, with the captured traffic beside them. Conventions for them are added once they exist.
+Assistant provider/consumer contract specs run separately with `check:assistant-contract` on the anonymous frontend CI job after Java fixture generation. They live under `projects/zeppelin-react/test/contract/` and use Node without Angular setup. They are not bound to the frontend Maven test phase because their inputs require the server build.
+
+A broader notebook runtime contract suite is planned: specs that replay captured WebSocket traffic against the notebook runtime, arriving with [ZEPPELIN-6627](https://issues.apache.org/jira/browse/ZEPPELIN-6627). Those will run on Vitest as well and live under `test/contract/`, with the captured traffic beside them. Conventions for them are added once they exist.
 
 ## What to test
 

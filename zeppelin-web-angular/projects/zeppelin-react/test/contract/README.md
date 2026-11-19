@@ -17,10 +17,10 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-# Assistant wire contract PoC
+# Assistant provider and consumer contract
 
 This check connects Java provider output to the actual TypeScript REST adapter
-and WebSocket mapper, without committing a handwritten copy of server fixtures
+and WebSocket run transport, without committing a handwritten copy of server fixtures
 or introducing a code generation framework.
 
 From the repository root, with the project's JDK and frontend dependencies installed:
@@ -33,33 +33,29 @@ npm run check:assistant-contract
 ```
 
 CI runs both steps on the anonymous frontend job. The Java test uses production
-`JsonResponse` and `NotebookServer.serializeMessage` serializers. Output stays
+`JsonResponse`, the production `NotebookServer.sendAssistantMessage` handler,
+and its WebSocket serializer. A scripted `ChatModel` also drives `AssistantImpl`
+through a tool round and final answer, persisted through `FileConversationRepository`. Output stays
 under Maven's `target` directory and is regenerated rather than committed.
 A missing fixture fails the consumer check. For another output path, set Maven's
 `assistant.contract.output` property and the consumer's
 `ASSISTANT_CONTRACT_FIXTURE` environment variable to the same absolute path.
 
 The consumer validates the fields it uses before sorting or rendering responses.
-Server-owned metadata and run identifiers are required. An omitted history cursor
+Conversation identity, permission, ownership, and run identifiers are required.
+Missing/null display titles normalize to an empty string for the existing
+untitled-label fallback. Missing/null activity times use the required creation
+time; supplied values of the wrong type are rejected. An omitted history cursor
 means no earlier page. Message content may be absent or null for tool-only turns.
 Additive fields remain compatible. UI types remain separate from wire data and
 may have different optional fields.
 
 Checks cover owner/reader permissions, default titles, history ordering,
-tool-only messages, cursor omission, and all seven current event types.
+tool-only messages, cursor omission, all seven current event types, socket
+conversation routing, terminal cleanup, and stored sparse display metadata.
 Negative checks remove required fields or change their types.
 
 This checks serialization and consumer compatibility. It does not prove endpoint
-authorization, request routing, socket delivery, LLM behavior, or concurrency.
+authorization, socket network delivery, real-provider LLM behavior, or concurrency.
 Hand-selected DTO examples need extending for new variants and event types.
 Fields the consumer ignores are deliberately outside this check.
-
-Related approaches investigated:
-
-- [Apache Superset's API spec drift CI](https://github.com/apache/superset/blob/69e1cd3a879ac22fdb2ba85df786078370cc32ae/.github/workflows/check-openapi-spec-drift.yml)
-  regenerates its OpenAPI spec and fails on differences. This PoC generates wire
-  examples instead of introducing OpenAPI across Zeppelin.
-- [Spring Cloud Contract's official producer sample](https://github.com/spring-cloud-samples/spring-cloud-contract-samples/blob/0df8bfb616fa0bc3ff667dd2c3c1ea6a528b71be/producer/pom.xml)
-  configures provider verification and generated contract tests. It is a sample,
-  rather than evidence of a production deployment. This PoC adds no dependency
-  on its contract framework.

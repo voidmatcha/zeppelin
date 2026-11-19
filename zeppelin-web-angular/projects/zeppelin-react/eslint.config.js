@@ -41,7 +41,7 @@ module.exports = tseslint.config(
     linterOptions: { reportUnusedDisableDirectives: 'error' }
   },
   {
-    files: ['src/**/*.{ts,tsx}', '.storybook/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}', '.storybook/**/*.{ts,tsx}', 'test/contract/**/*.ts'],
     // == legacy `extends`: eslint:recommended + @typescript-eslint/recommended
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
@@ -50,7 +50,7 @@ module.exports = tseslint.config(
         ecmaFeatures: { jsx: true },
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: true,
+        project: ['./tsconfig.json', './tsconfig.contract.json'],
         tsconfigRootDir: __dirname
       },
       // == legacy `env: { browser: true, es2021: true }`
@@ -94,7 +94,7 @@ module.exports = tseslint.config(
   },
   {
     // Catch specs that cannot fail, as eslint-plugin-playwright does for e2e.
-    files: ['src/**/*.spec.{ts,tsx}'],
+    files: ['src/**/*.spec.{ts,tsx}', 'test/contract/**/*.spec.ts'],
     plugins: { vitest },
     settings: { vitest: { typecheck: true } },
     rules: {

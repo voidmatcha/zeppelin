@@ -12,12 +12,12 @@
 
 export interface AssistantConversation {
   id: string;
-  title?: string;
+  title: string;
   /** Account that created the conversation, shown as "Started by …". */
   ownerId: string;
   /** Whether the requesting user can send messages to the conversation, as the server decides. */
   canSendMessage: boolean;
-  /** Last activity (ISO time), shown in the conversation list. */
+  /** Last activity (ISO time), or creation time if stored activity metadata is absent. */
   updatedAt: string;
 }
 export type AssistantMessage = AssistantUserMessage | AssistantAnswerMessage;
@@ -49,9 +49,9 @@ export interface AssistantMessagePage {
   cursor: string | null;
 }
 export type AssistantRunEvent =
-  | { type: 'run.started'; runId?: string }
-  | { type: 'run.completed'; runId?: string }
-  | { type: 'run.failed'; runId?: string; message: string }
+  | { type: 'run.started'; runId: string }
+  | { type: 'run.completed'; runId: string }
+  | { type: 'run.failed'; runId: string; message: string }
   | { type: 'message.delta'; messageId: string; delta: string }
   | { type: 'message.done'; messageId: string; content: string }
   | { type: 'tool_call.started'; toolCallId: string; name: string }

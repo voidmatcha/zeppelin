@@ -13,10 +13,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AssistantSocket, AssistantSocketEvent } from '@zeppelin/sdk';
 import {
   AssistantProtocolError,
   createAssistantConversationApi,
-  mapSocketEvent
+  mapSocketEvent,
+  socketRun
 } from '../../src/entities/assistant/model/assistantTransport';
 
 // Deliberately no fallback fixture: a missing provider build must fail the check.
@@ -41,6 +43,16 @@ describe('Java provider to Assistant consumer contract', () => {
     expect(await api.createConversation({})).toEqual(conversations[0]);
   });
 
+  it('normalizes optional persisted display metadata after the storage codec and REST serializer', async () => {
+    expect(fixtures.sparseConversations).toHaveLength(2);
+    for (const response of fixtures.sparseConversations) {
+      respond(response);
+      const conversation = await api.createConversation({});
+      expect(conversation.title).toBe('');
+      expect(conversation.updatedAt).toBe(response.body.createdAt);
+    }
+  });
+
   it('reads omitted nulls, tool-only turns, reverse history, and pagination', async () => {
     respond(fixtures.history);
     const page = await api.getMessages('conversation');
@@ -60,6 +72,51 @@ describe('Java provider to Assistant consumer contract', () => {
     expect(await api.getMessages('conversation', 'cursor')).toEqual({ messages: [], cursor: 'cursor' });
   });
 
+  it('reads a real persisted tool round and final answer from AssistantImpl', async () => {
+    respond(fixtures.produced.history);
+    const page = await api.getMessages('conversation');
+    expect(page.cursor).toBeNull();
+    expect(page.messages).toEqual([
+      { id: expect.any(String), role: 'user', content: 'Produced question' },
+      {
+        id: expect.any(String),
+        role: 'assistant',
+        segments: [
+          { id: expect.any(String), content: '', toolCalls: [{ id: 'produced-call', name: 'list_paragraphs' }] },
+          { id: expect.any(String), content: 'Produced answer' }
+        ]
+      }
+    ]);
+    const events: Array<{ data: AssistantSocketEvent }> = fixtures.produced.events;
+    const mapped = events.map(event => mapSocketEvent(event.data));
+    expect(mapped).toEqual([
+      { type: 'run.started', runId: expect.any(String) },
+      { type: 'tool_call.started', toolCallId: 'produced-call', name: 'list_paragraphs' },
+      { type: 'tool_call.done', toolCallId: 'produced-call' },
+      { type: 'message.delta', messageId: expect.any(String), delta: 'Produced answer' },
+      { type: 'message.done', messageId: expect.any(String), content: 'Produced answer' },
+      { type: 'run.completed', runId: expect.any(String) },
+      {
+        type: 'run.failed',
+        runId: expect.any(String),
+        message: 'The assistant could not accept this message. Edit it and try again.'
+      }
+    ]);
+    const answer = page.messages[1];
+    const finalId = answer.role === 'assistant' ? answer.segments[answer.segments.length - 1].id : undefined;
+    expect(answer.id).toBe(finalId);
+    expect(
+      mapped
+        .filter(event => event?.type === 'message.delta' || event?.type === 'message.done')
+        .map(event => event.messageId)
+    ).toEqual([finalId, finalId]);
+    const started = mapped[0];
+    const completed = mapped.find(event => event?.type === 'run.completed');
+    expect(started && 'runId' in started ? started.runId : undefined).toBe(
+      completed && 'runId' in completed ? completed.runId : undefined
+    );
+  });
+
   it('maps every current Java event and its required identifiers', () => {
     const mapped = fixtures.events.map((event: { op: string; data: Parameters<typeof mapSocketEvent>[0] }) => {
       expect(event.op).toBe('ASSISTANT_EVENT');
@@ -76,7 +133,46 @@ describe('Java provider to Assistant consumer contract', () => {
     ]);
   });
 
-  it.each(['id', 'title', 'ownerId', 'canSendMessage', 'updatedAt'])('rejects missing metadata %s', async field => {
+  it.each(['completed', 'failed'] as const)('routes the production socket envelope through a %s run', async outcome => {
+    const events: Array<{ op: string; data: AssistantSocketEvent }> = fixtures.events;
+    let listener: ((event: AssistantSocketEvent) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const unsubscribeClose = vi.fn();
+    const socket: AssistantSocket = {
+      subscribe: callback => {
+        listener = callback;
+        return unsubscribe;
+      },
+      subscribeClose: () => unsubscribeClose,
+      send: () => {
+        for (const { data } of events) {
+          listener?.({ ...data, conversationId: 'another-conversation' });
+          if (data.type !== `run.${outcome === 'completed' ? 'failed' : 'completed'}`) listener?.(data);
+        }
+      }
+    };
+    const received = [];
+    for await (const event of socketRun(
+      socket,
+      { noteId: 'note', conversationId: 'conversation', content: 'Question' },
+      new AbortController().signal,
+      100
+    )) {
+      received.push(event);
+    }
+    expect(received.map(event => event.type)).toEqual([
+      'run.started',
+      'message.delta',
+      'message.done',
+      'tool_call.started',
+      'tool_call.done',
+      `run.${outcome}`
+    ]);
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(unsubscribeClose).toHaveBeenCalledOnce();
+  });
+
+  it.each(['id', 'ownerId', 'canSendMessage'])('rejects missing metadata %s', async field => {
     const response = structuredClone(fixtures.createdConversation);
     delete response.body[field];
     respond(response);

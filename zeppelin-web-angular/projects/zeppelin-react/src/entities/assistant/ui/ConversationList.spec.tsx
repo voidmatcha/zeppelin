@@ -22,7 +22,7 @@ const at = (day: number, hour: number, minute = 0, second = 0) =>
 
 const conversation = (id: string, title: string | undefined, updatedAt: string, canSendMessage = true) => ({
   id,
-  title,
+  title: title ?? '',
   ownerId: 'analyst',
   canSendMessage,
   updatedAt

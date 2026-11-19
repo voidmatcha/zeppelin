@@ -172,12 +172,12 @@ export const createAssistantFixture = (options: AssistantFixtureOptions): Assist
         const failThisRun = !runFailureUsed && ['send-rejection', 'unknown', 'run-failure'].includes(scenario);
         if (failThisRun) runFailureUsed = true;
 
+        const runId = `${id}-run-${nextRun++}`;
         if (failThisRun && scenario === 'send-rejection') {
-          yield { type: 'run.failed', message: 'The fixture could not accept this message. Try again.' };
+          yield { type: 'run.failed', runId, message: 'The fixture could not accept this message. Try again.' };
           return;
         }
 
-        const runId = `${id}-run-${nextRun++}`;
         value.latest.push({ id: `${runId}-user`, role: 'user', content });
         value.conversation.updatedAt = new Date(now + ++activity * 1_000).toISOString();
         if (failThisRun && scenario === 'unknown') throw new AssistantConnectionError();

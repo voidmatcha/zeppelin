@@ -10,12 +10,13 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import type { AssistantSendMessage, AssistantSocketEvent } from '@zeppelin/sdk';
 
 import {
   AssistantHttpError,
+  AssistantProtocolError,
   createAssistantConversationApi,
   mapSocketEvent,
   socketRun,
@@ -25,6 +26,8 @@ import {
   AssistantConnectionError,
   AssistantStreamError,
   type AssistantAnswerMessage,
+  type AssistantConversation,
+  type AssistantConversationApi,
   type AssistantRunEvent
 } from './assistantContract';
 import { answerText, answerToolCalls, joinPages } from './messageHistory';
@@ -73,6 +76,72 @@ describe('assistant transport', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it('exposes normalized metadata and run ids without optional wire fields', () => {
+    expectTypeOf<AssistantConversation['title']>().toEqualTypeOf<string>();
+    expectTypeOf<AssistantConversation['updatedAt']>().toEqualTypeOf<string>();
+    expectTypeOf<Extract<AssistantRunEvent, { type: 'run.started' }>['runId']>().toEqualTypeOf<string>();
+    expectTypeOf<Extract<AssistantRunEvent, { type: 'run.completed' }>['runId']>().toEqualTypeOf<string>();
+    expectTypeOf<Extract<AssistantRunEvent, { type: 'run.failed' }>['runId']>().toEqualTypeOf<string>();
+    expectTypeOf<Parameters<AssistantConversationApi['createConversation']>[0]>().toEqualTypeOf<{ title?: string }>();
+  });
+
+  it.each([undefined, null])('normalizes %s display metadata without changing permission', async value => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            body: {
+              id: 'c',
+              ownerId: 'owner',
+              canSendMessage: false,
+              title: value,
+              updatedAt: value,
+              createdAt: '2026-01-01T00:00:00Z'
+            }
+          }),
+          { status: 200 }
+        )
+      )
+    );
+    await expect(forNote('n').createConversation({})).resolves.toEqual({
+      id: 'c',
+      ownerId: 'owner',
+      canSendMessage: false,
+      title: '',
+      updatedAt: '2026-01-01T00:00:00Z'
+    });
+  });
+
+  it.each([
+    { title: 42, updatedAt: '2026-01-01T00:00:00Z' },
+    { title: '', updatedAt: false },
+    { title: '', updatedAt: null },
+    { title: '', updatedAt: undefined }
+  ])('rejects invalid metadata or missing both timestamps: %j', async fields => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            body: {
+              id: 'c',
+              ownerId: 'owner',
+              canSendMessage: true,
+              ...fields
+            }
+          }),
+          { status: 200 }
+        )
+      )
+    );
+    await expect(forNote('n').createConversation({})).rejects.toBeInstanceOf(AssistantProtocolError);
+  });
+
+  it.each(['run.started', 'run.completed', 'run.failed'] as const)('requires a run id in %s', type => {
+    expect(() => mapSocketEvent({ conversationId: 'c', type, payload: {} })).toThrow(AssistantProtocolError);
   });
 
   it('lists the most recently active conversation first', async () => {
@@ -494,7 +563,7 @@ describe('assistant transport', () => {
     socket.emit({ conversationId: 'c1', type: 'message.delta', payload: { messageId: 'm1' } });
     // Told in words for the user; the field stays on the error for debugging.
     await expect(pending).rejects.toThrow('The assistant sent a reply this panel could not read. Try again.');
-    await expect(pending).rejects.toMatchObject({ detail: 'Assistant event field "delta" is required' });
+    await expect(pending).rejects.toMatchObject({ detail: 'Assistant field "delta" is required' });
   });
 
   it('ignores event types the server does not define', () => {

@@ -67,13 +67,13 @@ const streamingFixture = () => {
   const secondDelta = deferred();
   const finish = deferred();
   const run = vi.fn(async function* (): AsyncIterable<AssistantRunEvent> {
-    yield { type: 'run.started' };
+    yield { type: 'run.started', runId: 'run' };
     await firstDelta.promise;
     yield { type: 'message.delta', messageId: 'controlled-answer', delta: 'Only revenue A' };
     await secondDelta.promise;
     yield { type: 'message.delta', messageId: 'controlled-answer', delta: ' continues' };
     await finish.promise;
-    yield { type: 'run.failed', message: 'Controlled run stopped.' };
+    yield { type: 'run.failed', runId: 'run', message: 'Controlled run stopped.' };
   });
 
   return { source: { ...source, run }, run, firstDelta, secondDelta, finish };
@@ -284,8 +284,8 @@ describe('AssistantConversationPanel', () => {
     };
     source.run = async function* () {
       await acceptance.promise;
-      yield { type: 'run.started' };
-      yield { type: 'run.failed', message: 'Controlled completion.' };
+      yield { type: 'run.started', runId: 'run' };
+      yield { type: 'run.failed', runId: 'run', message: 'Controlled completion.' };
     };
     await mountPanel(source);
 
@@ -1047,15 +1047,15 @@ describe('AssistantConversationPanel', () => {
       const failure = outcome === 'failed' ? 'The first run failed.' : new AssistantConnectionError().message;
       source.run = async function* (): AsyncIterable<AssistantRunEvent> {
         if (!first) {
-          yield { type: 'run.failed', message: 'The next question was rejected.' };
+          yield { type: 'run.failed', runId: 'run', message: 'The next question was rejected.' };
           return;
         }
         first = false;
-        yield { type: 'run.started' };
+        yield { type: 'run.started', runId: 'run' };
         yield { type: 'message.delta', messageId: 'partial-answer', delta: 'Partial answer' };
         yield { type: 'tool_call.started', toolCallId: 'unfinished-tool', name: 'read_notebook' };
         if (outcome === 'connection') throw new AssistantConnectionError();
-        yield { type: 'run.failed', message: failure };
+        yield { type: 'run.failed', runId: 'run', message: failure };
       };
       await mountPanel(source);
       await select('Revenue analysis');
