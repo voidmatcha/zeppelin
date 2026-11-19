@@ -64,7 +64,7 @@ The OpenAPI check additionally validates documented fields the UI does not use.
 ## REST schema generation
 
 Swagger Core reads the two Assistant JAX-RS resources during tests. A field-based
-resolver mirrors Gson visibility; response examples use the real resource methods
+resolver avoids bean getters; response examples use the real resource methods
 and `JsonResponse` serialization. Required properties are explicit guarantees,
 not inferred from Java reference types. Persisted message timestamps and tool
 arguments can be absent. Creating a conversation accepts an omitted or null title;
@@ -73,9 +73,13 @@ renaming requires a nonblank string.
 `openapi-typescript` generates the SDK's `assistant-rest.generated.ts`. UI models
 reuse those types while preserving their normalization rules. CI regenerates the
 OpenAPI document, compares generated TypeScript with the committed file, and
-validates resource success statuses and entities with Ajv. Provider-object checks
-reject unexpected fields to detect serializer naming drift; the published schema
-allows additive fields. Consumer request checks cover the four operations exposed
+validates resource success statuses and entities with Ajv. Both schema checks and
+the consumer allow additive fields. Positive controls add
+unknown fields to actual resource envelopes and payloads. Optional field removal
+or renaming may remain schema-valid, so schema validation alone cannot prove that
+the UI preserves every optional value. Gson-specific field naming and custom
+adapters require corresponding schema definitions and consumer expectations.
+Consumer request checks cover the four operations exposed
 by the current React adapter, including their routes, methods and JSON bodies.
 
 This is a success-payload and structural contract, not a complete behavioral spec.

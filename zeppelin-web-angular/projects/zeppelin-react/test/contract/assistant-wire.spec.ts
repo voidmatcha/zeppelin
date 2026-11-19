@@ -262,12 +262,6 @@ describe('Assistant OpenAPI resource contract', () => {
   const operations = Object.values(document.paths).flatMap(path =>
     Object.values(path as Record<string, { operationId: string; responses: Record<string, unknown> }>)
   );
-  // Keep the public schema additive-compatible, but detect Gson/Jackson field-name drift
-  // in known provider objects. Dictionaries and arbitrary JSON remain open.
-  const providerDocument = structuredClone(document);
-  for (const schema of Object.values(providerDocument.components.schemas) as Array<Record<string, unknown>>) {
-    if (schema.properties) schema.additionalProperties = false;
-  }
   const ajv = new Ajv2020({ strict: false, allErrors: true });
   const metadata = ajv.compile({
     $ref: '#/components/schemas/AssistantConversationMetadataResponse',
@@ -284,7 +278,18 @@ describe('Assistant OpenAPI resource contract', () => {
     }
   });
 
-  it.each(exchanges)('$operationId returns an entity matching its response schema', exchange => {
+  const responseCases = exchanges.flatMap(exchange => {
+    const current = { ...exchange, variant: 'current' };
+    if (!Object.hasOwn(exchange, 'body')) return [current];
+    const body = structuredClone(exchange.body) as Record<string, unknown>;
+    body.futureEnvelopeField = true;
+    if (typeof body.body === 'object' && body.body !== null && !Array.isArray(body.body)) {
+      (body.body as Record<string, unknown>).futurePayloadField = true;
+    }
+    return [current, { ...exchange, variant: 'additive', body }];
+  });
+
+  it.each(responseCases)('$operationId ($variant) returns an entity matching its response schema', exchange => {
     const operation = operations.find(operation => operation.operationId === exchange.operationId)!;
     const response = operation.responses[String(exchange.status)] as {
       content: { 'application/json': { schema: object } };
@@ -294,7 +299,7 @@ describe('Assistant OpenAPI resource contract', () => {
     if (!schema) return;
     const validate = ajv.compile({
       ...response.content['application/json'].schema,
-      components: providerDocument.components
+      components: document.components
     });
     expect({ valid: validate(exchange.body), errors: validate.errors }).toEqual({ valid: true, errors: null });
   });
