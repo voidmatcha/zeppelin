@@ -18,7 +18,9 @@
 package org.apache.zeppelin.service.assistant;
 
 import java.util.Map;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(name = "AssistantToolCall", requiredProperties = {"id", "name"})
 public class ToolCall {
 
   private String id;

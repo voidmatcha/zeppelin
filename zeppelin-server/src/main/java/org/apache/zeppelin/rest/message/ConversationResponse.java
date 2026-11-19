@@ -17,10 +17,15 @@
 
 package org.apache.zeppelin.rest.message;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+
 import java.util.List;
 import org.apache.zeppelin.service.assistant.Conversation;
 import org.apache.zeppelin.service.assistant.Message;
 
+@Schema(name = "AssistantConversationResponse",
+    requiredProperties = {"id", "noteId", "ownerId", "createdAt", "canSendMessage", "messages"})
 public final class ConversationResponse {
   private final String id;
   private final String noteId;
@@ -29,6 +34,8 @@ public final class ConversationResponse {
   private final String createdAt;
   private final String updatedAt;
   private final boolean canSendMessage;
+  @ArraySchema(schema = @Schema(oneOf = {Message.User.class, Message.Assistant.class,
+      Message.Tool.class}))
   private final List<Message> messages;
 
   private ConversationResponse(Conversation conversation, String userId) {

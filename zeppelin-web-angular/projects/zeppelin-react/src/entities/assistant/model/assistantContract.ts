@@ -10,35 +10,32 @@
  * limitations under the License.
  */
 
-export interface AssistantConversation {
-  id: string;
-  title: string;
-  /** Account that created the conversation, shown as "Started by …". */
-  ownerId: string;
-  /** Whether the requesting user can send messages to the conversation, as the server decides. */
-  canSendMessage: boolean;
+import type { AssistantRestSchemas } from '@zeppelin/sdk';
+
+type ConversationMetadata = AssistantRestSchemas['schemas']['AssistantConversationMetadata'];
+type WireMessage = AssistantRestSchemas['schemas']['AssistantMessagesResponse']['messages'][number];
+
+export interface AssistantConversation extends Pick<ConversationMetadata, 'id' | 'ownerId' | 'canSendMessage'> {
+  title: NonNullable<ConversationMetadata['title']>;
   /** Last activity (ISO time), or creation time if stored activity metadata is absent. */
-  updatedAt: string;
+  updatedAt: ConversationMetadata['createdAt'];
 }
 export type AssistantMessage = AssistantUserMessage | AssistantAnswerMessage;
 export interface AssistantUserMessage {
-  id: string;
+  id: WireMessage['id'];
   role: 'user';
   content: string;
 }
 export interface AssistantAnswerMessage {
   /** The last assistant round's id, used as the bubble key. */
-  id: string;
+  id: WireMessage['id'];
   role: 'assistant';
   /** Ordered assistant rounds as stored by the server, including tool-only rounds. */
   segments: AssistantMessageSegment[];
 }
-export interface AssistantToolCallRef {
-  id: string;
-  name: string;
-}
+export type AssistantToolCallRef = Pick<AssistantRestSchemas['schemas']['AssistantToolCall'], 'id' | 'name'>;
 export interface AssistantMessageSegment {
-  id: string;
+  id: WireMessage['id'];
   content: string;
   toolCalls?: AssistantToolCallRef[];
 }
@@ -60,7 +57,9 @@ export type AssistantRunEvent =
 export interface AssistantConversationApi {
   /** Conversations of the note the API was created for. */
   listConversations(): Promise<AssistantConversation[]>;
-  createConversation(body: { title?: string }): Promise<AssistantConversation>;
+  createConversation(
+    body: AssistantRestSchemas['schemas']['AssistantConversationRequest']
+  ): Promise<AssistantConversation>;
   deleteConversation(conversationId: string): Promise<void>;
   /** The latest page of history, or the page before `before` (a page cursor). */
   getMessages(conversationId: string, before?: string): Promise<AssistantMessagePage>;

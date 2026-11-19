@@ -17,6 +17,12 @@
 
 package org.apache.zeppelin.rest;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.DefaultValue;
@@ -30,6 +36,7 @@ import jakarta.ws.rs.core.Response;
 import java.io.IOException;
 
 import org.apache.zeppelin.annotation.ZeppelinApi;
+import org.apache.zeppelin.rest.message.AssistantApiSchemas;
 import org.apache.zeppelin.rest.message.MessagesResponse;
 import org.apache.zeppelin.server.JsonResponse;
 import org.apache.zeppelin.service.AuthenticationService;
@@ -53,10 +60,14 @@ public class AssistantMessageRestApi extends AbstractRestApi {
 
   @GET
   @ZeppelinApi
+  @Operation(operationId = "listAssistantMessages")
+  @ApiResponse(responseCode = "200", description = "Messages, latest first",
+      content = @Content(schema = @Schema(implementation = AssistantApiSchemas.Messages.class)))
   public Response list(
       @PathParam("noteId") String noteId,
       @PathParam("conversationId") String conversationId,
       @QueryParam("cursor") String cursor,
+      @Parameter(schema = @Schema(minimum = "1"))
       @QueryParam("limit") @DefaultValue("10") int limit
   ) throws IOException {
     return new JsonResponse<>(

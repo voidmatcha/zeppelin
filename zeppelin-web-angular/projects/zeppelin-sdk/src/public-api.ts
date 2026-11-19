@@ -16,3 +16,5 @@ export * from './assistant-ui';
 export * from './interfaces/public-api';
 export * from './message';
 export * from './paragraph-state';
+
+export type { components as AssistantRestSchemas } from './interfaces/assistant-rest.generated';

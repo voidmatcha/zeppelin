@@ -10,7 +10,7 @@
  * limitations under the License.
  */
 
-import type { AssistantSendMessage, AssistantSocket, AssistantSocketEvent } from '@zeppelin/sdk';
+import type { AssistantSendMessage, AssistantSocket, AssistantSocketEvent, AssistantRestSchemas } from '@zeppelin/sdk';
 import {
   AssistantConnectionError,
   AssistantStreamError,
@@ -115,7 +115,7 @@ const isTerminal = (
   event.type === 'run.completed' || event.type === 'run.failed';
 
 interface ConversationMessage {
-  id: string;
+  id: AssistantRestSchemas['schemas']['AssistantMessagesResponse']['messages'][number]['id'];
   role: 'user' | 'assistant' | 'tool' | 'system';
   content?: string | null;
   toolCalls?: AssistantToolCallRef[] | null;

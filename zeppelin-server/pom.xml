@@ -48,6 +48,8 @@
     <eclipse.jgit.version>4.5.4.201711221230-r</eclipse.jgit.version>
     <eirslett.version>1.6</eirslett.version>
 
+    <swagger.version>2.2.31</swagger.version>
+
     <!--test library versions-->
     <selenium.java.version>2.48.2</selenium.java.version>
     <xml.apis.version>1.4.01</xml.apis.version>
@@ -56,6 +58,24 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-annotations</artifactId>
+      <version>${swagger.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-jaxrs2-jakarta</artifactId>
+      <version>${swagger.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <!-- Reuse the annotations already required by openai-java; avoid duplicate classes. -->
+        <exclusion>
+          <groupId>io.swagger.core.v3</groupId>
+          <artifactId>swagger-annotations-jakarta</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
 
     <!-- former zeppelin-zengine dependencies (merged) -->
     <dependency>

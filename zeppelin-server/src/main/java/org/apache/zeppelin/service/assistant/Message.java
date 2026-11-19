@@ -18,12 +18,14 @@
 package org.apache.zeppelin.service.assistant;
 
 import com.google.gson.annotations.SerializedName;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+@Schema(name = "AssistantMessage", requiredProperties = {"id"})
 public abstract class Message {
 
   public enum Role {
@@ -76,7 +78,9 @@ public abstract class Message {
     return new Message.Tool(id, toolCallId, content, Instant.now().toString());
   }
 
+  @Schema(name = "AssistantUserMessage", requiredProperties = {"id", "role"})
   public static class User extends Message {
+    @Schema(type = "string", allowableValues = {"user"})
     private Role role = Role.USER;
     private String content;
 
@@ -97,7 +101,9 @@ public abstract class Message {
     }
   }
 
+  @Schema(name = "AssistantAnswerMessage", requiredProperties = {"id", "role"})
   public static class Assistant extends Message {
+    @Schema(type = "string", allowableValues = {"assistant"})
     private Role role = Role.ASSISTANT;
     private String content;
     private List<ToolCall> toolCalls = new ArrayList<>();
@@ -127,7 +133,9 @@ public abstract class Message {
     }
   }
 
+  @Schema(name = "AssistantToolMessage", requiredProperties = {"id", "role"})
   public static class Tool extends Message {
+    @Schema(type = "string", allowableValues = {"tool"})
     private Role role = Role.TOOL;
     private String toolCallId;
     private String content;

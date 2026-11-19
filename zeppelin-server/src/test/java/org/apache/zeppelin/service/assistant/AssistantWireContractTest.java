@@ -105,6 +105,18 @@ class AssistantWireContractTest {
     assertFalse(history.getAsJsonObject().getAsJsonObject("body")
         .getAsJsonArray("messages").get(2).getAsJsonObject().has("content"));
     fixtures.add("history", history);
+    // Older storage may omit message timestamps and tool arguments. Preserve compatibility.
+    var sparseMessages = history.getAsJsonObject().getAsJsonObject("body")
+        .getAsJsonArray("messages").deepCopy();
+    for (var message : sparseMessages) {
+      message.getAsJsonObject().remove("createdAt");
+    }
+    sparseMessages.get(2).getAsJsonObject().getAsJsonArray("toolCalls")
+        .get(0).getAsJsonObject().remove("arguments");
+    stored.add("messages", sparseMessages);
+    var sparseLoaded = ConversationJsonCodec.deserialize(stored.toString());
+    fixtures.add("sparseHistory", rest(MessagesResponse.of(
+        new MessagePage(sparseLoaded.getMessages(), null))));
     fixtures.add("olderHistory", rest(MessagesResponse.of(new MessagePage(List.of(), "cursor"))));
 
     var events = new JsonArray();

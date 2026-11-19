@@ -17,8 +17,12 @@
 
 package org.apache.zeppelin.rest.message;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import org.apache.zeppelin.service.assistant.Conversation;
 
+@Schema(name = "AssistantConversationMetadata",
+    requiredProperties = {"id", "noteId", "ownerId", "createdAt", "canSendMessage"})
 public final class ConversationMetadata {
   private final String id;
   private final String noteId;

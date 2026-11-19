@@ -21,14 +21,15 @@ under the License.
 
 This check connects Java provider output to the actual TypeScript REST adapter
 and WebSocket run transport, without committing a handwritten copy of server fixtures
-or introducing a code generation framework.
+and uses OpenAPI 3.1 for all six Assistant REST operations.
 
 From the repository root, with the project's JDK and frontend dependencies installed:
 
 ```sh
-rm -f zeppelin-server/target/assistant-contract/wire.json
-./mvnw package -pl zeppelin-server --am -Dtest=AssistantWireContractTest -Dsurefire.failIfNoSpecifiedTests=false
+rm -rf zeppelin-server/target/assistant-contract
+./mvnw package -pl zeppelin-server --am -Dtest=AssistantWireContractTest,AssistantOpenApiContractTest -Dsurefire.failIfNoSpecifiedTests=false
 cd zeppelin-web-angular
+npm run generate:assistant-rest-types # after an intentional REST contract change
 npm run check:assistant-contract
 ```
 
@@ -58,4 +59,32 @@ Negative checks remove required fields or change their types.
 This checks serialization and consumer compatibility. It does not prove endpoint
 authorization, socket network delivery, real-provider LLM behavior, or concurrency.
 Hand-selected DTO examples need extending for new variants and event types.
-Fields the consumer ignores are deliberately outside this check.
+The OpenAPI check additionally validates documented fields the UI does not use.
+
+## REST schema generation
+
+Swagger Core reads the two Assistant JAX-RS resources during tests. A field-based
+resolver mirrors Gson visibility; response examples use the real resource methods
+and `JsonResponse` serialization. Required properties are explicit guarantees,
+not inferred from Java reference types. Persisted message timestamps and tool
+arguments can be absent. Creating a conversation accepts an omitted or null title;
+renaming requires a nonblank string.
+
+`openapi-typescript` generates the SDK's `assistant-rest.generated.ts`. UI models
+reuse those types while preserving their normalization rules. CI regenerates the
+OpenAPI document, compares generated TypeScript with the committed file, and
+validates resource success statuses and entities with Ajv. Provider-object checks
+reject unexpected fields to detect serializer naming drift; the published schema
+allows additive fields. Consumer request checks cover the four operations exposed
+by the current React adapter, including their routes, methods and JSON bodies.
+
+This is a success-payload and structural contract, not a complete behavioral spec.
+For example, runtime `String.isBlank` validation is stronger than the rename
+schema's `minLength`, and Gson may coerce primitive request values. Error response
+bodies, security schemes, routing through Jersey, CORS, and all other Zeppelin REST
+resources are outside this initial scope. Business validation and authorization
+still belong to server tests. OpenAPI does not describe WebSocket events; the
+existing producer/consumer event checks remain separate and run in the same job.
+
+The schema generator and scanner are test-only. Production adds annotations but
+no scanner, documentation endpoint, generated HTTP client, or runtime validator.

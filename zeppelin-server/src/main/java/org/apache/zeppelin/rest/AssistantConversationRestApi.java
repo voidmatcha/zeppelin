@@ -18,6 +18,11 @@
 package org.apache.zeppelin.rest;
 
 import com.google.gson.JsonSyntaxException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -36,6 +41,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.apache.zeppelin.annotation.ZeppelinApi;
+import org.apache.zeppelin.rest.message.AssistantApiSchemas;
 import org.apache.zeppelin.rest.message.ConversationRequest;
 import org.apache.zeppelin.rest.message.ConversationMetadata;
 import org.apache.zeppelin.rest.message.ConversationResponse;
@@ -69,6 +75,10 @@ public class AssistantConversationRestApi extends AbstractRestApi {
 
   @GET
   @ZeppelinApi
+  @Operation(operationId = "listAssistantConversations")
+  @ApiResponse(responseCode = "200", description = "Success",
+      content = @Content(
+          schema = @Schema(implementation = AssistantApiSchemas.ConversationList.class)))
   public Response list(@PathParam("noteId") String noteId) throws IOException {
     var context = getServiceContext();
     return new JsonResponse<>(
@@ -83,6 +93,9 @@ public class AssistantConversationRestApi extends AbstractRestApi {
   @GET
   @Path("/{conversationId}")
   @ZeppelinApi
+  @Operation(operationId = "getAssistantConversation")
+  @ApiResponse(responseCode = "200", description = "Success",
+      content = @Content(schema = @Schema(implementation = AssistantApiSchemas.Detail.class)))
   public Response get(
       @PathParam("noteId") String noteId,
       @PathParam("conversationId") String conversationId
@@ -102,6 +115,12 @@ public class AssistantConversationRestApi extends AbstractRestApi {
 
   @POST
   @ZeppelinApi
+  @Operation(operationId = "createAssistantConversation")
+  @ApiResponse(responseCode = "201", description = "Success",
+      content = @Content(schema = @Schema(implementation = AssistantApiSchemas.Metadata.class)))
+  @RequestBody(required = false,
+      content = @Content(mediaType = "application/json",
+          schema = @Schema(implementation = ConversationRequest.class)))
   public Response create(
       @PathParam("noteId") String noteId,
       String body
@@ -123,6 +142,12 @@ public class AssistantConversationRestApi extends AbstractRestApi {
   @PATCH
   @Path("/{conversationId}")
   @ZeppelinApi
+  @Operation(operationId = "renameAssistantConversation")
+  @ApiResponse(responseCode = "200", description = "Success",
+      content = @Content(schema = @Schema(implementation = AssistantApiSchemas.Metadata.class)))
+  @RequestBody(required = true,
+      content = @Content(mediaType = "application/json",
+          schema = @Schema(implementation = AssistantApiSchemas.Rename.class)))
   public Response updateTitle(
       @PathParam("noteId") String noteId,
       @PathParam("conversationId") String conversationId,
@@ -145,6 +170,8 @@ public class AssistantConversationRestApi extends AbstractRestApi {
   @DELETE
   @Path("/{conversationId}")
   @ZeppelinApi
+  @Operation(operationId = "deleteAssistantConversation")
+  @ApiResponse(responseCode = "204", description = "Success")
   public Response delete(
       @PathParam("noteId") String noteId,
       @PathParam("conversationId") String conversationId

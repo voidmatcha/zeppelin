@@ -17,11 +17,17 @@
 
 package org.apache.zeppelin.rest.message;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+
 import java.util.List;
 import org.apache.zeppelin.service.assistant.Message;
 import org.apache.zeppelin.service.assistant.MessagePage;
 
+@Schema(name = "AssistantMessagesResponse", requiredProperties = {"messages"})
 public final class MessagesResponse {
+  @ArraySchema(schema = @Schema(oneOf = {Message.User.class, Message.Assistant.class,
+      Message.Tool.class}))
   private final List<Message> messages;
   private final String cursor;
 

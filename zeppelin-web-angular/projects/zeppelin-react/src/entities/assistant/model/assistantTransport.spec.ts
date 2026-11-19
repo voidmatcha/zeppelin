@@ -84,7 +84,9 @@ describe('assistant transport', () => {
     expectTypeOf<Extract<AssistantRunEvent, { type: 'run.started' }>['runId']>().toEqualTypeOf<string>();
     expectTypeOf<Extract<AssistantRunEvent, { type: 'run.completed' }>['runId']>().toEqualTypeOf<string>();
     expectTypeOf<Extract<AssistantRunEvent, { type: 'run.failed' }>['runId']>().toEqualTypeOf<string>();
-    expectTypeOf<Parameters<AssistantConversationApi['createConversation']>[0]>().toEqualTypeOf<{ title?: string }>();
+    expectTypeOf<Parameters<AssistantConversationApi['createConversation']>[0]>().toEqualTypeOf<{
+      title?: string | null;
+    }>();
   });
 
   it.each([undefined, null])('normalizes %s display metadata without changing permission', async value => {

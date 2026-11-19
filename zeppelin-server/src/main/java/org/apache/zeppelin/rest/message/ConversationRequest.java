@@ -16,7 +16,11 @@
  */
 package org.apache.zeppelin.rest.message;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(name = "AssistantConversationRequest")
 public class ConversationRequest {
+  @Schema(types = {"string", "null"})
   private final String title;
 
   public ConversationRequest(String title) {

@@ -16,7 +16,7 @@
     "build:projects": "npm run build-project:sdk && npm run build-project:notebook-core && npm run build-project:vis",
     "build-project:notebook-core": "ng build --project zeppelin-notebook-core",
     "build-project:sdk": "ng build --project zeppelin-sdk",
-    "check:assistant-contract": "tsc -p projects/zeppelin-react/tsconfig.contract.json --noEmit && vitest run --config vitest.assistant-contract.config.mts",
+    "check:assistant-contract": "node scripts/generate-assistant-rest-types.mjs --check && tsc -p projects/zeppelin-react/tsconfig.contract.json --noEmit && vitest run --config vitest.assistant-contract.config.mts",
     "check:websocket-contract": "node --test scripts/check-websocket-contract.test.js && node scripts/check-websocket-contract.js",
     "generate:notebook-parity-scenarios": "node scripts/generate-notebook-parity-scenarios.mjs",
     "check:notebook-parity-scenarios": "node --test scripts/check-notebook-parity-scenarios.test.mjs && node scripts/check-notebook-parity-scenarios.mjs",
@@ -51,7 +51,8 @@
     "e2e:report:classic": "playwright show-report playwright-report-classic",
     "e2e:ci": "export CI=true && playwright test && playwright test --config playwright.classic.config.js",
     "e2e:codegen": "playwright codegen http://localhost:4200",
-    "e2e:cleanup": "npx tsx e2e/cleanup-util.ts"
+    "e2e:cleanup": "npx tsx e2e/cleanup-util.ts",
+    "generate:assistant-rest-types": "node scripts/generate-assistant-rest-types.mjs"
   },
   "engines": {
     "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
@@ -122,6 +123,7 @@
     "lint-staged": "^15.5.2",
     "monaco-editor-webpack-plugin": "7.1.1",
     "ng-packagr": "^21.2.3",
+    "openapi-typescript": "7.13.0",
     "prettier": "^3.6.2",
     "style-loader": "^4.0.0",
     "ts-node": "~7.0.0",
