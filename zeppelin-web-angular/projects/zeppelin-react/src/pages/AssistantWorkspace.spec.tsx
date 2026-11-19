@@ -389,7 +389,7 @@ describe('AssistantWorkspace', () => {
       socket.emit({
         conversationId: 'saved',
         type: 'run.failed',
-        payload: { error: { status: 429 } }
+        payload: { runId: 'rejected-run', error: { status: 429 } }
       })
     );
     expect(question().value).toBe('Keep this question');
@@ -421,7 +421,7 @@ describe('AssistantWorkspace', () => {
       await open();
       await submit('Old question');
       await act(async () => {
-        socket.emit({ conversationId: 'saved', type: 'run.started', payload: {} });
+        socket.emit({ conversationId: 'saved', type: 'run.started', payload: { runId: 'old-run' } });
         socket.emit({
           conversationId: 'saved',
           type: 'message.delta',
@@ -602,7 +602,11 @@ describe('AssistantWorkspace', () => {
 
     await submit('Explicit new submission');
     await act(async () =>
-      socket.emit({ conversationId: 'saved', type: 'run.failed', payload: { error: { status: 409 } } })
+      socket.emit({
+        conversationId: 'saved',
+        type: 'run.failed',
+        payload: { runId: 'rejected-run', error: { status: 409 } }
+      })
     );
     expect(screen.getByText('This conversation is still answering. Try again when it finishes.')).toBeTruthy();
     expect(screen.getByText(/The outcome of an earlier question is unknown/)).toBeTruthy();

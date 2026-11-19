@@ -114,6 +114,15 @@ jobs:
         if: matrix.mode == 'anonymous'
         working-directory: zeppelin-web-angular
         run: ./node/npm run typecheck:react
+      - name: Generate Assistant provider contract fixtures
+        if: matrix.mode == 'anonymous'
+        run: |
+          rm -f zeppelin-server/target/assistant-contract/wire.json
+          ./mvnw package -pl zeppelin-server --am -Dtest=AssistantWireContractTest -Dsurefire.failIfNoSpecifiedTests=false ${MAVEN_ARGS}
+      - name: Check Assistant consumer contract
+        if: matrix.mode == 'anonymous'
+        working-directory: zeppelin-web-angular
+        run: ./node/npm run check:assistant-contract
       - name: Check websocket operation contract
         if: matrix.mode == 'anonymous'
         working-directory: zeppelin-web-angular

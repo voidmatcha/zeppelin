@@ -91,11 +91,11 @@ export const mapSocketEvent = ({ type, payload }: AssistantSocketEvent): Assista
   const data = isRecord(payload) ? payload : {};
   switch (type) {
     case 'run.started':
-      return { type, runId: optionalString(data, 'runId') };
+      return { type, runId: requiredString(data, 'runId') };
     case 'run.completed':
-      return { type, runId: optionalString(data, 'runId') };
+      return { type, runId: requiredString(data, 'runId') };
     case 'run.failed':
-      return { type, runId: optionalString(data, 'runId'), message: errorMessage(data) };
+      return { type, runId: requiredString(data, 'runId'), message: errorMessage(data) };
     case 'message.delta':
       return { type, messageId: requiredString(data, 'messageId'), delta: requiredString(data, 'delta') };
     case 'message.done':
@@ -174,11 +174,11 @@ const httpError = (response: Response, onAuthError?: AssistantAuthErrorHandler):
   return error;
 };
 
-const requestJson = async <T>(
+const requestJson = async (
   url: string,
   init: { method?: string; body?: unknown } = {},
   onAuthError?: AssistantAuthErrorHandler
-): Promise<T> => {
+): Promise<unknown> => {
   const response = await fetch(url, {
     method: init.method ?? 'GET',
     credentials: 'include',
@@ -192,13 +192,13 @@ const requestJson = async <T>(
     throw httpError(response, onAuthError);
   }
   const text = await response.text();
-  return (text ? unwrapBody(JSON.parse(text)) : undefined) as T;
+  return text ? unwrapBody(JSON.parse(text)) : undefined;
 };
 
 // A server without the assistant API answers the note's conversation collection with 404.
-const collectionRequest = async <T>(...args: Parameters<typeof requestJson>): Promise<T> => {
+const collectionRequest = async (...args: Parameters<typeof requestJson>): Promise<unknown> => {
   try {
-    return await requestJson<T>(...args);
+    return await requestJson(...args);
   } catch (error) {
     if (error instanceof AssistantHttpError && error.status === 404) {
       throw new AssistantHttpError(404, NOT_AVAILABLE_MESSAGE);
@@ -284,16 +284,56 @@ export async function* socketRun(
   }
 }
 
-type ConversationMetadataResponse = {
-  id: string;
-  noteId: string;
-  title?: string;
-  ownerId: string;
-  canSendMessage: boolean;
-  createdAt: string;
-  updatedAt: string;
+// Validate the fields the consumer uses; additive server fields remain compatible.
+const record = (value: unknown): Record<string, unknown> => {
+  if (!isRecord(value) || Array.isArray(value)) throw new AssistantProtocolError('Expected an object');
+  return value;
 };
-type MessagePage = { messages: ConversationMessage[]; cursor?: string | null };
+const array = (value: unknown): unknown[] => {
+  if (!Array.isArray(value)) throw new AssistantProtocolError('Expected an array');
+  return value;
+};
+
+const parseConversation = (value: unknown): AssistantConversation => {
+  const data = record(value);
+  if (typeof data.canSendMessage !== 'boolean') {
+    throw new AssistantProtocolError('canSendMessage must be a boolean');
+  }
+  return {
+    id: requiredString(data, 'id'),
+    title: requiredString(data, 'title'),
+    ownerId: requiredString(data, 'ownerId'),
+    canSendMessage: data.canSendMessage,
+    updatedAt: requiredString(data, 'updatedAt')
+  };
+};
+
+const parseMessagePage = (value: unknown): { messages: ConversationMessage[]; cursor?: string | null } => {
+  const data = record(value);
+  if (data.cursor != null && typeof data.cursor !== 'string') {
+    throw new AssistantProtocolError('cursor must be a string, null, or absent');
+  }
+  const messages = array(data.messages).map(value => {
+    const message = record(value);
+    const id = requiredString(message, 'id');
+    const role = message.role;
+    if (role !== 'user' && role !== 'assistant' && role !== 'tool' && role !== 'system') {
+      throw new AssistantProtocolError('Unknown message role');
+    }
+    if (message.content != null && typeof message.content !== 'string') {
+      throw new AssistantProtocolError('content must be a string, null, or absent');
+    }
+    const toolCalls =
+      message.toolCalls == null
+        ? message.toolCalls
+        : array(message.toolCalls).map(value => {
+            const call = record(value);
+            return { id: requiredString(call, 'id'), name: requiredString(call, 'name') };
+          });
+    return { id, role, content: message.content, toolCalls } satisfies ConversationMessage;
+  });
+  return { messages, cursor: data.cursor };
+};
 
 // One page of raw server messages; the panel loads earlier pages as the user scrolls up.
 const HISTORY_PAGE_SIZE = 50;
@@ -307,42 +347,33 @@ export const createAssistantConversationApi = (
   onAuthError?: AssistantAuthErrorHandler
 ): AssistantConversationApi => {
   const base = `${apiBase.replace(/\/$/, '')}/notes/${encodeURIComponent(noteId)}/conversations`;
-  const toAssistantConversation = (conversation: ConversationMetadataResponse): AssistantConversation => {
-    return {
-      id: conversation.id,
-      title: conversation.title,
-      ownerId: conversation.ownerId,
-      canSendMessage: conversation.canSendMessage,
-      updatedAt: conversation.updatedAt
-    };
-  };
+
   return {
     // Latest activity first, so the panel opens on it.
     listConversations: async () =>
-      (await collectionRequest<ConversationMetadataResponse[]>(base, {}, onAuthError))
+      array(await collectionRequest(base, {}, onAuthError))
+        .map(parseConversation)
         .map(conversation => ({
           conversation,
           time: Date.parse(conversation.updatedAt) || 0
         }))
         .sort((a, b) => b.time - a.time)
-        .map(({ conversation }) => toAssistantConversation(conversation)),
+        .map(({ conversation }) => conversation),
     createConversation: async ({ title } = {}) =>
-      toAssistantConversation(
-        await collectionRequest<ConversationMetadataResponse>(
-          base,
-          { method: 'POST', body: title === undefined ? {} : { title } },
-          onAuthError
-        )
+      parseConversation(
+        await collectionRequest(base, { method: 'POST', body: title === undefined ? {} : { title } }, onAuthError)
       ),
     deleteConversation: async conversationId => {
-      await requestJson<void>(`${base}/${encodeURIComponent(conversationId)}`, { method: 'DELETE' }, onAuthError);
+      await requestJson(`${base}/${encodeURIComponent(conversationId)}`, { method: 'DELETE' }, onAuthError);
     },
     getMessages: async (conversationId, before): Promise<AssistantMessagePage> => {
       const cursor = before ? `&cursor=${encodeURIComponent(before)}` : '';
-      const page = await requestJson<MessagePage>(
-        `${base}/${encodeURIComponent(conversationId)}/messages?limit=${HISTORY_PAGE_SIZE}${cursor}`,
-        {},
-        onAuthError
+      const page = parseMessagePage(
+        await requestJson(
+          `${base}/${encodeURIComponent(conversationId)}/messages?limit=${HISTORY_PAGE_SIZE}${cursor}`,
+          {},
+          onAuthError
+        )
       );
       // The server pages from the latest message backwards; the panel renders oldest to newest.
       return { messages: toVisibleMessages([...page.messages].reverse()), cursor: page.cursor ?? null };

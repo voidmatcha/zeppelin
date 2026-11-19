@@ -16,6 +16,7 @@
     "build:projects": "npm run build-project:sdk && npm run build-project:notebook-core && npm run build-project:vis",
     "build-project:notebook-core": "ng build --project zeppelin-notebook-core",
     "build-project:sdk": "ng build --project zeppelin-sdk",
+    "check:assistant-contract": "tsc -p projects/zeppelin-react/tsconfig.contract.json --noEmit && vitest run --config vitest.assistant-contract.config.mts",
     "check:websocket-contract": "node --test scripts/check-websocket-contract.test.js && node scripts/check-websocket-contract.js",
     "generate:notebook-parity-scenarios": "node scripts/generate-notebook-parity-scenarios.mjs",
     "check:notebook-parity-scenarios": "node --test scripts/check-notebook-parity-scenarios.test.mjs && node scripts/check-notebook-parity-scenarios.mjs",

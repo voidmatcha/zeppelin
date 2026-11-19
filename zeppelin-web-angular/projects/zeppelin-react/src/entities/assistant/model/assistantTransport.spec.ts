@@ -77,9 +77,9 @@ describe('assistant transport', () => {
 
   it('lists the most recently active conversation first', async () => {
     const body = [
-      { id: 'old', ownerId: 'alice', canSendMessage: true, updatedAt: '2026-10-01T00:00:00Z' },
-      { id: 'new', ownerId: 'bob', canSendMessage: false, updatedAt: '2026-10-03T00:00:00Z' },
-      { id: 'middle', ownerId: 'carol', canSendMessage: true, updatedAt: '2026-10-02T00:00:00Z' }
+      { id: 'old', title: 'Conversation', ownerId: 'alice', canSendMessage: true, updatedAt: '2026-10-01T00:00:00Z' },
+      { id: 'new', title: 'Conversation', ownerId: 'bob', canSendMessage: false, updatedAt: '2026-10-03T00:00:00Z' },
+      { id: 'middle', title: 'Conversation', ownerId: 'carol', canSendMessage: true, updatedAt: '2026-10-02T00:00:00Z' }
     ];
     vi.stubGlobal(
       'fetch',
